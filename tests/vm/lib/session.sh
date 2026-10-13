@@ -13,7 +13,7 @@ WAYLAND_DISPLAY=$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' 
 export WAYLAND_DISPLAY
 
 hyprctl version >/dev/null || { echo 'assert: hyprctl does not answer'; exit 1; }
-pgrep -u "$(id -u)" -x quickshell >/dev/null || { echo 'assert: quickshell is not running'; exit 1; }
+pgrep -u "$(id -u)" -x "qs|quickshell" >/dev/null || { echo 'assert: quickshell is not running'; exit 1; }
 c7shell-doctor || { echo 'assert: c7shell-doctor failed'; exit 1; }
 if journalctl --user -b --no-pager | grep -E 'qrc:|\.qml:[0-9]+: '; then
   echo 'assert: QML errors in the user journal'; exit 1

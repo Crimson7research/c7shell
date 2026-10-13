@@ -123,7 +123,7 @@ step_greeter() {
   wait_for 170 _greeter_up
 }
 
-_session_up() { vm_ssh "$run" 'pgrep -u c7test -x quickshell' >/dev/null; }
+_session_up() { vm_ssh "$run" 'pgrep -u c7test -x "qs|quickshell"' >/dev/null; }
 
 step_login() {
   qmp_type "$run/qmp.sock" "$(cat "$C7VT_CACHE/c7test.password")" >/dev/null
