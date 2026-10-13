@@ -114,4 +114,26 @@ for want in -enable-kvm -daemonize "hostfwd=tcp:127.0.0.1:2223-:22" \
 done
 grep -qx 2223 "$tmp/run/ssh.port" || fail 'vm_start: must record the ssh port'
 
+# --- run.sh ---------------------------------------------------------------
+"$vm/run.sh" -h >/dev/null || fail 'run.sh -h must exit 0'
+set +e
+"$vm/run.sh" >/dev/null 2>&1; [[ $? == 2 ]] || fail 'run.sh without --branch must exit 2'
+"$vm/run.sh" --branch x --bogus >/dev/null 2>&1; [[ $? == 2 ]] || fail 'run.sh: an unknown option must exit 2'
+set -e
+
+# shellcheck source=vm/run.sh
+C7VT_SOURCE_ONLY=1 . "$vm/run.sh"
+[[ $(slug jv/feat:x) == jv-feat-x ]] || fail "slug: got $(slug jv/feat:x)"
+parse_args --branch b --keep --repo r
+[[ $branch == b && $keep == 1 && $repo_url == r && $rebuild == 0 ]] \
+  || fail 'parse_args: wrong values'
+
+results=$tmp/res; mkdir -p "$results"
+ok_step() { true; }
+phase demo 5 ok_step
+grep -Eq '^demo [0-9]+s ok$' "$results/summary.txt" || fail 'phase: must log an ok line'
+bad_step() { false; }
+( phase broken 5 bad_step ) >/dev/null 2>&1 && fail 'phase: a failing step must exit'
+grep -qx 'FAIL: broken' "$results/summary.txt" || fail 'phase: must log FAIL: <phase>'
+
 echo 'PASS: vmtest-lib'
