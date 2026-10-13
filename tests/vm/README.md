@@ -5,6 +5,7 @@ through the real SDDM greeter, and checks the session. It runs on a dedicated
 KVM machine, never in `tests/*.sh`.
 
 Design: `docs/superpowers/specs/2026-10-13-vm-setup-test-design.md`.
+Operating it (the test laptop, SSH, QMP, pitfalls): `docs/vm-setup-test-operations.md`.
 
 ## Set up the test machine
 
