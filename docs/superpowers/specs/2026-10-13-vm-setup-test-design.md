@@ -155,7 +155,7 @@ Test first, following the repository's rule:
   `run.sh` argument parsing and exit codes.
 - End-to-end proof on the laptop: one passing run against `main`, and one run
   against a throwaway branch that breaks `c7shell-setup`, which must report
-  `FAIL: assert`.
+  `FAIL: install`.
 - `shellcheck` is clean on every script in `tests/vm/`.
 
 ## Open items for the user
