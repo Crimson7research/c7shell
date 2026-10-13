@@ -143,8 +143,8 @@ finish() {
     kill "$(cat "$run/qemu.pid" 2>/dev/null)" 2>/dev/null || true
   fi
   # PASS needs main to have reached its end, not just a zero status: a run
-  # stopped from outside (systemctl stop, Ctrl-C) used to exit 0 here and
-  # report PASS with only the base phase done.
+  # stopped from outside (systemctl stop, Ctrl-C) can exit 0 before the last
+  # phase.
   if ((status == 0)) && [[ -n ${completed:-} ]]; then
     echo PASS >> "$results/summary.txt"
     ((keep)) || rm -rf -- "$run"
