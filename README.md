@@ -35,7 +35,10 @@ anything:
    session: GPU driver, SDDM, the pipewire daemons, fonts, an icon theme,
    `xdg-utils`, and the enabled system services. It prints the whole plan and
    waits for a `y` first. `./install.sh --dry-run` shows that plan and stops.
-3. **`makepkg -si`** — builds and installs the package itself.
+3. **`makepkg -sif`** — builds and installs the package itself. The `-f`
+   forces a rebuild even if a package for the same version is already in the
+   build directory, so an interrupted build's half-written tarball cannot
+   masquerade as the current one.
 4. **`c7shell-doctor`** — checks the result and offers the optional programs.
 
 What the bootstrap decides for you, and how to override it:
@@ -59,12 +62,13 @@ running is the same as no driver at all. `--no-upgrade` skips it.
 `c7shell-bootstrap` is installed as a command too, so it can be re-run later
 (`c7shell-bootstrap --dry-run` to see what it would change).
 
-`install.sh` is a thin wrapper around `makepkg -si`. On a fresh machine
+`install.sh` is a thin wrapper around `makepkg -sif`. On a fresh machine
 `makepkg` aborts before it reads the PKGBUILD if the Arch build tools are not
 there ("Cannot find the fakeroot binary", "Cannot find the debugedit binary"),
 so the wrapper installs `base-devel` first and then hands every argument you
-gave it to `makepkg`. If you already have `base-devel`, `makepkg -si` on its
-own still works exactly as before.
+gave it to `makepkg`. If you already have `base-devel`, `makepkg -sif` on its
+own still works exactly as before (the `-f` is what keeps a stale tarball from
+an interrupted build being installed instead of the current one).
 
 After the build it runs `c7shell-doctor`, which checks everything `pacman`
 cannot: that Hyprland is 0.56 or newer (older versions do not read
