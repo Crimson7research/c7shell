@@ -51,6 +51,15 @@ done
 
 run() { if ((dry)); then printf '  would: %s\n' "$*"; else "$@"; fi; }
 
+# Replace a literal $HOME placeholder with a real path. Plain bash, not sed: the
+# path is data, and a '#' or '&' in XDG_CONFIG_HOME is sed syntax.
+rewrite_home() {
+  local file=$1 from=$2 to=$3 text
+  text=$(<"$file")
+  printf '%s\n' "${text//"$from"/"$to"}" > "$file.tmp.$$"
+  mv -f -- "$file.tmp.$$" "$file"
+}
+
 stamp=$(date +%Y%m%d%H%M%S)
 skipped=0
 installed=0
@@ -80,7 +89,7 @@ done
 # placeholder that only becomes usable once it names a real directory.
 xdph=$conf/hypr/xdph.conf
 if [[ -f $xdph ]] && grep -q '\$HOME/\.config/quickshell' "$xdph"; then
-  run sed -i "s#\$HOME/.config/quickshell#$conf/quickshell#" "$xdph"
+  run rewrite_home "$xdph" '$HOME/.config/quickshell' "$conf/quickshell"
 fi
 
 # hyprlock expands the environment but nothing else, so the palette it sources
@@ -89,7 +98,7 @@ fi
 lockconf=$conf/hypr/hyprlock.conf
 if [[ -f $lockconf && $conf != "$HOME/.config" ]] \
    && grep -q '\$HOME/\.config/hypr/hyprlock-palette\.conf' "$lockconf"; then
-  run sed -i "s#\$HOME/.config/hypr/hyprlock-palette.conf#$conf/hypr/hyprlock-palette.conf#" "$lockconf"
+  run rewrite_home "$lockconf" '$HOME/.config/hypr/hyprlock-palette.conf' "$conf/hypr/hyprlock-palette.conf"
 fi
 
 # The palette and the preferred colour scheme live in appearance.json; Qt and
@@ -158,8 +167,9 @@ fi
 # source line per rc file that exists; the function itself ships in the
 # package, so an upgrade changes it without touching the rc file again.
 sudo_snippet=${C7SHELL_SUDO_SNIPPET:-/usr/lib/c7shell/sudo-run0.sh}
-sudo_line="[ -r $sudo_snippet ] && . $sudo_snippet   # c7shell: sudo asks through polkit (run0)"
-for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+printf -v q_snippet '%q' "$sudo_snippet"
+sudo_line="[ -r $q_snippet ] && . $q_snippet   # c7shell: sudo asks through polkit (run0)"
+for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc"; do
   [[ -f $rc ]] || continue
   grep -qsF "$sudo_snippet" "$rc" && continue
   printf 'adding the run0 sudo to %s\n' "$rc"
@@ -188,15 +198,35 @@ done
 # skipped we record nothing rather than guessing, so a genuine local edit is
 # still never overwritten -- the difference is that the upgrade now knows the
 # two cases apart instead of assuming the worst about both.
+#
+# Rows for a skipped part are carried over from the last manifest: this run
+# cannot rebuild them, and dropping them is the same "no baseline" failure.
+# Only files the package ships are recorded -- the lock palette the exporter
+# generates beside them is not ours to compare, and claiming it would let an
+# upgrade delete it as "dropped upstream". Written to a temp file and moved into
+# place, so an interrupted run leaves the old manifest, never half of one.
+in_part() { local p; for p in "${@:2}"; do [[ $1 == "$p"/* ]] && return 0; done; return 1; }
 if ((dry == 0)); then
   mkdir -p -- "$state"
-  : > "$state/manifest"
-  for part in "${installed_parts[@]+"${installed_parts[@]}"}"; do
-    [[ -d $conf/$part ]] || continue
-    while read -r f; do
-      printf '%s\t%s\n' "${f#"$conf/"}" "$(sha256sum -- "$f" | cut -d' ' -f1)"
-    done < <(find "$conf/$part" -type f ! -name '*.new' | sort)
-  done >> "$state/manifest"
+  new_manifest=$state/manifest.tmp.$$
+  trap 'rm -f -- "$new_manifest"' EXIT
+  {
+    if [[ -f $state/manifest ]]; then
+      while IFS=$'\t' read -r rel h; do
+        [[ -n $rel ]] || continue
+        in_part "$rel" "${installed_parts[@]+"${installed_parts[@]}"}" || printf '%s\t%s\n' "$rel" "$h"
+      done < "$state/manifest"
+    fi
+    for part in "${installed_parts[@]+"${installed_parts[@]}"}"; do
+      [[ -d $conf/$part ]] || continue
+      while read -r f; do
+        rel=${f#"$conf/"}
+        [[ -f $share/$rel ]] || continue
+        printf '%s\t%s\n' "$rel" "$(sha256sum -- "$f" | cut -d' ' -f1)"
+      done < <(find "$conf/$part" -type f ! -name '*.new' | sort)
+    done
+  } | sort > "$new_manifest"
+  mv -f -- "$new_manifest" "$state/manifest"
 fi
 
 if ((installed == 0 && skipped)); then
