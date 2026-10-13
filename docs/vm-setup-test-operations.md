@@ -6,9 +6,8 @@ This is the runbook for the VM setup test in `tests/vm/`. It describes how you r
 
 - **Positive run passes.** `tests/vm/run.sh --branch jv/vmtest-laptop-fixes` passed on the laptop: base, install (441 s), greeter (11 s), login (5 s), assert (1 s).
 - **Fixes not merged yet.** The fixes from the laptop runs are on `jv/vmtest-laptop-fixes`, in draft PR Jonohas/c7shell#257. That PR closes Jonohas/c7shell#256 (`install.sh --yes` still prompted). Until it merges, `main` cannot pass the test.
-- **Open:** Jonohas/c7shell#254 tracks the laptop verification. Two items are left on it:
-  1. The negative run: `jv/vmtest-negative-throwaway` makes `c7shell-setup` exit 1, and the run must report `FAIL: install`. Delete that branch afterwards, locally and on `origin`.
-  2. Once #257 merges, run against `main` to confirm.
+- **Negative run passes.** On a throwaway branch where `c7shell-setup` exits 1, the run reported `FAIL: install`. `PKGBUILD check()` caught the break before the package installed. The throwaway branch is deleted.
+- **Open:** Jonohas/c7shell#254 tracks the laptop verification. One item is left: once #257 merges, run against `main` to confirm.
 
 ## The three machines
 
