@@ -311,6 +311,10 @@ yes_run() {
     /usr/bin/bash "$bootstrap" --yes "$@" </dev/null 2>&1
 }
 
+# The sections above export STUB_* values of their own; start these from a
+# clean machine.
+export STUB_INSTALLED=linux STUB_UNKNOWN= STUB_ENABLED= STUB_NETCTL=
+
 # --- declining is not success ---------------------------------------------
 # install.sh goes on to build and install the package when the bootstrap exits
 # 0, so a "no" -- or no terminal to ask on -- has to reach it as a refusal.
