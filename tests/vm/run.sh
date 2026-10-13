@@ -179,7 +179,7 @@ main() {
   vm_ssh "$run" cat c7vt-commit | sed 's/^/package /' >> "$results/summary.txt"
   phase greeter 360 step_greeter
   phase login 120 step_login
-  phase assert 60 step_assert
+  phase assert 150 step_assert
   completed=1
 }
 

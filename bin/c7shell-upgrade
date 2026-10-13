@@ -473,19 +473,21 @@ wait_ticks=${C7SHELL_WAIT_TICKS:-30}
 wait_gone()  { local _; for _ in $(seq "$wait_ticks"); do shell_running || return 0; sleep 0.2; done; return 1; }
 wait_there() { local _; for _ in $(seq "$wait_ticks"); do shell_running && return 0; sleep 0.2; done; return 1; }
 
-# The command hypr autostarts the shell with, quoted so it can be pasted. Kept
-# beside the launch below; the two must not drift, or this starts the shell in
-# an environment the autostart never uses.
+# The command this step relaunches the shell with, quoted so it can be pasted.
+# Kept beside the launch below; the two must not drift. At login the shell runs
+# under c7shell-session instead, which relaunches it after a crash.
 shell_argv='QT_WAYLAND_DISABLE_WINDOWDECORATION=1 setsid qs -c c7shell -d -n'
 
 # Every branch that ends with nothing drawing the desktop comes through here.
 # "restart it yourself, or log out and back in" was the whole of the old
 # advice, and it is the one instruction in this command that needs an actual
-# command attached: nothing supervises quickshell, and the hypr autostart line
-# only runs at login, so there is no service to start and no obvious thing to
-# retype.
+# command attached. A session that started on an older config has no
+# c7shell-session, and one whose supervisor gave up on a crash loop has none
+# left, so there is no service to start and no obvious thing to retype.
 restart_hint() {
-  info 'start it again with the command hypr autostarts it with:'
+  info 'start it again, supervised so a crash brings it back:'
+  info '  setsid c7shell-session >/dev/null 2>&1 &'
+  info 'or once, without supervision:'
   info "  $shell_argv"
   info 'or log out and back in. if it exits straight away, run it in the'
   info 'foreground to see why:  qs -c c7shell'
@@ -539,9 +541,10 @@ if ((shell_dirty)) && command -v qs >/dev/null; then
       restart_hint
       shell_failed=1
     else
-      # Nothing supervises quickshell: hypr autostarts it once and that is the
-      # only launch there is. Same command, same environment as
-      # hypr/conf/autostart.lua, detached so it outlives this terminal.
+      # c7shell-session relaunches the shell too, but a session started on an
+      # older config has no supervisor, and the relaunch is --no-duplicate:
+      # whichever comes up first wins and the other declines. Same environment
+      # as the shell gets at login, detached so it outlives this terminal.
       QT_WAYLAND_DISABLE_WINDOWDECORATION=1 setsid qs -c c7shell -d -n >/dev/null 2>&1 &
       # And then check, because "restarted" is the one line in this whole
       # command the user acts on by walking away. A launch that failed and said

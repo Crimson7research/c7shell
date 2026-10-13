@@ -221,6 +221,7 @@ fi
 
 section 'shell'
 need_cmd qs quickshell 'the shell itself (qs -c c7shell)'
+need_cmd c7shell-session c7shell 'keeps the shell running; hypr autostarts it'
 # Quickshell modules are compile-time options; a build without them starts and
 # then throws on the import, which takes the whole shell down.
 need_qml Quickshell                       quickshell 'the shell core'

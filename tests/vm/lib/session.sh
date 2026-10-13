@@ -20,4 +20,28 @@ c7shell-doctor || { echo 'assert: c7shell-doctor failed'; exit 1; }
 if journalctl --user -b --no-pager | grep -E 'qrc:|\.qml:[0-9]+: '; then
   echo 'assert: QML errors in the user journal'; exit 1
 fi
+
+# The shell survives being killed outright: c7shell-session relaunches it, and
+# with it the bar and c7-authd (the polkit agent is the shell's child).
+# SIGKILL, because that is the case only the supervisor can handle -- on a
+# SIGSEGV quickshell's own crash handler relaunches the shell inside the same
+# process, but nothing in the process survives the OOM killer. The shell is
+# the supervisor's direct child. The supervisor and c7-authd are
+# scripts (bash, python3), so they are matched by command line; this file
+# arrives on stdin, so -f cannot match itself.
+sup=$(pgrep -u "$(id -u)" -f '/c7shell-session$' | head -1)
+[[ -n $sup ]] || { echo 'assert: c7shell-session is not running'; exit 1; }
+old=$(pgrep -P "$sup" -x "qs|quickshell" | head -1)
+old_authd=$(pgrep -u "$(id -u)" -f '/c7-authd$' | head -1)
+[[ -n $old && -n $old_authd ]] || { echo 'assert: no shell or c7-authd under c7shell-session'; exit 1; }
+kill -KILL "$old"
+back=
+for _ in $(seq 60); do
+  sleep 1
+  # Between the old shell and the new one there is no child: not an error.
+  new=$(pgrep -P "$sup" -x "qs|quickshell" | head -1) || true
+  if [[ -n $new && $new != "$old" ]] && hyprctl layers | grep -q 'namespace: c7shell-bar' \
+     && pgrep -u "$(id -u)" -f '/c7-authd$' | grep -qvx "$old_authd"; then back=1; break; fi
+done
+[[ -n $back ]] || { echo 'assert: the shell did not come back after a crash'; exit 1; }
 grim /tmp/c7vt-shot.png
