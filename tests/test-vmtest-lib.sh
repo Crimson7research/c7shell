@@ -152,8 +152,16 @@ set +e; ( phase host 5 host_step ) >/dev/null 2>&1; s=$?; set -e
 # finish must report PASS even when stopping the VM fails.
 mkdir -p "$tmp/frun"; : > "$results/summary.txt"
 vm_stop() { return 1; }
-( run=$tmp/frun keep=1; true; finish ) >/dev/null 2>&1 || fail 'finish: a failed vm_stop must not fail a pass'
+( run=$tmp/frun keep=1 completed=1; true; finish ) >/dev/null 2>&1 || fail 'finish: a failed vm_stop must not fail a pass'
 grep -qx PASS "$results/summary.txt" || fail 'finish: must write PASS'
+
+# A run stopped from outside before the last phase is not a pass, even when
+# the shell exits 0, and it is a host problem (exit 2), not a test failure.
+: > "$results/summary.txt"
+set +e; ( run=$tmp/frun keep=1; unset completed; true; finish ) >/dev/null 2>&1; s=$?; set -e
+grep -qx PASS "$results/summary.txt" && fail 'finish: an unfinished run must not write PASS'
+grep -qx 'FAIL: interrupted' "$results/summary.txt" || fail 'finish: an unfinished run must say it was interrupted'
+[[ $s == 2 ]] || fail "finish: an interrupted run must exit 2, got $s"
 
 # The branch and URL reach the VM's shell quoted, never spliced in.
 script=$(remote_install_script "a';touch /x;'" 'u r')

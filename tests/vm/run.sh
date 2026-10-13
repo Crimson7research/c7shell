@@ -142,11 +142,18 @@ finish() {
   if [[ -n ${run:-} ]] && ! vm_stop "$run" >/dev/null 2>&1; then
     kill "$(cat "$run/qemu.pid" 2>/dev/null)" 2>/dev/null || true
   fi
-  if ((status == 0)); then
+  # PASS needs main to have reached its end, not just a zero status: a run
+  # stopped from outside (systemctl stop, Ctrl-C) used to exit 0 here and
+  # report PASS with only the base phase done.
+  if ((status == 0)) && [[ -n ${completed:-} ]]; then
     echo PASS >> "$results/summary.txt"
     ((keep)) || rm -rf -- "$run"
+  elif ! grep -q '^FAIL: ' "$results/summary.txt"; then
+    echo 'FAIL: interrupted' >> "$results/summary.txt"
+    status=2
   fi
   cat "$results/summary.txt"
+  exit "$status"
 }
 
 main() {
@@ -160,12 +167,14 @@ main() {
   printf 'branch %s\nrepo %s\niso %s\n' "$branch" "$repo_url" "$(cat "$vm/iso.version")" \
     > "$results/summary.txt"
   trap finish EXIT
+  trap 'exit 2' INT TERM HUP
   phase base 1800 step_base
   phase install 2700 step_install
   vm_ssh "$run" cat c7vt-commit | sed 's/^/package /' >> "$results/summary.txt"
   phase greeter 180 step_greeter
   phase login 120 step_login
   phase assert 60 step_assert
+  completed=1
 }
 
 [[ -n ${C7VT_SOURCE_ONLY:-} ]] || main "$@"
