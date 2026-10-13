@@ -573,6 +573,40 @@ out=$(C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "
   || fail "pacnew-write did not reject a symlink as its source: $out"
 [[ $(cat "$tmp/fake") == x ]] || fail 'pacnew-write wrote despite rejecting the source' 
 
+# Root reads the source, so it has to be the caller's own file: otherwise
+# pacnew-write copies something only root can read (/etc/shadow) into a file
+# that may be world-readable. PKEXEC_UID is how pkexec names the caller.
+printf 'x\n' > "$tmp/fake"; printf 'y\n' > "$tmp/fake.pacnew"; printf 'z\n' > "$tmp/src"
+out=$(PKEXEC_UID=4242 C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "$tmp/src" 2>&1 || true)
+[[ $out == *"not owned by the caller"* ]] || fail "pacnew-write read a source the caller does not own: $out"
+[[ $(cat "$tmp/fake") == x ]] || fail 'pacnew-write wrote from a source it should have refused'
+# The caller's own file goes through, written whole: the live file is replaced
+# by rename, so an interruption can never leave it half written.
+inode=$(stat -c %i "$tmp/fake")
+out=$(PKEXEC_UID=$(id -u) C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "$tmp/src" 2>&1) \
+  || fail "pacnew-write refused the caller's own file: $out"
+[[ $(cat "$tmp/fake") == z ]] || fail 'pacnew-write did not write the merge'
+[[ $(stat -c %i "$tmp/fake") != "$inode" ]] || fail 'pacnew-write rewrote the live file in place'
+[[ ! -e $tmp/fake.pacnew ]] || fail 'pacnew-write left the .pacnew behind'
+[[ -z $(find "$tmp" -maxdepth 1 -name 'fake.*' -o -maxdepth 1 -name '.fake.*') ]] \
+  || fail "pacnew-write left files behind: $(ls -a "$tmp" | grep fake)"
+
+# Files that decide who gets root are not merged through a GUI round trip:
+# arbitrary bytes into sudoers is root for whoever holds the polkit grant.
+for f in sudoers sudoers.d/wheel shadow gshadow passwd group pam.d/sudo polkit-1/rules.d/x.rules; do
+  out=$(bash "$tmp/lib/c7up-root" pacnew-write "/etc/$f" "$tmp/src" 2>&1 || true)
+  [[ $out == *"merge it in a terminal"* ]] || fail "pacnew-write would write /etc/$f: $out"
+done
+
+# The same ownership rule for a package file pacman -U installs: another user's
+# file in /tmp is not something this caller built.
+out=$(PKEXEC_UID=4242 runpac -U "$built" || true)
+[[ $out == *"not owned by the caller"* ]] || fail "c7up-root installed a package the caller does not own: $out"
+chmod o+w "$built"
+out=$(PKEXEC_UID=$(id -u) runpac -U "$built" || true)
+[[ $out == *"writable by others"* ]] || fail "c7up-root installed a world-writable package: $out"
+chmod o-w "$built"
+
 # --------------------------------------------------------------------------
 # 13. Orphan packages: arch-update's own post-update question, which this
 #     flow computed and never showed. They are cleanup, not a decision --

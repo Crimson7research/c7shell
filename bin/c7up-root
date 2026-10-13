@@ -60,6 +60,30 @@ check_pacnew() {
   [[ -f $1.pacnew ]] || die "no pacnew beside $1"
 }
 
+# A file root is about to read on the caller's behalf -- a package to install,
+# a merge to write into /etc -- has to be the caller's own and not writable by
+# every other user. Otherwise the polkit grant lets this caller install another
+# user's planted package, or copy a file only root can read (/etc/shadow) into
+# one that may be world-readable. pkexec names the caller in PKEXEC_UID; with
+# no pkexec in the way (root ran this itself) there is no one else to check.
+check_callers_file() {
+  [[ -n ${PKEXEC_UID:-} ]] || return 0
+  [[ $(stat -c %u -- "$1") == "$PKEXEC_UID" ]] || die "not owned by the caller: $1"
+  # Other-writable only: a private group (umask 002) is the caller's own.
+  [[ $(stat -c %A -- "$1") != ????????w? ]] || die "writable by others: $1"
+}
+
+# Files that decide who gets root. Merging them through a GUI round trip means
+# writing bytes the caller chose into them as root; take or keep the .pacnew
+# here, but merge these in a terminal with sudo (and visudo).
+check_not_privileged_config() {
+  case $1 in
+    /etc/sudoers|/etc/sudoers.d/*|/etc/shadow|/etc/gshadow|/etc/passwd|/etc/group \
+    |/etc/pam.d/*|/etc/polkit-1/*)
+      die "$1 decides who gets root; merge it in a terminal with sudo" ;;
+  esac
+}
+
 # What a session's reply to one request ends with, and the same byte bin/c7up
 # looks for. A record separator: no line of pacman output has ever contained one.
 readonly mark=$'\036'
@@ -168,7 +192,7 @@ case "$verb" in
     [[ -n $op ]] || die 'no pacman operation from the AUR helper'
     for t in ${targets[@]+"${targets[@]}"}; do
       case "$t" in
-        /*.pkg.tar.*) [[ -f $t ]] || die "not a built package: $t" ;;
+        /*.pkg.tar.*) [[ -f $t ]] || die "not a built package: $t"; check_callers_file "$t" ;;
         /*) die "not a built package: $t" ;;
         *) check_target "$t" ;;
       esac
@@ -203,16 +227,20 @@ case "$verb" in
   # already has a .pacnew beside it, which is exactly the operation the user
   # authorised, and nothing else.
   pacnew-write)
+    check_not_privileged_config "${1-}"
     check_pacnew "${1-}"
     src=${2-}
     [[ -f $src && ! -L $src ]] || die "not a regular file: $src"
-    # Same reasoning as pacnew-take: keep the live file's mode and owner rather
-    # than whatever the user's temporary copy picked up.
-    cp --preserve=all -- "$1" "$1.c7up-bak"
-    cat -- "$src" > "$1"
-    chmod --reference="$1.c7up-bak" -- "$1"
-    chown --reference="$1.c7up-bak" -- "$1"
-    rm -f -- "$1.c7up-bak" "$1.pacnew"
+    check_callers_file "$src"
+    # Built beside the live file and renamed over it, so an interruption leaves
+    # the old config whole. The copy starts as the live file, which carries its
+    # mode and owner over, rather than whatever the user's temporary copy had.
+    new=$(mktemp -- "$1.c7up-XXXXXX")
+    trap 'rm -f -- "$new"' EXIT
+    cp --preserve=mode,ownership -- "$1" "$new"
+    cat -- "$src" > "$new"
+    mv -f -- "$new" "$1"
+    rm -f -- "$1.pacnew"
     ;;
 
   # The post-update task arch-update offers and the shell never showed. Root
