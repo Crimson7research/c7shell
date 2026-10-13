@@ -75,4 +75,21 @@ if C7VT_SOCAT=$tmp/socat-err qmp_powerdown "$tmp/sock" >/dev/null; then
   fail 'qmp: an error reply must fail the command'
 fi
 
+# --- screen ---------------------------------------------------------------
+# Fixtures are drawn here rather than committed: three tiny images say more
+# in one line each than three binary files would.
+if command -v magick >/dev/null; then
+  # shellcheck source=vm/lib/screen.sh
+  . "$vm/lib/screen.sh"
+  magick -size 200x200 xc:black "$tmp/black.png"
+  magick -size 200x200 xc:'#202020' -fill '#c0c0c0' -draw 'rectangle 0,0 199,39' "$tmp/bar.png"
+
+  if screen_not_uniform "$tmp/black.png"; then fail 'screen: a solid image is uniform'; fi
+  screen_not_uniform "$tmp/bar.png" || fail 'screen: the bar image is not uniform'
+  screen_bar_drawn "$tmp/bar.png" || fail 'screen: must see the bar'
+  if screen_bar_drawn "$tmp/black.png"; then fail 'screen: no bar on a black screen'; fi
+else
+  echo 'SKIP: screen checks (magick not installed, package: imagemagick)'
+fi
+
 echo 'PASS: vmtest-lib'
