@@ -51,13 +51,62 @@ check_pacnew() {
   # if the check were wrong.
   if ((EUID != 0)) && [[ -n ${C7UP_TEST_ROOT:-} ]]; then
     [[ $1 == "$C7UP_TEST_ROOT"/* ]] || die "not a config path: $1"
-    [[ $1 != *..* ]] || die "path traversal: $1"
+    check_canonical "$1"
     [[ -f $1.pacnew ]] || die "no pacnew beside $1"
     return 0
   fi
   [[ $1 == /etc/* || $1 == /usr/share/* || $1 == /boot/* ]] || die "not a config path: $1"
-  [[ $1 != *..* ]] || die "path traversal: $1"
+  check_canonical "$1"
   [[ -f $1.pacnew ]] || die "no pacnew beside $1"
+}
+
+# The one spelling of a path that every check below compares against. pacman
+# reports canonical paths, so anything else -- /etc//sudoers, /etc/./shadow,
+# a .., or a symlink -- is not a caller bug worth guessing about: it is how a
+# string check like the privileged-config list is walked around.
+check_canonical() {
+  [[ $1 != *..* ]] || die "path traversal: $1"
+  local real
+  real=$(realpath -e -- "$1" 2>/dev/null) || die "not a config path: $1"
+  [[ $real == "$1" ]] || die "not a canonical path: $1"
+}
+
+# A file root is about to read on the caller's behalf -- a package to install,
+# a merge to write into /etc -- has to be the caller's own and not writable by
+# every other user. Otherwise the polkit grant lets this caller install another
+# user's planted package, or copy a file only root can read (/etc/shadow) into
+# one that may be world-readable. pkexec names the caller in PKEXEC_UID; with
+# no pkexec in the way (root ran this itself) there is no one else to check.
+#
+# The path is the caller's to change at any moment, so it is opened once and
+# everything -- the checks and the read -- goes through that one descriptor.
+# Checking the path and then reading it again would let the caller swap in a
+# symlink to /etc/shadow in between. copy_callers_file <path> <dest> leaves the
+# checked bytes in <dest>, which root owns.
+copy_callers_file() {
+  local fd
+  # A FIFO would block the open below; the descriptor is checked again after.
+  [[ -f $1 && ! -p $1 ]] || die "not a regular file: $1"
+  exec {fd}<"$1" || die "cannot read: $1"
+  if [[ -n ${PKEXEC_UID:-} ]]; then
+    [[ -f /proc/self/fd/$fd ]] || die "not a regular file: $1"
+    [[ $(stat -L -c %u -- "/proc/self/fd/$fd") == "$PKEXEC_UID" ]] || die "not owned by the caller: $1"
+    # Other-writable only: a private group (umask 002) is the caller's own.
+    [[ $(stat -L -c %A -- "/proc/self/fd/$fd") != ????????w? ]] || die "writable by others: $1"
+  fi
+  cat <&"$fd" > "$2"
+  exec {fd}<&-
+}
+
+# Files that decide who gets root. Merging them through a GUI round trip means
+# writing bytes the caller chose into them as root; take or keep the .pacnew
+# here, but merge these in a terminal with sudo (and visudo).
+check_not_privileged_config() {
+  case $1 in
+    /etc/sudoers|/etc/sudoers.d/*|/etc/shadow|/etc/gshadow|/etc/passwd|/etc/group \
+    |/etc/pam.d/*|/etc/polkit-1/*)
+      die "$1 decides who gets root; merge it in a terminal with sudo" ;;
+  esac
 }
 
 # What a session's reply to one request ends with, and the same byte bin/c7up
@@ -166,14 +215,32 @@ case "$verb" in
       esac
     done
     [[ -n $op ]] || die 'no pacman operation from the AUR helper'
-    for t in ${targets[@]+"${targets[@]}"}; do
+    # Under pkexec, a built package is copied into a directory only root can
+    # write, through
+    # copy_callers_file, and pacman installs the copy: what was checked is
+    # what gets installed. The name is kept, since pacman reads nothing from it but
+    # the extension.
+    pkgdir=
+    for i in "${!targets[@]}"; do
+      t=${targets[$i]}
       case "$t" in
-        /*.pkg.tar.*) [[ -f $t ]] || die "not a built package: $t" ;;
+        /*.pkg.tar.*)
+          [[ -f $t && ! -L $t ]] || die "not a built package: $t"
+          # Root ran this itself: there is no other caller to guard against.
+          [[ -n ${PKEXEC_UID:-} ]] || continue
+          if [[ -z $pkgdir ]]; then
+            pkgdir=$(mktemp -d /var/tmp/c7up-root-XXXXXX)
+            trap 'rm -rf -- "$pkgdir"' EXIT
+          fi
+          copy_callers_file "$t" "$pkgdir/${t##*/}"
+          targets[i]=$pkgdir/${t##*/}
+          ;;
         /*) die "not a built package: $t" ;;
         *) check_target "$t" ;;
       esac
     done
-    exec pacman "${args[@]}" --noconfirm -- ${targets[@]+"${targets[@]}"}
+    # Not exec: the copies are removed once pacman is done with them.
+    pacman "${args[@]}" --noconfirm -- ${targets[@]+"${targets[@]}"}
     ;;
 
   # Non-interactive halves of pacdiff: keep mine is just removing the .pacnew,
@@ -203,16 +270,22 @@ case "$verb" in
   # already has a .pacnew beside it, which is exactly the operation the user
   # authorised, and nothing else.
   pacnew-write)
-    check_pacnew "${1-}"
+    # The list matches the spelling it is given; check_pacnew then refuses any
+    # spelling but the canonical one, so the two together cover every way in.
+    check_not_privileged_config "${1-}"
+    check_pacnew "$1"
     src=${2-}
     [[ -f $src && ! -L $src ]] || die "not a regular file: $src"
-    # Same reasoning as pacnew-take: keep the live file's mode and owner rather
-    # than whatever the user's temporary copy picked up.
-    cp --preserve=all -- "$1" "$1.c7up-bak"
-    cat -- "$src" > "$1"
-    chmod --reference="$1.c7up-bak" -- "$1"
-    chown --reference="$1.c7up-bak" -- "$1"
-    rm -f -- "$1.c7up-bak" "$1.pacnew"
+    # Built beside the live file and renamed over it, so an interruption leaves
+    # the old config whole. The copy starts as the live file, which carries its
+    # mode, owner, ACLs and context over, rather than whatever the user's
+    # temporary copy had; only its bytes are replaced.
+    new=$(mktemp -- "$1.c7up-XXXXXX")
+    trap 'rm -f -- "$new"' EXIT
+    cp --preserve=all -- "$1" "$new"
+    copy_callers_file "$src" "$new"
+    mv -f -- "$new" "$1"
+    rm -f -- "$1.pacnew"
     ;;
 
   # The post-update task arch-update offers and the shell never showed. Root

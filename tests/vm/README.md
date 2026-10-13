@@ -33,7 +33,8 @@ until `iso.version` or `archinstall.json` changes, or you pass
 `--rebuild-base`.
 
 Results go to `~/.cache/c7shell-vmtest/results/<timestamp>-<branch>/`:
-`summary.txt` ends in `PASS` or `FAIL: <phase>`. A failed run keeps its VM
+`summary.txt` ends in `PASS`, `FAIL: <phase>`, or `FAIL: interrupted` when the run
+was stopped from outside (exit 2). A failed run keeps its VM
 disk in `~/.cache/c7shell-vmtest/runs/`; `--keep` keeps it after a pass too.
 
 Exit codes: `0` pass, `1` test failure, `2` harness or host problem.

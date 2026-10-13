@@ -52,7 +52,7 @@ for t in fakeroot debugedit make gcc patch bsdtar pkg-config; do stub "$t" 'exit
 stub c7shell-bootstrap "echo \"\$*\" > '$tmp/bootstrap.args'"
 run_bootstrap() {
   rm -f "$tmp/bootstrap.args"
-  env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 \
+  env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 C7SHELL_BOOTSTRAP="$bin/c7shell-bootstrap" \
     bash "$repo/install.sh" "$@" >/dev/null 2>&1 || true
 }
 run_bootstrap --yes
@@ -60,5 +60,31 @@ grep -qx -- '--yes --noconfirm-pacman' "$tmp/bootstrap.args" \
   || fail "install.sh --yes: the bootstrap must get --noconfirm-pacman; got: $(cat "$tmp/bootstrap.args" 2>/dev/null)"
 run_bootstrap
 [[ $(cat "$tmp/bootstrap.args") == '' ]] || fail "install.sh: without --yes the bootstrap gets no flags; got: $(cat "$tmp/bootstrap.args")"
+
+# --- --dry-run changes nothing, base-devel included ---------------------------
+rm -f "$bin/fakeroot"
+run_install --dry-run
+[[ ! -s $tmp/sudo.log ]] || fail "install.sh --dry-run installed something:\n$(cat "$tmp/sudo.log")"
+# ...and still gets as far as the bootstrap's own plan.
+rm -f "$tmp/bootstrap.args"; rc=0
+env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 C7SHELL_BOOTSTRAP="$bin/c7shell-bootstrap" \
+  bash "$repo/install.sh" --dry-run >/dev/null 2>&1 || rc=$?
+((rc == 0)) || fail "install.sh --dry-run with build tools missing exited $rc"
+grep -q -- '--dry-run' "$tmp/bootstrap.args" 2>/dev/null || fail 'install.sh --dry-run never reached the bootstrap plan'
+stub fakeroot 'exit 0'
+
+# --- a declined bootstrap stops the install ---------------------------------
+stub makepkg "echo makepkg >> '$tmp/makepkg.log'"
+stub c7shell-bootstrap 'exit 3'
+rm -f "$tmp/makepkg.log"; rc=0
+env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 C7SHELL_BOOTSTRAP="$bin/c7shell-bootstrap" \
+  bash "$repo/install.sh" >/dev/null 2>&1 || rc=$?
+((rc == 3)) || fail "a declined bootstrap: install.sh exited $rc, not 3"
+[[ ! -e $tmp/makepkg.log ]] || fail 'install.sh built the package after the bootstrap plan was declined'
+
+# --- the checkout's bootstrap wins over an installed one -----------------------
+# An older c7shell-bootstrap in /usr/bin would ignore fixes in this tree.
+grep -q 'C7SHELL_BOOTSTRAP:-$(dirname -- "$0")/bin/c7shell-bootstrap' "$repo/install.sh" \
+  || fail 'install.sh does not prefer the checkout'"'"'s own bootstrap'
 
 echo 'PASS: install'

@@ -573,6 +573,72 @@ out=$(C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "
   || fail "pacnew-write did not reject a symlink as its source: $out"
 [[ $(cat "$tmp/fake") == x ]] || fail 'pacnew-write wrote despite rejecting the source' 
 
+# Root reads the source, so it has to be the caller's own file: otherwise
+# pacnew-write copies something only root can read (/etc/shadow) into a file
+# that may be world-readable. PKEXEC_UID is how pkexec names the caller.
+printf 'x\n' > "$tmp/fake"; printf 'y\n' > "$tmp/fake.pacnew"; printf 'z\n' > "$tmp/src"
+out=$(PKEXEC_UID=4242 C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "$tmp/src" 2>&1 || true)
+[[ $out == *"not owned by the caller"* ]] || fail "pacnew-write read a source the caller does not own: $out"
+[[ $(cat "$tmp/fake") == x ]] || fail 'pacnew-write wrote from a source it should have refused'
+# The caller's own file goes through, written whole: the live file is replaced
+# by rename, so an interruption can never leave it half written.
+chmod 644 "$tmp/fake"
+inode=$(stat -c %i "$tmp/fake")
+out=$(PKEXEC_UID=$(id -u) C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake" "$tmp/src" 2>&1) \
+  || fail "pacnew-write refused the caller's own file: $out"
+[[ $(cat "$tmp/fake") == z ]] || fail 'pacnew-write did not write the merge'
+[[ $(stat -c %i "$tmp/fake") != "$inode" ]] || fail 'pacnew-write rewrote the live file in place'
+[[ $(stat -c %a "$tmp/fake") == 644 ]] || fail "pacnew-write lost the live file's mode: $(stat -c %a "$tmp/fake")"
+
+# A source swapped for a symlink to a root-only file after it was named is read
+# through the descriptor that was checked -- here the swap happens up front, and
+# the check must refuse the link's target rather than follow it blindly.
+printf 'x\n' > "$tmp/fake2"; printf 'y\n' > "$tmp/fake2.pacnew"
+out=$(PKEXEC_UID=4242 C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake2" /etc/hostname 2>&1 || true)
+[[ $out == *"not owned by the caller"* ]] || fail "pacnew-write read a file the caller does not own: $out"
+
+# Any spelling of a path but its canonical one is refused, so the
+# privileged-config list cannot be walked around with // or /./.
+for odd in "$tmp//fake2" "$tmp/./fake2"; do
+  out=$(C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$odd" "$tmp/src" 2>&1 || true)
+  [[ $out == *"not a canonical path"* ]] || fail "pacnew-write accepted $odd: $out"
+done
+ln -sf "$tmp/fake2" "$tmp/fake-link"; : > "$tmp/fake-link.pacnew"
+out=$(C7UP_TEST_ROOT="$tmp" bash "$tmp/lib/c7up-root" pacnew-write "$tmp/fake-link" "$tmp/src" 2>&1 || true)
+[[ $out == *"not a canonical path"* ]] || fail "pacnew-write wrote through a symlink: $out"
+rm -f "$tmp/fake-link" "$tmp/fake-link.pacnew"
+[[ ! -e $tmp/fake.pacnew ]] || fail 'pacnew-write left the .pacnew behind'
+[[ -z $(find "$tmp" -maxdepth 1 -name 'fake.*' -o -maxdepth 1 -name '.fake.*') ]] \
+  || fail "pacnew-write left files behind: $(ls -a "$tmp" | grep fake)"
+
+# The merge refuses those files before the editor opens, not after the user
+# has spent a merge on one.
+stub fakemerge 'echo "EDITOR OPENED" >&2; exit 0'
+out=$(mergerun /etc/sudoers || true)
+[[ $out != *"EDITOR OPENED"* ]] || fail "the merge opened an editor on sudoers:\n$out"
+[[ $out == *"decides who gets root"* ]] || fail "the merge did not say why it refused sudoers:\n$out"
+
+# Files that decide who gets root are not merged through a GUI round trip:
+# arbitrary bytes into sudoers is root for whoever holds the polkit grant.
+for f in sudoers sudoers.d/wheel shadow gshadow passwd group pam.d/sudo polkit-1/rules.d/x.rules; do
+  out=$(bash "$tmp/lib/c7up-root" pacnew-write "/etc/$f" "$tmp/src" 2>&1 || true)
+  [[ $out == *"merge it in a terminal"* ]] || fail "pacnew-write would write /etc/$f: $out"
+done
+
+# The same ownership rule for a package file pacman -U installs: another user's
+# file in /tmp is not something this caller built.
+out=$(PKEXEC_UID=4242 runpac -U "$built" || true)
+[[ $out == *"not owned by the caller"* ]] || fail "c7up-root installed a package the caller does not own: $out"
+chmod o+w "$built"
+out=$(PKEXEC_UID=$(id -u) runpac -U "$built" || true)
+[[ $out == *"writable by others"* ]] || fail "c7up-root installed a world-writable package: $out"
+chmod o-w "$built"
+# The caller's own package goes through, but pacman is handed a copy outside
+# the caller's reach: a path the caller can still swap is not what was checked.
+out=$(PKEXEC_UID=$(id -u) runpac -U "$built") || fail "c7up-root refused the caller's own package: $out"
+[[ $(argline "$built" "$out") ]] && fail "pacman was handed the caller's path, not a checked copy:\n$out"
+grep -q '/c7up-root-.*/foo-1-1-x86_64.pkg.tar.zst$' <<<"$out" || fail "pacman got no copy of the package:\n$out"
+
 # --------------------------------------------------------------------------
 # 13. Orphan packages: arch-update's own post-update question, which this
 #     flow computed and never showed. They are cleanup, not a decision --
