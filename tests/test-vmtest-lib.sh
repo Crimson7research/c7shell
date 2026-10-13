@@ -92,4 +92,26 @@ else
   echo 'SKIP: screen checks (magick not installed, package: imagemagick)'
 fi
 
+# --- qemu -----------------------------------------------------------------
+printf '%s\n' '#!/bin/sh' "printf '%s\n' \"\$@\" > '$tmp/qemu.args'" > "$tmp/qemu"
+chmod +x "$tmp/qemu"
+export C7VT_QEMU=$tmp/qemu C7VT_OVMF=/fw/OVMF_CODE.fd
+# Port 2222 is taken, 2223 is free.
+export C7VT_PORTCHECK=port_taken
+port_taken() { [[ $1 == 2222 ]]; }
+# shellcheck source=vm/lib/qemu.sh
+. "$vm/lib/qemu.sh"
+
+[[ $(vm_free_port) == 2223 ]] || fail 'vm_free_port: must skip a port in use'
+
+mkdir -p "$tmp/run"
+vm_start "$tmp/run" "$tmp/disk.qcow2" -cdrom /x.iso
+a=$(cat "$tmp/qemu.args")
+for want in -enable-kvm -daemonize "hostfwd=tcp:127.0.0.1:2223-:22" \
+            "unix:$tmp/run/qmp.sock,server=on,wait=off" "file:$tmp/run/serial.log" \
+            "if=pflash,format=raw,readonly=on,file=/fw/OVMF_CODE.fd" -cdrom /x.iso; do
+  grep -qF -- "$want" <<<"$a" || fail "vm_start: missing $want in\n$a"
+done
+grep -qx 2223 "$tmp/run/ssh.port" || fail 'vm_start: must record the ssh port'
+
 echo 'PASS: vmtest-lib'
