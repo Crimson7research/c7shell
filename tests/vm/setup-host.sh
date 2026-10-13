@@ -2,7 +2,7 @@
 # One-time setup of the test laptop for tests/vm/run.sh. Safe to re-run.
 set -euo pipefail
 
-sudo pacman -S --needed --noconfirm qemu-full edk2-ovmf socat openssh \
+sudo pacman -Syu --needed --noconfirm qemu-full edk2-ovmf socat openssh \
   libisoburn git imagemagick jq archlinux-keyring shellcheck
 
 if ! id -nG | grep -qw kvm; then

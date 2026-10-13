@@ -3,18 +3,101 @@
   "bootloader": "Systemd-boot",
   "uki": false,
   "disk_config": {
-    "config_type": "default_layout",
-    "device_modifications": [],
-    "_comment": "Replace with the default ext4 layout on /dev/vda from an archinstall --dry-run on the pinned ISO"
+    "config_type": "manual_partitioning",
+    "device_modifications": [
+      {
+        "device": "/dev/vda",
+        "wipe": true,
+        "partitions": [
+          {
+            "obj_id": "esp",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1,
+              "unit": "MiB",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 1024,
+              "unit": "MiB",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "fat32",
+            "mountpoint": "/boot",
+            "mount_options": [],
+            "flags": [
+              "boot",
+              "esp"
+            ],
+            "btrfs": [],
+            "dev_path": null
+          },
+          {
+            "obj_id": "root",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1025,
+              "unit": "MiB",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 29694,
+              "unit": "MiB",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "ext4",
+            "mountpoint": "/",
+            "mount_options": [],
+            "flags": [],
+            "btrfs": [],
+            "dev_path": null
+          }
+        ]
+      }
+    ]
   },
   "hostname": "c7test",
-  "kernels": ["linux"],
-  "locale_config": { "kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US" },
-  "mirror_config": { "mirror_regions": {} },
-  "network_config": { "type": "nm" },
-  "packages": ["openssh", "git", "sudo"],
-  "profile_config": { "profile": { "main": "Minimal" } },
-  "services": ["sshd"],
+  "kernels": [
+    "linux"
+  ],
+  "locale_config": {
+    "kb_layout": "us",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_US"
+  },
+  "mirror_config": {
+    "mirror_regions": {}
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "packages": [
+    "openssh",
+    "git",
+    "sudo"
+  ],
+  "profile_config": {
+    "profile": {
+      "main": "Minimal"
+    }
+  },
+  "services": [
+    "sshd"
+  ],
   "swap": true,
   "timezone": "UTC",
   "ntp": true,

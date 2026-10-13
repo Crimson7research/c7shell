@@ -4,10 +4,12 @@
 set -euo pipefail
 XDG_RUNTIME_DIR=/run/user/$(id -u)
 export XDG_RUNTIME_DIR
-sig=$(ls -t "$XDG_RUNTIME_DIR/hypr" 2>/dev/null | head -n1)
+# The newest Hyprland instance directory is the session the greeter started.
+sig=$(find "$XDG_RUNTIME_DIR/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' 2>/dev/null \
+      | sort -rn | head -n1 | cut -d' ' -f2)
 [[ -n $sig ]] || { echo 'assert: no Hyprland instance for this user'; exit 1; }
 export HYPRLAND_INSTANCE_SIGNATURE=$sig
-WAYLAND_DISPLAY=$(cd "$XDG_RUNTIME_DIR" && ls -d wayland-* | grep -v lock | head -n1)
+WAYLAND_DISPLAY=$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' | head -n1)
 export WAYLAND_DISPLAY
 
 hyprctl version >/dev/null || { echo 'assert: hyprctl does not answer'; exit 1; }
