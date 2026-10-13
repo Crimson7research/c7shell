@@ -100,7 +100,11 @@ if [[ -z ${C7SHELL_SKIP_DEPS:-} ]]; then
     command -v "$cmd" >/dev/null || missing+=("${tools[$cmd]}")
   done
 
-  if ((${#missing[@]})); then
+  if ((${#missing[@]})) && ((dry)); then
+    # --dry-run changes nothing, base-devel included.
+    printf 'missing build tools: %s\n' "${missing[*]}"
+    printf '  would: pacman -S --needed base-devel %s\n' "${missing[*]}"
+  elif ((${#missing[@]})); then
     printf 'missing build tools: %s\n' "${missing[*]}"
     echo 'installing base-devel (makepkg needs it before it will run)...'
     as_root pacman -S --needed ${pacman_args[@]+"${pacman_args[@]}"} base-devel
@@ -109,7 +113,7 @@ if [[ -z ${C7SHELL_SKIP_DEPS:-} ]]; then
     as_root pacman -S --needed ${pacman_args[@]+"${pacman_args[@]}"} -- "${missing[@]}"
   fi
 
-  for cmd in "${!tools[@]}"; do
+  ((dry)) || for cmd in "${!tools[@]}"; do
     command -v "$cmd" >/dev/null || {
       printf 'install.sh: %s is still missing after installing base-devel\n' "$cmd" >&2
       exit 1
@@ -118,8 +122,19 @@ if [[ -z ${C7SHELL_SKIP_DEPS:-} ]]; then
 fi
 
 if [[ -z ${skip_bootstrap:-} ]]; then
-  bootstrap=$(command -v c7shell-bootstrap || echo "$(dirname -- "$0")/bin/c7shell-bootstrap")
-  "$bootstrap" ${bootstrap_args[@]+"${bootstrap_args[@]}"}
+  # The checkout's own bootstrap first: an older one installed in /usr/bin
+  # would ignore a fix in this tree, and may not know the flags passed below.
+  bootstrap=${C7SHELL_BOOTSTRAP:-$(dirname -- "$0")/bin/c7shell-bootstrap}
+  [[ -x $bootstrap ]] || bootstrap=$(command -v c7shell-bootstrap)
+  rc=0
+  "$bootstrap" ${bootstrap_args[@]+"${bootstrap_args[@]}"} || rc=$?
+  # 3 is a declined plan: stop here rather than build a package for a machine
+  # that has no driver, greeter or pipewire.
+  if ((rc == 3)); then
+    echo 'install.sh: the bootstrap plan was declined; nothing was built or installed.'
+    exit 3
+  fi
+  ((rc == 0)) || exit "$rc"
   if ((dry)); then
     echo
     echo '--dry-run: stopping before makepkg. Re-run without --dry-run to apply.'

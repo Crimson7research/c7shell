@@ -16,7 +16,7 @@ bin=$tmp/bin
 log=$tmp/ran.log
 mkdir -p "$bin"
 
-for helper in grep uname getent id sed cat; do ln -s "$(command -v "$helper")" "$bin/$helper"; done
+for helper in grep uname getent id sed cat sort; do ln -s "$(command -v "$helper")" "$bin/$helper"; done
 
 cat > "$bin/pacman" <<'STUB'
 #!/bin/sh
@@ -26,6 +26,8 @@ case $1 in
     for p in $STUB_INSTALLED; do [ "$p" = "$2" ] && exit 0; done
     exit 1 ;;
   -Si)
+    # A database refresh is what brings a new package into view.
+    [ -e "$STUB_LOG.synced" ] && [ -n "$STUB_NEW_AFTER_SYNC" ] && exit 0
     for p in $STUB_UNKNOWN; do [ "$p" = "$2" ] && exit 1; done
     exit 0 ;;
   *) echo "pacman $*" >> "$STUB_LOG"; exit 0 ;;
@@ -34,6 +36,10 @@ STUB
 
 cat > "$bin/systemctl" <<'STUB'
 #!/bin/sh
+if [ "$1" = --user ] && [ -n "$STUB_NO_USER_MANAGER" ]; then
+  echo 'Failed to connect to bus: No medium found' >&2; exit 1
+fi
+[ "$1" = list-unit-files ] && exit 0
 if [ "$1" = is-enabled ]; then
   for u in $STUB_ENABLED; do [ "$u" = "$2" ] && { echo enabled; exit 0; }; done
   echo disabled; exit 1
@@ -53,7 +59,8 @@ for s in pacman systemctl lspci; do chmod +x "$bin/$s"; done
 working_paru() { printf '#!/bin/sh\ncase $1 in --version) echo "paru v2.1.0"; exit 0 ;; esac\necho "paru $*" >> "$STUB_LOG"\n' > "$bin/paru"; chmod +x "$bin/paru"; }
 working_paru
 # root wrapper, so run_root has something to find in a non-dry run
-printf '#!/bin/sh\necho "sudo $*" >> "$STUB_LOG"\n' > "$bin/sudo"; chmod +x "$bin/sudo"
+# A refresh through it is what brings STUB_NEW_AFTER_SYNC packages into view.
+printf '#!/bin/sh\necho "sudo $*" >> "$STUB_LOG"\ncase "$1 $2" in "pacman -Sy"*) : > "$STUB_LOG.synced" ;; esac\n' > "$bin/sudo"; chmod +x "$bin/sudo"
 
 # plan <lspci line> [args...] -> the dry-run plan
 plan() {
@@ -64,6 +71,7 @@ plan() {
     STUB_LOG="$log" STUB_LSPCI="$pci" \
     STUB_INSTALLED="${STUB_INSTALLED:-linux}" \
     STUB_UNKNOWN="${STUB_UNKNOWN:-}" STUB_ENABLED="${STUB_ENABLED:-}" \
+    STUB_NEW_AFTER_SYNC= STUB_NO_USER_MANAGER= \
     /usr/bin/bash "$bootstrap" --dry-run "$@" 2>&1
 }
 
@@ -192,7 +200,7 @@ out=$(plan "$AMD" --no-aur)
 grep -q 'from the AUR' <<<"$out" && fail "--no-aur still planned AUR packages:\n$out"
 out=$(plan "$AMD" --no-upgrade)
 grep -q 'pacman -Syu' <<<"$out" && fail "--no-upgrade still upgraded:\n$out"
-grep -q 'pacman -Sy\b' <<<"$out" || fail "--no-upgrade did not refresh the databases:\n$out"
+grep -q 'pacman -Sy\b' <<<"$out" && fail "--no-upgrade still refreshed the databases, a partial upgrade:\n$out"
 
 # --- packages that are already there are not reinstalled ------------------
 STUB_INSTALLED='linux kitty dolphin pipewire' out=$(plan "$AMD")
@@ -207,7 +215,7 @@ grep -qE 'pacman -S --needed .*breeze-icons' <<<"$out" && fail "an unknown packa
 : > "$log"
 out=$(env -i PATH="$bin" HOME="$tmp" USER=tester STUB_LOG="$log" STUB_LSPCI="$AMD" \
         STUB_INSTALLED=linux STUB_UNKNOWN= STUB_ENABLED= \
-        /usr/bin/bash "$bootstrap" <<<'n' 2>&1)
+        /usr/bin/bash "$bootstrap" <<<'n' 2>&1) || true
 grep -q 'aborted' <<<"$out" || fail "answering no did not abort:\n$out"
 [[ ! -s $log ]] || fail "answering no still changed something:\n$(cat "$log")"
 
@@ -293,4 +301,70 @@ out=$(STUB_INSTALLED='linux fprintd' plan "$AMD")
 grep -q "$pam" <<<"$out" && fail "polkit-1 was rewritten when it already offers pam_fprintd:\n$out"
 rm -rf "$tmp/root"
 
+# yes <extra env...> -- <args...>: a real (stubbed) run with --yes, log kept.
+yes_run() {
+  : > "$log"; rm -f "$log.synced"
+  local envs=()
+  while [[ $1 != -- ]]; do envs+=("$1"); shift; done; shift
+  env -i PATH="$bin" HOME="$tmp" STUB_LOG="$log" STUB_LSPCI="$AMD" \
+    STUB_INSTALLED=linux STUB_UNKNOWN= STUB_ENABLED= ${envs[@]+"${envs[@]}"} \
+    /usr/bin/bash "$bootstrap" --yes "$@" </dev/null 2>&1
+}
+
+# --- declining is not success ---------------------------------------------
+# install.sh goes on to build and install the package when the bootstrap exits
+# 0, so a "no" -- or no terminal to ask on -- has to reach it as a refusal.
+rc=0
+out=$(env -i PATH="$bin" HOME="$tmp" USER=tester STUB_LOG="$log" STUB_LSPCI="$AMD" \
+        STUB_INSTALLED=linux /usr/bin/bash "$bootstrap" <<<'n' 2>&1) || rc=$?
+((rc == 3)) || fail "answering no exited $rc, not 3:\n$out"
+rc=0
+out=$(env -i PATH="$bin" HOME="$tmp" USER=tester STUB_LOG="$log" STUB_LSPCI="$AMD" \
+        STUB_INSTALLED=linux /usr/bin/bash "$bootstrap" </dev/null 2>&1) || rc=$?
+((rc == 3)) || fail "nothing to answer from and no --yes exited $rc, not 3:\n$out"
+grep -q -- '--yes' <<<"$out" || fail "no terminal to ask on, and no hint about --yes:\n$out"
+
+# --- --no-upgrade means no sync at all --------------------------------------
+# pacman -Sy then -S is a partial upgrade, which Arch does not support.
+out=$(yes_run -- --no-upgrade --no-aur)
+grep -qE 'pacman -Sy( |$)' "$log" && fail "--no-upgrade still refreshed the databases (a partial upgrade):\n$(cat "$log")"
+grep -q 'pacman -Syu' "$log" && fail "--no-upgrade upgraded:\n$(cat "$log")"
+
+# --- a package the stale databases did not know is checked again ------------
+out=$(yes_run STUB_UNKNOWN=breeze-icons STUB_NEW_AFTER_SYNC=1 -- --no-aur)
+grep -qE 'pacman -S --needed .*breeze-icons' "$log" \
+  || fail "a package found after the refresh was still left out:\n$(cat "$log")\n$out"
+
+# --- building paru needs git and base-devel ----------------------------------
+rm -f "$bin/paru"
+out=$(plan "$AMD")
+installs "$out" | grep -q '\bgit\b' || fail "paru is built from git, but git is not in the plan:\n$out"
+installs "$out" | grep -q '\bbase-devel\b' || fail "paru is built with makepkg, but base-devel is not in the plan:\n$out"
+working_paru
+
+# --- no user manager is not the end of the run ------------------------------
+out=$(yes_run STUB_NO_USER_MANAGER=1 --)
+grep -q '^paru ' "$log" || fail "a missing user manager stopped the run before the AUR step:\n$out"
+grep -qi 'user services' <<<"$out" || fail "the skipped user units were not mentioned:\n$out"
+
+# --- no USER in the environment ---------------------------------------------
+rm -f "$bin/getent"; printf '#!/bin/sh\n[ "$1" = group ] && [ "$2" = rfkill ] && { echo rfkill:x:1:; exit 0; }; exit 2\n' > "$bin/getent"
+printf '#!/bin/sh\ncase "$1" in -un) echo tester ;; -nG) echo tester ;; *) echo 1000 ;; esac\n' > "$bin/id.stub"
+mv "$bin/id" "$bin/id.real"; mv "$bin/id.stub" "$bin/id"; chmod +x "$bin/getent" "$bin/id"
+out=$(yes_run -- --no-aur)
+grep -q 'gpasswd -a tester rfkill' "$log" || fail "with no USER set the group step failed:\n$out"
+rm -f "$bin/getent" "$bin/id"; mv "$bin/id.real" "$bin/id"; ln -s "$(command -v getent)" "$bin/getent"
+
+# --- another network daemon keeps NetworkManager off ------------------------
+out=$(STUB_ENABLED=dhcpcd.service plan "$AMD")
+grep -q 'enable: .*NetworkManager.service' <<<"$out" && fail "NetworkManager was enabled beside dhcpcd:\n$out"
+
+# --- DKMS gets headers for every installed kernel, not just the stock four ---
+mkdir -p "$tmp/root/usr/lib/modules/6.17.1-cachyos"
+echo linux-cachyos > "$tmp/root/usr/lib/modules/6.17.1-cachyos/pkgbase"
+out=$(plan "$NVIDIA")
+installs "$out" | grep -q '\blinux-cachyos-headers\b' || fail "a custom kernel got no headers for DKMS:\n$out"
+rm -rf "$tmp/root"
+
 echo 'PASS: c7shell-bootstrap'
+
