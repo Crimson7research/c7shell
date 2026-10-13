@@ -121,7 +121,16 @@ for i in /sys/class/net/*; do [[ -d $i/wireless ]] && wifi_iface=${i##*/}; done
 CONNECTION_ID='c7-office' "$dispatcher" "${wifi_iface:-eth0}" up
 [[ -f $C7SHELL_NETWORK_FILE ]] || fail 'the dispatcher wrote nothing on "up"'
 [[ $(field name) == c7-office ]] || fail "the connection name is '$(field name)', not c7-office"
-[[ $(field state) == up ]] || fail "state is '$(field state)', not up"
+# The interface is the host's, so "down" is right when it has no carrier (a
+# wifi card that is up but not associated). Warn rather than fail on that: it
+# says this machine is offline, not that the dispatcher is wrong.
+carrier=$(cat "/sys/class/net/${wifi_iface:-eth0}/carrier" 2>/dev/null || true)
+if [[ $(field state) != up ]]; then
+  [[ $(field state) == down && $carrier == 0 ]] \
+    || fail "state is '$(field state)', not up"
+  echo "WARNING: ${wifi_iface:-eth0} has no carrier, so the dispatcher reported"
+  echo "         'down'; the 'up' case went unverified. Connect it to check it."
+fi
 if [[ -n $wifi_iface ]]; then
   [[ $(field kind) == wireless ]] || fail "a wireless interface was reported as '$(field kind)'"
 fi
