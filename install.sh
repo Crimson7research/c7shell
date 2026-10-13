@@ -41,8 +41,8 @@ Takes a bare Arch install to a working c7shell session:
 
 options (everything else is passed straight to makepkg):
   -n, --dry-run       show the bootstrap plan and stop, changing nothing
-  -y, --yes           don't ask: applies the bootstrap plan and installs
-                      base-devel without a prompt
+  -y, --yes           don't ask: applies the bootstrap plan, and every pacman
+                      call (base-devel and the bootstrap's) runs without a prompt
       --no-bootstrap  skip step 2 entirely (already-configured machine)
   -h, --help          this text
 
@@ -67,7 +67,7 @@ while (($#)); do
   case $1 in
     -h|--help) usage; exit 0 ;;
     -n|--dry-run) dry=1; bootstrap_args+=(--dry-run) ;;
-    -y|--yes) bootstrap_args+=(--yes); pacman_args+=(--noconfirm) ;;
+    -y|--yes) bootstrap_args+=(--yes --noconfirm-pacman); pacman_args+=(--noconfirm) ;;
     --no-bootstrap) skip_bootstrap=1 ;;
     *) makepkg_args+=("$1") ;;
   esac

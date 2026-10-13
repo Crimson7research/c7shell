@@ -39,7 +39,7 @@ vm_start() {
     -qmp "unix:$dir/qmp.sock,server=on,wait=off" \
     -serial "file:$dir/serial.log" \
     -pidfile "$dir/qemu.pid" -daemonize \
-    "$@" || status=$?
+    "$@" {lock}>&- || status=$?
   exec {lock}>&-
   return "$status"
 }
@@ -54,7 +54,7 @@ vm_stop() {
 vm_ssh() {
   local dir=$1; shift
   ssh -p "$(cat "$dir/ssh.port")" -i "$C7VT_CACHE/id_ed25519" \
-      -o BatchMode=yes -o StrictHostKeyChecking=no \
+      -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
       c7test@127.0.0.1 "$@"
 }

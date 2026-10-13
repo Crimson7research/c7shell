@@ -44,4 +44,21 @@ if grep -q -- '--noconfirm' "$tmp/sudo.log"; then
   fail 'install.sh: --noconfirm without --yes'
 fi
 
+# --- --yes reaches the bootstrap's own pacman calls -----------------------
+# With every build tool present, install.sh goes on to c7shell-bootstrap.
+# The bootstrap's --yes only skips its plan prompt; its pacman calls ask
+# unless it also gets --noconfirm-pacman.
+for t in fakeroot debugedit make gcc patch bsdtar pkg-config; do stub "$t" 'exit 0'; done
+stub c7shell-bootstrap "echo \"\$*\" > '$tmp/bootstrap.args'"
+run_bootstrap() {
+  rm -f "$tmp/bootstrap.args"
+  env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 \
+    bash "$repo/install.sh" "$@" >/dev/null 2>&1 || true
+}
+run_bootstrap --yes
+grep -qx -- '--yes --noconfirm-pacman' "$tmp/bootstrap.args" \
+  || fail "install.sh --yes: the bootstrap must get --noconfirm-pacman; got: $(cat "$tmp/bootstrap.args" 2>/dev/null)"
+run_bootstrap
+[[ $(cat "$tmp/bootstrap.args") == '' ]] || fail "install.sh: without --yes the bootstrap gets no flags; got: $(cat "$tmp/bootstrap.args")"
+
 echo 'PASS: install'

@@ -114,6 +114,12 @@ for want in -enable-kvm -daemonize "hostfwd=tcp:127.0.0.1:2223-:22" \
 done
 grep -qx 2223 "$tmp/run/ssh.port" || fail 'vm_start: must record the ssh port'
 
+# A daemonized QEMU outlives vm_start. It must not keep the port lock open,
+# or every later run blocks in vm_start until this VM is gone.
+printf '%s\n' '#!/bin/sh' 'sleep 5 &' > "$tmp/qemu-daemon"; chmod +x "$tmp/qemu-daemon"
+C7VT_QEMU=$tmp/qemu-daemon vm_start "$tmp/run" "$tmp/disk.qcow2"
+flock -n "$C7VT_CACHE/port.lock" true || fail 'vm_start: the VM must not hold the port lock'
+
 # --- run.sh ---------------------------------------------------------------
 "$vm/run.sh" -h >/dev/null || fail 'run.sh -h must exit 0'
 set +e
