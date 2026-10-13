@@ -168,6 +168,15 @@ grep -qx 'FAIL: interrupted' "$results/summary.txt" || fail 'finish: an unfinish
   || fail 'main: completed=1 must be its last statement'
 declare -f main | grep -qF "trap 'exit 2' INT TERM HUP" || fail 'main: a signal must exit 2 so finish runs'
 
+# A reboot is a new boot id. The same id, or no answer at all, is not one yet.
+vm_ssh() { cat "$tmp/bootid" 2>/dev/null || return 255; }; run=$tmp/frun
+echo aaa > "$tmp/bootid"
+if _rebooted aaa; then fail '_rebooted: the same boot id is not a reboot'; fi
+rm -f "$tmp/bootid"
+if _rebooted aaa; then fail '_rebooted: no answer is not a reboot'; fi
+echo bbb > "$tmp/bootid"
+_rebooted aaa || fail '_rebooted: a new boot id is a reboot'
+
 # The branch and URL reach the VM's shell quoted, never spliced in.
 script=$(remote_install_script "a';touch /x;'" 'u r')
 grep -qF "git clone --branch a\\'\\;touch\\ /x\\;\\' u\\ r c7shell" <<<"$script" \

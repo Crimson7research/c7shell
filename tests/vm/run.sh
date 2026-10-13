@@ -109,7 +109,11 @@ pacman -Q c7shell > ~/c7vt-commit
 REMOTE
 }
 
-_vt_gone_ssh() { ! vm_ssh "$run" true 2>/dev/null; }
+# A reboot is seen by the kernel's boot id changing, not by SSH going quiet:
+# under load the VM can drop and regain SSH between two polls, or keep it for
+# most of a minute while units stop, and either way "SSH is gone" never holds.
+_boot_id() { vm_ssh "$run" cat /proc/sys/kernel/random/boot_id 2>/dev/null; }
+_rebooted() { local id; id=$(_boot_id) && [[ -n $id && $id != "$1" ]]; }
 
 _greeter_up() {
   vm_ssh "$run" systemctl is-active --quiet sddm \
@@ -118,8 +122,10 @@ _greeter_up() {
 }
 
 step_greeter() {
+  local before; before=$(_boot_id)
+  [[ -n $before ]] || { echo 'greeter: no boot id before the reboot'; exit 1; }
   vm_ssh "$run" sudo systemctl reboot || true
-  wait_for 60 _vt_gone_ssh
+  wait_for 150 _rebooted "$before"
   wait_for 170 _greeter_up
 }
 
@@ -171,7 +177,7 @@ main() {
   phase base 1800 step_base
   phase install 2700 step_install
   vm_ssh "$run" cat c7vt-commit | sed 's/^/package /' >> "$results/summary.txt"
-  phase greeter 180 step_greeter
+  phase greeter 330 step_greeter
   phase login 120 step_login
   phase assert 60 step_assert
   completed=1
