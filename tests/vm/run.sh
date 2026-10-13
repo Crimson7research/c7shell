@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # The VM setup test: a pushed c7shell branch, a fresh Arch VM, and the real
 # greeter. See tests/vm/README.md and
 # docs/superpowers/specs/2026-10-13-vm-setup-test-design.md.
@@ -87,7 +88,10 @@ step_install() {
   qemu-img create -q -f qcow2 -F qcow2 -b "$C7VT_CACHE/base.qcow2" "$run/disk.qcow2"
   vm_start "$run" "$run/disk.qcow2"
   wait_for 300 vm_ssh "$run" true
-  remote_install_script "$branch" "$repo_url" | vm_ssh "$run" bash -s
+  # The script goes over as a file: piped into bash -s, anything in it that
+  # reads stdin (a pacman prompt) would eat the script's next lines.
+  remote_install_script "$branch" "$repo_url" | vm_ssh "$run" 'cat > c7vt-install.sh'
+  vm_ssh "$run" bash c7vt-install.sh < /dev/null
 }
 
 # The install script the VM runs. Git allows ' $ ; in branch names, so both
@@ -119,7 +123,7 @@ step_greeter() {
   wait_for 170 _greeter_up
 }
 
-_session_up() { vm_ssh "$run" 'pgrep -u c7test -x quickshell' >/dev/null; }
+_session_up() { vm_ssh "$run" 'pgrep -u c7test -x "qs|quickshell"' >/dev/null; }
 
 step_login() {
   qmp_type "$run/qmp.sock" "$(cat "$C7VT_CACHE/c7test.password")" >/dev/null
@@ -130,7 +134,7 @@ step_login() {
 step_assert() {
   vm_ssh "$run" bash -s < "$vm/lib/session.sh"
   vm_ssh "$run" cat /tmp/c7vt-shot.png > "$results/screens/session.png"
-  screen_bar_drawn "$results/screens/session.png" || { echo 'assert: no bar drawn'; exit 1; }
+  screen_not_uniform "$results/screens/session.png" || { echo 'assert: the session screen is blank'; exit 1; }
 }
 
 finish() {

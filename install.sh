@@ -41,7 +41,8 @@ Takes a bare Arch install to a working c7shell session:
 
 options (everything else is passed straight to makepkg):
   -n, --dry-run       show the bootstrap plan and stop, changing nothing
-  -y, --yes           don't ask before applying the bootstrap plan
+  -y, --yes           don't ask: applies the bootstrap plan, and every pacman
+                      call (base-devel and the bootstrap's) runs without a prompt
       --no-bootstrap  skip step 2 entirely (already-configured machine)
   -h, --help          this text
 
@@ -56,6 +57,9 @@ USAGE
 
 bootstrap_args=()
 makepkg_args=()
+# --yes means no prompt anywhere, including the base-devel install below,
+# which runs before makepkg and so never sees makepkg's --noconfirm.
+pacman_args=()
 skip_bootstrap=${C7SHELL_SKIP_BOOTSTRAP:+1}
 dry=0
 
@@ -63,7 +67,7 @@ while (($#)); do
   case $1 in
     -h|--help) usage; exit 0 ;;
     -n|--dry-run) dry=1; bootstrap_args+=(--dry-run) ;;
-    -y|--yes) bootstrap_args+=(--yes) ;;
+    -y|--yes) bootstrap_args+=(--yes --noconfirm-pacman); pacman_args+=(--noconfirm) ;;
     --no-bootstrap) skip_bootstrap=1 ;;
     *) makepkg_args+=("$1") ;;
   esac
@@ -99,10 +103,10 @@ if [[ -z ${C7SHELL_SKIP_DEPS:-} ]]; then
   if ((${#missing[@]})); then
     printf 'missing build tools: %s\n' "${missing[*]}"
     echo 'installing base-devel (makepkg needs it before it will run)...'
-    as_root pacman -S --needed base-devel
+    as_root pacman -S --needed ${pacman_args[@]+"${pacman_args[@]}"} base-devel
     # base-devel is a package group; on an incomplete install pacman may have
     # left the specific packages out, so name them explicitly as well.
-    as_root pacman -S --needed -- "${missing[@]}"
+    as_root pacman -S --needed ${pacman_args[@]+"${pacman_args[@]}"} -- "${missing[@]}"
   fi
 
   for cmd in "${!tools[@]}"; do

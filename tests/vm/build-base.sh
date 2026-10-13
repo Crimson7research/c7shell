@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # Builds the known starting point for the VM setup test: the pinned Arch ISO,
 # installed by archinstall from tests/vm/archinstall.json, with no desktop.
 # Writes $C7VT_CACHE/base.qcow2. Exit 1 if the install fails, 2 on a host or
@@ -47,7 +48,7 @@ make_seed() {
   cfg=$(jq --arg k "$key_cmd" '.custom_commands |= map(if . == "@AUTHORIZED_KEYS@" then $k else . end)' \
         "$vm/archinstall.json" | base64 -w0)
   creds=$(jq -n --arg p "$(cat "$C7VT_CACHE/c7test.password")" \
-          '{"root_enc_password": $p, "users": [{"username": "c7test", "!password": $p, "sudo": true}]}' \
+          '{"!root-password": $p, "users": [{"username": "c7test", "!password": $p, "sudo": true}]}' \
           | base64 -w0)
   mkdir -p "$seed/d"
   sed -e "s|@CONFIG@|$cfg|" -e "s|@CREDS@|$creds|" "$vm/cloud-init/user-data.in" > "$seed/d/user-data"

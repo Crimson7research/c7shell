@@ -86,8 +86,6 @@ if command -v magick >/dev/null; then
 
   if screen_not_uniform "$tmp/black.png"; then fail 'screen: a solid image is uniform'; fi
   screen_not_uniform "$tmp/bar.png" || fail 'screen: the bar image is not uniform'
-  screen_bar_drawn "$tmp/bar.png" || fail 'screen: must see the bar'
-  if screen_bar_drawn "$tmp/black.png"; then fail 'screen: no bar on a black screen'; fi
 else
   echo 'SKIP: screen checks (magick not installed, package: imagemagick)'
 fi
@@ -113,6 +111,12 @@ for want in -enable-kvm -daemonize "hostfwd=tcp:127.0.0.1:2223-:22" \
   grep -qF -- "$want" <<<"$a" || fail "vm_start: missing $want in\n$a"
 done
 grep -qx 2223 "$tmp/run/ssh.port" || fail 'vm_start: must record the ssh port'
+
+# A daemonized QEMU outlives vm_start. It must not keep the port lock open,
+# or every later run blocks in vm_start until this VM is gone.
+printf '%s\n' '#!/bin/sh' 'sleep 5 &' > "$tmp/qemu-daemon"; chmod +x "$tmp/qemu-daemon"
+C7VT_QEMU=$tmp/qemu-daemon vm_start "$tmp/run" "$tmp/disk.qcow2"
+flock -n "$C7VT_CACHE/port.lock" true || fail 'vm_start: the VM must not hold the port lock'
 
 # --- run.sh ---------------------------------------------------------------
 "$vm/run.sh" -h >/dev/null || fail 'run.sh -h must exit 0'

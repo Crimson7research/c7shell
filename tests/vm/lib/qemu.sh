@@ -16,6 +16,10 @@ vm_free_port() {
 }
 
 # vm_start <dir> <disk> [extra qemu args...]
+#
+# virtio-vga without GL: with virtio-vga-gl and egl-headless, QMP screendump
+# answers "no surface", and the greeter and session checks need screendump.
+# The guest renders in software (llvmpipe) as a result.
 vm_start() {
   local dir=$1 disk=$2 port status=0; shift 2
   # Between the free-port check and QEMU binding the port, another run
@@ -30,12 +34,12 @@ vm_start() {
     -enable-kvm -machine q35 -cpu host -smp 4 -m 4096 \
     -drive "if=pflash,format=raw,readonly=on,file=${C7VT_OVMF:-/usr/share/edk2/x64/OVMF_CODE.4m.fd}" \
     -drive "file=$disk,if=virtio,format=qcow2" \
-    -device virtio-vga-gl -display egl-headless \
+    -device virtio-vga -display none \
     -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$port-:22" \
     -qmp "unix:$dir/qmp.sock,server=on,wait=off" \
     -serial "file:$dir/serial.log" \
     -pidfile "$dir/qemu.pid" -daemonize \
-    "$@" || status=$?
+    "$@" {lock}>&- || status=$?
   exec {lock}>&-
   return "$status"
 }
@@ -50,7 +54,7 @@ vm_stop() {
 vm_ssh() {
   local dir=$1; shift
   ssh -p "$(cat "$dir/ssh.port")" -i "$C7VT_CACHE/id_ed25519" \
-      -o BatchMode=yes -o StrictHostKeyChecking=no \
+      -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
       c7test@127.0.0.1 "$@"
 }
