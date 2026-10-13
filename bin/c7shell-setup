@@ -214,7 +214,9 @@ if ((dry == 0)); then
     if [[ -f $state/manifest ]]; then
       while IFS=$'\t' read -r rel h; do
         [[ -n $rel ]] || continue
-        in_part "$rel" "${installed_parts[@]+"${installed_parts[@]}"}" || printf '%s\t%s\n' "$rel" "$h"
+        # Rewritten below, or no longer shipped (the old palette row).
+        in_part "$rel" "${installed_parts[@]+"${installed_parts[@]}"}" && continue
+        if [[ -f $share/$rel ]]; then printf '%s\t%s\n' "$rel" "$h"; fi
       done < "$state/manifest"
     fi
     for part in "${installed_parts[@]+"${installed_parts[@]}"}"; do

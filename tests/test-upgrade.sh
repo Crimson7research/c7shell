@@ -321,14 +321,30 @@ local_is hypr/hyprlock.conf "$want"
 fresh atomic
 ship hypr/hyprland.lua 'v1'
 "$setup" >/dev/null
+inode=$(stat -c %i "$XDG_CONFIG_HOME/hypr/hyprland.lua")
 ship hypr/hyprland.lua 'v2'
 ship quickshell/c7shell/bin/run.sh '#!/bin/sh'
 chmod +x "$C7SHELL_SHARE/quickshell/c7shell/bin/run.sh"
 out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
 local_is hypr/hyprland.lua 'v2'
+# A new inode is a rename; writing in place keeps the old one.
+[[ $(stat -c %i "$XDG_CONFIG_HOME/hypr/hyprland.lua") != "$inode" ]] \
+  || fail 'hyprland.lua was rewritten in place, not renamed into place'
 [[ -x $XDG_CONFIG_HOME/quickshell/c7shell/bin/run.sh ]] || fail "an added script lost its exec bit:\n$out"
 leftover=$(find "$XDG_CONFIG_HOME" "$C7SHELL_STATE" -name '*.tmp.*')
 [[ -z $leftover ]] || fail "temp files left behind:\n$leftover"
+
+# A symlinked config (stow, chezmoi) is updated at its target and stays a link.
+fresh symlink
+ship hypr/hyprland.lua 'v1'
+"$setup" >/dev/null
+mkdir -p "$tmp/dotfiles"
+mv "$XDG_CONFIG_HOME/hypr/hyprland.lua" "$tmp/dotfiles/hyprland.lua"
+ln -s "$tmp/dotfiles/hyprland.lua" "$XDG_CONFIG_HOME/hypr/hyprland.lua"
+ship hypr/hyprland.lua 'v2'
+out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
+[[ -L $XDG_CONFIG_HOME/hypr/hyprland.lua ]] || fail "the upgrade replaced a symlinked config with a plain file:\n$out"
+[[ $(cat "$tmp/dotfiles/hyprland.lua") == v2 ]] || fail "the symlink's target was not updated:\n$out"
 
 export C7SHELL_SHARE=${saved[0]} XDG_CONFIG_HOME=${saved[1]} C7SHELL_STATE=${saved[2]}
 

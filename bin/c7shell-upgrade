@@ -159,13 +159,21 @@ shipped_at() {
 # Write the shipped file whole, then rename it into place: quickshell reloads on
 # the first write it sees, and an interrupted `> "$dst"` leaves a truncated
 # shell.qml behind. The shipped mode comes along, so a script stays executable.
+#
+# A symlinked config (stow, chezmoi) is written at its target, so the link and
+# the dotfiles repo behind it stay as they are.
+cur_tmp=
+trap 'rm -f -- "${cur_tmp:-}"' EXIT
 write_shipped() {
-  local rel=$1 src=$2 dst=$3 tmpf=$3.tmp.$$
-  if shipped_at "$rel" "$src" > "$tmpf" && chmod --reference="$src" -- "$tmpf"; then
-    mv -f -- "$tmpf" "$dst"
+  local rel=$1 src=$2 dst=$3
+  [[ -L $dst ]] && dst=$(readlink -f -- "$dst")
+  cur_tmp=$dst.tmp.$$
+  if shipped_at "$rel" "$src" > "$cur_tmp" && chmod --reference="$src" -- "$cur_tmp"; then
+    mv -f -- "$cur_tmp" "$dst"
   else
-    rm -f -- "$tmpf"; return 1
+    rm -f -- "$cur_tmp"; cur_tmp=; return 1
   fi
+  cur_tmp=
 }
 
 # Files c7shell writes into the config tree at runtime rather than ships. Older
@@ -399,7 +407,9 @@ if ((do_config)); then
       # after the cut as locally edited.
       for rel in "${!now[@]}"; do printf '%s\t%s\n' "$rel" "${now[$rel]}"; done \
         | sort > "$manifest.tmp.$$"
+      cur_tmp=$manifest.tmp.$$
       mv -f -- "$manifest.tmp.$$" "$manifest"
+      cur_tmp=
     fi
 
     if ((${#conflicts[@]})); then
