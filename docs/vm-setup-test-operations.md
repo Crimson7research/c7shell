@@ -104,7 +104,7 @@ The installed system doesn't log to serial. A failed phase's `<phase>-serial-tai
   results/<ts>-<branch>/    summary.txt, <phase>.log, screens/*.png
 ```
 
-`summary.txt` lists each phase with its duration and the built package (`pacman -Q c7shell`). It ends in `PASS` or `FAIL: <phase>`.
+`summary.txt` lists each phase with its duration and the built package (`pacman -Q c7shell`). It ends in `PASS` or `FAIL: <phase>`. A run stopped from outside, for example with `systemctl --user stop`, ends in `FAIL: interrupted` and exits 2.
 
 ## Pitfalls already found
 
