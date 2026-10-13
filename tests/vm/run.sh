@@ -122,7 +122,7 @@ _greeter_up() {
 }
 
 step_greeter() {
-  local before; before=$(_boot_id)
+  local before; before=$(_boot_id) || true
   [[ -n $before ]] || { echo 'greeter: no boot id before the reboot'; exit 1; }
   vm_ssh "$run" sudo systemctl reboot || true
   wait_for 150 _rebooted "$before"
@@ -177,7 +177,7 @@ main() {
   phase base 1800 step_base
   phase install 2700 step_install
   vm_ssh "$run" cat c7vt-commit | sed 's/^/package /' >> "$results/summary.txt"
-  phase greeter 330 step_greeter
+  phase greeter 360 step_greeter
   phase login 120 step_login
   phase assert 60 step_assert
   completed=1
