@@ -166,7 +166,9 @@ cur_tmp=
 trap 'rm -f -- "${cur_tmp:-}"' EXIT
 write_shipped() {
   local rel=$1 src=$2 dst=$3
-  [[ -L $dst ]] && dst=$(readlink -f -- "$dst")
+  if [[ -L $dst ]]; then
+    dst=$(readlink -f -- "$dst") || { warn "$3 is a symlink that does not resolve"; return 1; }
+  fi
   cur_tmp=$dst.tmp.$$
   if shipped_at "$rel" "$src" > "$cur_tmp" && chmod --reference="$src" -- "$cur_tmp"; then
     mv -f -- "$cur_tmp" "$dst"
@@ -350,7 +352,9 @@ if ((do_config)); then
           info "replace $rel  (yours backed up as $rel.bak-$stamp)"
           if ((dry)); then printf '  would: back up and rewrite %s\n' "$dst"
           else
-            cp -a -- "$dst" "$dst.bak-$stamp"
+            # -L: for a symlinked config the backup must hold the bytes, not
+            # another link to the file write_shipped is about to replace.
+            cp -aL -- "$dst" "$dst.bak-$stamp"
             write_shipped "$rel" "$src" "$dst"
             rm -f -- "$dst.new"
           fi

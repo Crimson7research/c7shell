@@ -345,6 +345,16 @@ ship hypr/hyprland.lua 'v2'
 out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
 [[ -L $XDG_CONFIG_HOME/hypr/hyprland.lua ]] || fail "the upgrade replaced a symlinked config with a plain file:\n$out"
 [[ $(cat "$tmp/dotfiles/hyprland.lua") == v2 ]] || fail "the symlink's target was not updated:\n$out"
+# An edited symlinked config taken over with --take-shipped keeps a real backup
+# of the edit: a backup that is just another link would follow the target to
+# the shipped bytes.
+printf 'mine\n' > "$tmp/dotfiles/hyprland.lua"
+ship hypr/hyprland.lua 'v3'
+out=$("$upgrade" --config-only --no-doctor --no-greeter --take-shipped 2>&1) || true
+bak=$(find "$XDG_CONFIG_HOME/hypr" -name 'hyprland.lua.bak-*' | head -1)
+[[ -n $bak && ! -L $bak && $(cat "$bak") == mine ]] \
+  || fail "the backup of an edited symlinked config lost the edit:\n$out\n$(ls -l "$XDG_CONFIG_HOME/hypr")"
+[[ $(cat "$tmp/dotfiles/hyprland.lua") == v3 ]] || fail "--take-shipped did not reach the symlink's target:\n$out"
 
 export C7SHELL_SHARE=${saved[0]} XDG_CONFIG_HOME=${saved[1]} C7SHELL_STATE=${saved[2]}
 
