@@ -11,7 +11,10 @@ qmp() {
   out=$(printf '%s\n' '{"execute":"qmp_capabilities"}' "$2" \
         | ${C7VT_SOCAT:-socat} -t 5 - "UNIX-CONNECT:$1") || return 1
   printf '%s\n' "$out"
-  ! grep -q '"error"' <<<"$out"
+  # One return for the capabilities, one for the command: a QEMU that shut
+  # the monitor before answering has not done what was asked. Events may
+  # mention "error" in their data, so only an error reply counts.
+  ! grep -q '^{"error"' <<<"$out" && (( $(grep -c '^{"return"' <<<"$out") >= 2 ))
 }
 
 qmp_screendump() {

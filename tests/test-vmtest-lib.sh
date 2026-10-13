@@ -95,7 +95,7 @@ fi
 # --- qemu -----------------------------------------------------------------
 printf '%s\n' '#!/bin/sh' "printf '%s\n' \"\$@\" > '$tmp/qemu.args'" > "$tmp/qemu"
 chmod +x "$tmp/qemu"
-export C7VT_QEMU=$tmp/qemu C7VT_OVMF=/fw/OVMF_CODE.fd
+export C7VT_QEMU=$tmp/qemu C7VT_OVMF=/fw/OVMF_CODE.fd C7VT_CACHE=$tmp/cache
 # Port 2222 is taken, 2223 is free.
 export C7VT_PORTCHECK=port_taken
 port_taken() { [[ $1 == 2222 ]]; }
@@ -124,8 +124,8 @@ set -e
 # shellcheck source=vm/run.sh
 C7VT_SOURCE_ONLY=1 . "$vm/run.sh"
 [[ $(slug jv/feat:x) == jv-feat-x ]] || fail "slug: got $(slug jv/feat:x)"
-parse_args --branch b --keep --repo r
-[[ $branch == b && $keep == 1 && $repo_url == r && $rebuild == 0 ]] \
+parse_args --branch b --keep
+[[ $branch == b && $keep == 1 && $rebuild == 0 ]] \
   || fail 'parse_args: wrong values'
 
 results=$tmp/res; mkdir -p "$results"
@@ -135,5 +135,35 @@ grep -Eq '^demo [0-9]+s ok$' "$results/summary.txt" || fail 'phase: must log an 
 bad_step() { false; }
 ( phase broken 5 bad_step ) >/dev/null 2>&1 && fail 'phase: a failing step must exit'
 grep -qx 'FAIL: broken' "$results/summary.txt" || fail 'phase: must log FAIL: <phase>'
+
+# A step whose first command fails fails, even when its last succeeds.
+early_fail() { false; true; }
+( phase early 5 early_fail ) >/dev/null 2>&1 && fail 'phase: steps must run under set -e'
+
+# A host problem inside a step (exit 2) stays exit 2; anything else is 1.
+host_step() { exit 2; }
+set +e; ( phase host 5 host_step ) >/dev/null 2>&1; s=$?; set -e
+[[ $s == 2 ]] || fail "phase: a step's exit 2 must stay 2, got $s"
+
+# finish must report PASS even when stopping the VM fails.
+mkdir -p "$tmp/frun"; : > "$results/summary.txt"
+vm_stop() { return 1; }
+( run=$tmp/frun keep=1; true; finish ) >/dev/null 2>&1 || fail 'finish: a failed vm_stop must not fail a pass'
+grep -qx PASS "$results/summary.txt" || fail 'finish: must write PASS'
+
+# The branch and URL reach the VM's shell quoted, never spliced in.
+script=$(remote_install_script "a';touch /x;'" 'u r')
+grep -qF "git clone --branch a\\'\\;touch\\ /x\\;\\' u\\ r c7shell" <<<"$script" \
+  || fail "remote_install_script: branch not quoted:\n$script"
+
+# A QEMU that greets but never answers the command is a failure, and an
+# event that mentions "error" is not.
+printf '%s\n' '#!/bin/sh' 'cat >/dev/null' "printf '%s\n' '{\"QMP\":{}}' '{\"return\":{}}'" > "$tmp/socat-mute"
+chmod +x "$tmp/socat-mute"
+if C7VT_SOCAT=$tmp/socat-mute qmp_quit "$tmp/sock" >/dev/null; then fail 'qmp: no reply to the command must fail'; fi
+printf '%s\n' '#!/bin/sh' 'cat >/dev/null' \
+  "printf '%s\n' '{\"QMP\":{}}' '{\"return\":{}}' '{\"event\":\"X\",\"data\":{\"error\":1}}' '{\"return\":{}}'" > "$tmp/socat-ev"
+chmod +x "$tmp/socat-ev"
+C7VT_SOCAT=$tmp/socat-ev qmp_quit "$tmp/sock" >/dev/null || fail 'qmp: an event mentioning error must not fail'
 
 echo 'PASS: vmtest-lib'

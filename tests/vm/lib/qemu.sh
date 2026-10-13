@@ -17,7 +17,13 @@ vm_free_port() {
 
 # vm_start <dir> <disk> [extra qemu args...]
 vm_start() {
-  local dir=$1 disk=$2 port; shift 2
+  local dir=$1 disk=$2 port status=0; shift 2
+  # Between the free-port check and QEMU binding the port, another run
+  # could pick the same one; the lock covers both, and -daemonize returns
+  # only once the port is bound.
+  mkdir -p "$C7VT_CACHE"
+  exec {lock}> "$C7VT_CACHE/port.lock"
+  flock "$lock"
   port=$(vm_free_port)
   echo "$port" > "$dir/ssh.port"
   ${C7VT_QEMU:-qemu-system-x86_64} \
@@ -29,7 +35,9 @@ vm_start() {
     -qmp "unix:$dir/qmp.sock,server=on,wait=off" \
     -serial "file:$dir/serial.log" \
     -pidfile "$dir/qemu.pid" -daemonize \
-    "$@"
+    "$@" || status=$?
+  exec {lock}>&-
+  return "$status"
 }
 
 _vt_gone() { ! kill -0 "$(cat "$1/qemu.pid" 2>/dev/null)" 2>/dev/null; }
