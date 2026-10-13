@@ -1,0 +1,12 @@
+#cloud-config
+write_files:
+  - path: /root/archinstall.json
+    encoding: b64
+    content: @CONFIG@
+  - path: /root/creds.json
+    encoding: b64
+    permissions: '0600'
+    content: @CREDS@
+runcmd:
+  - [ bash, -c, "archinstall --config /root/archinstall.json --creds /root/creds.json --silent > /dev/ttyS0 2>&1 && echo C7VT-INSTALL-OK > /dev/ttyS0 || echo C7VT-INSTALL-FAILED > /dev/ttyS0" ]
+  - [ poweroff ]
