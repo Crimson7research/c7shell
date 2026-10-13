@@ -68,7 +68,7 @@ Each run has its own directory, `$C7VT_CACHE/runs/<timestamp>-<branch>/`. It hol
 - **Running the install.** `remote_install_script` writes the install script, with the branch and URL `%q`-quoted. The harness copies it into the VM as `c7vt-install.sh` and runs it with stdin from `/dev/null`. Piping it into `bash -s` let a pacman prompt eat the script's next line.
 - **Running the checks.** The harness pipes `lib/session.sh` into `bash -s` inside the VM. It finds the session's `HYPRLAND_INSTANCE_SIGNATURE` and `WAYLAND_DISPLAY` under `/run/user/<uid>`, then asserts:
   - `hyprctl version` answers.
-  - `qs` is running. The shell starts as `qs -c c7shell -d`, not as `quickshell`.
+  - `qs` is running. The shell runs as `qs -c c7shell`, not as `quickshell`.
   - The `c7shell-bar` layer is mapped.
   - `c7shell-doctor` exits 0.
   - The user journal has no QML errors.

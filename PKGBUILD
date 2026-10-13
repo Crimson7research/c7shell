@@ -197,6 +197,7 @@ package() {
             "$pkgdir/usr/share/$pkgname/quickshell/c7shell/bin/screenshare-picker.sh"
 
   install -Dm755 bin/c7shell-setup "$pkgdir/usr/bin/c7shell-setup"
+  install -Dm755 bin/c7shell-session "$pkgdir/usr/bin/c7shell-session"
   # Checks what depends= cannot: the Hyprland version, the QML modules
   # quickshell was built with, the DRM device, and whether the configs have
   # been copied into ~/.config yet.

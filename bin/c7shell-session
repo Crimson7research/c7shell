@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# c7shell-session: keep the shell running for as long as the Hyprland session
+# lasts. hypr/conf/autostart.lua starts this instead of qs itself.
+#
+# quickshell started once from autostart is gone for good when it crashes, and
+# it takes more than the bar with it: c7-authd is its child, so the polkit agent
+# and the sudo prompt go too, and pkexec answers "no authentication agent" until
+# the person logs out. This relaunches it.
+#
+# It gives up on a crash loop -- a config that fails to load exits at once, and
+# relaunching that forever only burns the CPU -- and tells the person how to see
+# the error. It steps aside for a shell someone else started (c7shell-upgrade
+# relaunches the shell itself) and stops when the compositor is gone.
+set -uo pipefail
+
+conf=${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/c7shell/shell.qml
+runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+socket=$runtime/${WAYLAND_DISPLAY:-wayland-1}
+# More than this many launches inside the window is a crash loop.
+max_starts=5
+window=60
+
+# One supervisor per session: a second autostart (a config reload that re-runs
+# exec-once, a manual run) must not race the first into two shells.
+exec 9>"$runtime/c7shell-session.lock"
+flock -n 9 || exit 0
+
+# Matched by config path, as c7shell-upgrade does: a config name alone would
+# also match somebody else's tree.
+shell_running() { qs list --all 2>/dev/null | grep -qF "Config path: $conf"; }
+session_alive() { [[ -e $socket ]]; }
+
+starts=()
+while session_alive; do
+  if shell_running; then
+    sleep 2
+    continue
+  fi
+
+  now=$(date +%s)
+  recent=()
+  for t in ${starts[@]+"${starts[@]}"}; do
+    if ((now - t < window)); then recent+=("$t"); fi
+  done
+  starts=(${recent[@]+"${recent[@]}"} "$now")
+  if ((${#starts[@]} > max_starts)); then
+    notify-send -u critical 'c7shell stopped' \
+      "The shell exited ${max_starts} times in a minute, so it is not restarted again. See why with: qs -c c7shell" \
+      2>/dev/null || true
+    printf 'c7shell-session: the shell keeps exiting; giving up (run qs -c c7shell to see why)\n' >&2
+    exit 1
+  fi
+
+  QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -c c7shell -n
+  status=$?
+  session_alive || break
+  printf 'c7shell-session: the shell exited with status %s; restarting\n' "$status" >&2
+  sleep 1
+done
+exit 0

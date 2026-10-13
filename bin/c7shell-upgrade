@@ -497,9 +497,10 @@ if ((shell_dirty)) && command -v qs >/dev/null; then
       restart_hint
       shell_failed=1
     else
-      # Nothing supervises quickshell: hypr autostarts it once and that is the
-      # only launch there is. Same command, same environment as
-      # hypr/conf/autostart.lua, detached so it outlives this terminal.
+      # c7shell-session relaunches the shell too, but a session started on an
+      # older config has no supervisor, and the relaunch is --no-duplicate:
+      # whichever comes up first wins and the other declines. Same environment
+      # as the shell gets at login, detached so it outlives this terminal.
       QT_WAYLAND_DISABLE_WINDOWDECORATION=1 setsid qs -c c7shell -d -n >/dev/null 2>&1 &
       # And then check, because "restarted" is the one line in this whole
       # command the user acts on by walking away. A launch that failed and said

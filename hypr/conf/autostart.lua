@@ -21,12 +21,15 @@ hl.on("hyprland.start", function ()
   -- menus until it is relaunched. Order against qs does not matter; the shell
   -- retries the daemon's socket with backoff.
   --
+  -- The shell runs under c7shell-session, which relaunches it after a crash
+  -- (and with it c7-authd, the polkit agent) and gives up on a crash loop.
+  --
   -- hyprpaper is left out on a virtual GPU, where it does not merely fail to
   -- draw but SIGABRTs on the first wallpaper request (conf/gpu.lua has the
   -- whole trace). The shell draws the wallpaper instead, and knows to because
   -- conf/environment.lua sets C7SHELL_WALLPAPER=shell.
   local paper = gpu.wallpaper_backend() == "hyprpaper" and "hyprpaper & " or ""
-  hl.exec_cmd("python3 $HOME/.config/quickshell/c7shell/scripts/c7shell-appmenud.py & QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -c c7shell -d -n & " .. paper .. "hypridle")
+  hl.exec_cmd("python3 $HOME/.config/quickshell/c7shell/scripts/c7shell-appmenud.py & c7shell-session & " .. paper .. "hypridle")
 end)
 
 -- pam_kwallet_init drains the socket pam_kwallet5 opened at login
