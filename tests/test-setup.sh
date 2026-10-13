@@ -35,6 +35,7 @@ cat > "$C7SHELL_SHARE/quickshell/c7shell/scripts/c7shell-theme-export.py" <<'PYE
 import os
 conf = os.environ["XDG_CONFIG_HOME"]
 open(f"{conf}/kdeglobals", "w").write("[General]\nColorScheme=C7Shell\n")
+open(f"{conf}/hypr/hyprlock-palette.conf", "w").write("$accent = rgb(0,0,0)\n")
 PYEOF
 
 # dry-run changes nothing
@@ -156,6 +157,46 @@ grep -q -- '--force' <<<"$out" || fail "setup did not offer --force:\n$out"
 grep -q 'c7shell-upgrade' <<<"$out" \
   || fail "setup did not point at the non-destructive way to update:\n$out"
 
+
+# --- a rerun keeps the baseline it cannot rebuild ----------------------------
+# A second setup skips every part, so it has nothing new to hash. It used to
+# empty the manifest anyway, and the next upgrade then took every changed file
+# for a local edit and parked a .new beside it: a config half old, half new.
+rm -rf "${XDG_CONFIG_HOME:?}" "${C7SHELL_STATE:?}"
+"$setup" >/dev/null 2>&1 || fail 'setup failed on a fresh config dir'
+cp "$C7SHELL_STATE/manifest" "$tmp/manifest.first"
+[[ -s $tmp/manifest.first ]] || fail 'a fresh setup recorded no manifest'
+"$setup" >/dev/null 2>&1 || true
+cmp -s "$tmp/manifest.first" "$C7SHELL_STATE/manifest" \
+  || fail "a rerun lost the baseline:\n$(diff "$tmp/manifest.first" "$C7SHELL_STATE/manifest")"
+# One part replaced: its rows are new, and the other parts keep theirs.
+"$setup" --force >/dev/null 2>&1 || fail 'setup --force failed'
+grep -q '^quickshell/c7shell/shell.qml	' "$C7SHELL_STATE/manifest" \
+  || fail "--force dropped rows:\n$(cat "$C7SHELL_STATE/manifest")"
+(($(grep -c '^hypr/hyprland.lua	' "$C7SHELL_STATE/manifest") == 1)) \
+  || fail "--force duplicated rows:\n$(cat "$C7SHELL_STATE/manifest")"
+
+# The exporter writes the lock palette into ~/.config/hypr. It is generated,
+# not shipped, so claiming it would let an upgrade delete it as dropped upstream.
+[[ -f $XDG_CONFIG_HOME/hypr/hyprlock-palette.conf ]] || fail 'the fixture exporter wrote no palette'
+if grep -q '^hypr/hyprlock-palette.conf	' "$C7SHELL_STATE/manifest"; then
+  fail 'setup claimed the generated lock palette as a shipped file'
+fi
+
+# --- odd config paths are data, not sed syntax ---------------------------------
+odd=$tmp/odd'#and&'/conf
+XDG_CONFIG_HOME=$odd C7SHELL_STATE=$tmp/odd-state "$setup" >/dev/null 2>&1 \
+  || fail 'setup failed on a config path containing # or &'
+grep -qxF "custom_picker_binary = $odd/quickshell/c7shell/bin/x.sh" "$odd/hypr/xdph.conf" \
+  || fail "a # or & in the config path broke the xdph rewrite:\n$(cat "$odd/hypr/xdph.conf")"
+
+# --- the sudo line survives a path with a space, and zsh's ZDOTDIR ------------
+mkdir -p "$tmp/zdot"; : > "$tmp/zdot/.zshrc"
+snip="$tmp/sn ip.sh"; echo 'true' > "$snip"
+ZDOTDIR=$tmp/zdot C7SHELL_SUDO_SNIPPET=$snip "$setup" >/dev/null 2>&1 || true
+grep -qF "c7shell: sudo asks" "$tmp/zdot/.zshrc" || fail 'setup ignored $ZDOTDIR/.zshrc'
+(cd "$tmp" && bash -c ". '$tmp/zdot/.zshrc'") 2>/dev/null \
+  || fail "the sudo source line does not survive a space:\n$(cat "$tmp/zdot/.zshrc")"
 
 # --- part of it installed is not "Done" ---------------------------------------
 # A stock or foreign hypr config with the c7shell shell beside it is not a

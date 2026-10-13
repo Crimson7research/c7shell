@@ -139,14 +139,49 @@ hash_of() { sha256sum -- "$1" | cut -d' ' -f1; }
 # c7shell-setup rewrites the $HOME placeholder in xdph.conf when it copies it,
 # because xdph does no variable expansion. Compare against the same rewrite or
 # that one file looks locally edited on every single upgrade.
+#
+# hyprlock.conf the same way, but only when the config dir is not ~/.config:
+# setup leaves it byte-identical in the common case. Plain bash rather than
+# sed, so a '#' or '&' in the path stays data.
 shipped_at() {
-  local rel=$1 src=$2
-  if [[ $rel == hypr/xdph.conf ]]; then
-    sed "s#\$HOME/.config/quickshell#$conf/quickshell#" "$src"
-  else
-    cat -- "$src"
-  fi
+  local rel=$1 src=$2 text from to
+  case $rel in
+    hypr/xdph.conf) from='$HOME/.config/quickshell' to=$conf/quickshell ;;
+    hypr/hyprlock.conf)
+      [[ $conf != "$HOME/.config" ]] || { cat -- "$src"; return; }
+      from='$HOME/.config/hypr/hyprlock-palette.conf' to=$conf/hypr/hyprlock-palette.conf ;;
+    *) cat -- "$src"; return ;;
+  esac
+  text=$(<"$src")
+  printf '%s\n' "${text//"$from"/"$to"}"
 }
+
+# Write the shipped file whole, then rename it into place: quickshell reloads on
+# the first write it sees, and an interrupted `> "$dst"` leaves a truncated
+# shell.qml behind. The shipped mode comes along, so a script stays executable.
+#
+# A symlinked config (stow, chezmoi) is written at its target, so the link and
+# the dotfiles repo behind it stay as they are.
+cur_tmp=
+trap 'rm -f -- "${cur_tmp:-}"' EXIT
+write_shipped() {
+  local rel=$1 src=$2 dst=$3
+  if [[ -L $dst ]]; then
+    dst=$(readlink -f -- "$dst") || { warn "$3 is a symlink that does not resolve"; return 1; }
+  fi
+  cur_tmp=$dst.tmp.$$
+  if shipped_at "$rel" "$src" > "$cur_tmp" && chmod --reference="$src" -- "$cur_tmp"; then
+    mv -f -- "$cur_tmp" "$dst"
+  else
+    rm -f -- "$cur_tmp"; cur_tmp=; return 1
+  fi
+  cur_tmp=
+}
+
+# Files c7shell writes into the config tree at runtime rather than ships. Older
+# setups recorded them in the manifest, so they look "dropped upstream" -- they
+# are not, and deleting the palette leaves the lock screen without its colours.
+generated() { case $1 in hypr/hyprlock-palette.conf) return 0 ;; esac; return 1; }
 shipped_hash() { shipped_at "$1" "$2" | sha256sum | cut -d' ' -f1; }
 
 # makepkg never builds when a tarball for the pkgver it computes already sits in
@@ -295,7 +330,7 @@ if ((do_config)); then
           info "add     $rel"
           run mkdir -p -- "$(dirname -- "$dst")"
           if ((dry)); then printf '  would: install %s\n' "$dst"
-          else shipped_at "$rel" "$src" > "$dst"; fi
+          else write_shipped "$rel" "$src" "$dst"; fi
           touches_shell "$rel"
           ((++added))
           continue
@@ -308,7 +343,7 @@ if ((do_config)); then
           # Untouched since we installed it, so replacing it loses nothing.
           info "update  $rel"
           if ((dry)); then printf '  would: rewrite %s\n' "$dst"
-          else shipped_at "$rel" "$src" > "$dst"; fi
+          else write_shipped "$rel" "$src" "$dst"; fi
           touches_shell "$rel"
           ((++updated))
         elif ((take_shipped)); then
@@ -317,8 +352,10 @@ if ((do_config)); then
           info "replace $rel  (yours backed up as $rel.bak-$stamp)"
           if ((dry)); then printf '  would: back up and rewrite %s\n' "$dst"
           else
-            cp -a -- "$dst" "$dst.bak-$stamp"
-            shipped_at "$rel" "$src" > "$dst"
+            # -L: for a symlinked config the backup must hold the bytes, not
+            # another link to the file write_shipped is about to replace.
+            cp -aL -- "$dst" "$dst.bak-$stamp"
+            write_shipped "$rel" "$src" "$dst"
             rm -f -- "$dst.new"
           fi
           touches_shell "$rel"
@@ -331,7 +368,7 @@ if ((do_config)); then
           fi
           info "kept    $rel  (new version written to $rel.new)"
           if ((dry)); then printf '  would: write %s.new\n' "$dst"
-          else shipped_at "$rel" "$src" > "$dst.new"; fi
+          else write_shipped "$rel" "$src" "$dst.new"; fi
           conflicts+=("$rel")
           # The manifest keeps the older hash on purpose: it is still the
           # version this file diverged from, which is what the next upgrade
@@ -353,7 +390,8 @@ if ((do_config)); then
       while read -r dst; do
         rel=${dst#"$conf/"}
         [[ -n ${now[$rel]:-} ]] && continue
-        [[ $rel == *.new || $rel == *.bak-* ]] && continue
+        [[ $rel == *.new || $rel == *.bak-* || $rel == *.tmp.* ]] && continue
+        generated "$rel" && continue
         if [[ ${last[$rel]:-} == "$(hash_of "$dst")" ]]; then
           info "remove  $rel  (dropped upstream)"
           run rm -f -- "$dst"
@@ -369,9 +407,13 @@ if ((do_config)); then
       info "would record the manifest at $manifest"
     else
       mkdir -p -- "$state"
-      : > "$manifest"
-      for rel in "${!now[@]}"; do printf '%s\t%s\n' "$rel" "${now[$rel]}" >> "$manifest"; done
-      sort -o "$manifest" "$manifest"
+      # Built aside and renamed: a half-written manifest marks every file
+      # after the cut as locally edited.
+      for rel in "${!now[@]}"; do printf '%s\t%s\n' "$rel" "${now[$rel]}"; done \
+        | sort > "$manifest.tmp.$$"
+      cur_tmp=$manifest.tmp.$$
+      mv -f -- "$manifest.tmp.$$" "$manifest"
+      cur_tmp=
     fi
 
     if ((${#conflicts[@]})); then
