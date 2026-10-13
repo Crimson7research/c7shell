@@ -675,7 +675,10 @@ case "${1-}" in
           /etc/sudoers|/etc/sudoers.d/*|/etc/shadow|/etc/gshadow|/etc/passwd|/etc/group \
           |/etc/pam.d/*|/etc/polkit-1/*)
             printf '%s decides who gets root, so it is not merged here.\n' "$f"
-            printf 'merge it in a terminal: sudo %s %s %s.pacnew\n' "${DIFFPROG:-vimdiff}" "$f" "$f"
+            case $f in
+              /etc/sudoers*) printf 'merge it in a terminal: sudo visudo -f %s  (compare with %s.pacnew)\n' "$f" "$f" ;;
+              *) printf 'merge it in a terminal: sudo %s %s %s.pacnew\n' "${DIFFPROG:-vimdiff}" "$f" "$f" ;;
+            esac
             exit 2 ;;
         esac
         if prog=$(merge_prog); then

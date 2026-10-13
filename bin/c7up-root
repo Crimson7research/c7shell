@@ -85,6 +85,8 @@ check_canonical() {
 # checked bytes in <dest>, which root owns.
 copy_callers_file() {
   local fd
+  # A FIFO would block the open below; the descriptor is checked again after.
+  [[ -f $1 && ! -p $1 ]] || die "not a regular file: $1"
   exec {fd}<"$1" || die "cannot read: $1"
   if [[ -n ${PKEXEC_UID:-} ]]; then
     [[ -f /proc/self/fd/$fd ]] || die "not a regular file: $1"
