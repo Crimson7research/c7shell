@@ -65,6 +65,12 @@ run_bootstrap
 rm -f "$bin/fakeroot"
 run_install --dry-run
 [[ ! -s $tmp/sudo.log ]] || fail "install.sh --dry-run installed something:\n$(cat "$tmp/sudo.log")"
+# ...and still gets as far as the bootstrap's own plan.
+rm -f "$tmp/bootstrap.args"; rc=0
+env -i PATH="$bin" HOME="$tmp" C7SHELL_SKIP_DOCTOR=1 C7SHELL_BOOTSTRAP="$bin/c7shell-bootstrap" \
+  bash "$repo/install.sh" --dry-run >/dev/null 2>&1 || rc=$?
+((rc == 0)) || fail "install.sh --dry-run with build tools missing exited $rc"
+grep -q -- '--dry-run' "$tmp/bootstrap.args" 2>/dev/null || fail 'install.sh --dry-run never reached the bootstrap plan'
 stub fakeroot 'exit 0'
 
 # --- a declined bootstrap stops the install ---------------------------------

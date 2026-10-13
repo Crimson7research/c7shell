@@ -39,7 +39,7 @@ cat > "$bin/systemctl" <<'STUB'
 if [ "$1" = --user ] && [ -n "$STUB_NO_USER_MANAGER" ]; then
   echo 'Failed to connect to bus: No medium found' >&2; exit 1
 fi
-[ "$1" = list-unit-files ] && exit 0
+[ "$1" = list-unit-files ] && { [ -n "$STUB_NETCTL" ] && printf 'UNIT FILE STATE\nnetctl@home.service enabled\n'; exit 0; }
 if [ "$1" = is-enabled ]; then
   for u in $STUB_ENABLED; do [ "$u" = "$2" ] && { echo enabled; exit 0; }; done
   echo disabled; exit 1
@@ -71,7 +71,7 @@ plan() {
     STUB_LOG="$log" STUB_LSPCI="$pci" \
     STUB_INSTALLED="${STUB_INSTALLED:-linux}" \
     STUB_UNKNOWN="${STUB_UNKNOWN:-}" STUB_ENABLED="${STUB_ENABLED:-}" \
-    STUB_NEW_AFTER_SYNC= STUB_NO_USER_MANAGER= \
+    STUB_NEW_AFTER_SYNC= STUB_NO_USER_MANAGER= STUB_NETCTL="${STUB_NETCTL:-}" \
     /usr/bin/bash "$bootstrap" --dry-run "$@" 2>&1
 }
 
@@ -358,6 +358,8 @@ rm -f "$bin/getent" "$bin/id"; mv "$bin/id.real" "$bin/id"; ln -s "$(command -v 
 # --- another network daemon keeps NetworkManager off ------------------------
 out=$(STUB_ENABLED=dhcpcd.service plan "$AMD")
 grep -q 'enable: .*NetworkManager.service' <<<"$out" && fail "NetworkManager was enabled beside dhcpcd:\n$out"
+out=$(STUB_NETCTL=1 plan "$AMD")
+grep -q 'enable: .*NetworkManager.service' <<<"$out" && fail "NetworkManager was enabled beside a netctl profile:\n$out"
 
 # --- DKMS gets headers for every installed kernel, not just the stock four ---
 mkdir -p "$tmp/root/usr/lib/modules/6.17.1-cachyos"
