@@ -247,6 +247,26 @@ layered=$(grep -cE '^\s*zindex = 1$' "$conf")
 ((widgets == layered)) \
   || fail "$widgets widgets but $layered at zindex 1 -- one draws under the backdrop overlay on an unstable sort"
 
+# --- suspend waits for the lock, and a dead lock can be replaced ------------
+# before_sleep_cmd only asks for a lock; c7shell-lock can take seconds before
+# hyprlock maps (the overlay render, the fprintd probe). inhibit_sleep = 3 holds
+# the sleep until the session is actually locked, so resume never shows the
+# desktop. Spelled out rather than left to hypridle's "auto", which guesses
+# from whether lock_cmd mentions hyprlock.
+idle=$here/../hypr/hypridle.conf
+grep -qE '^\s*inhibit_sleep\s*=\s*3\s*$' "$idle" \
+  || fail 'hypridle does not wait for the lock before sleep (inhibit_sleep = 3), so the machine can suspend unlocked'
+# If hyprlock dies while locked, Hyprland keeps the session locked -- correct --
+# but without this a new hyprlock cannot take it over, and the only way back is
+# a TTY.
+grep -qE 'allow_session_lock_restore\s*=\s*true' "$here/../hypr/conf/misc.lua" \
+  || fail 'misc.allow_session_lock_restore is not set, so a crashed hyprlock strands the session'
+# ...and something has to start that new hyprlock from inside the locked session.
+grep -E 'hl\.bind\(mainMod \.\. " \+ L"' "$here/../hypr/conf/binds.lua" | grep -q 'locked = true' \
+  || fail 'SUPER+L does not work while locked, so there is no way to bring back a crashed lock screen'
+grep -E 'hl\.bind\(mainMod \.\. " \+ L"' "$here/../hypr/conf/binds.lua" | grep -q 'pidof hyprlock ||' \
+  || fail 'SUPER+L while locked would start a second hyprlock beside a live one'
+
 # --- the palette, which follows the accent ---------------------------------
 # hyprlang has no variable expansion and cannot read JSON, so the only way the
 # lock screen follows appearance.json is the file the exporter writes and this
@@ -486,6 +506,21 @@ mv "$lockdir/conf/hypr/gone" "$lockdir/conf/hypr/hyprlock.conf"
 out=$(runlock --config /some/other.conf)
 grep -q '/some/other.conf' <<<"$out" || fail "an explicit --config was not passed through:\n$out"
 (($(grep -c -- '--config' <<<"$out") == 1)) || fail "an explicit --config was decorated anyway:\n$out"
+
+# --- no hyprlock at all ----------------------------------------------------
+# Every exec fails. That used to end in a Python traceback that nobody sees:
+# hypridle and SUPER+L both "locked" and the screen stayed open. It has to say
+# so where the person is looking, and exit non-zero.
+mv "$lockdir/bin/hyprlock" "$lockdir/hyprlock.away"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/notified"\n' "$lockdir" > "$lockdir/bin/notify-send"
+chmod +x "$lockdir/bin/notify-send"
+rc=0; runlock >/dev/null || rc=$?
+((rc != 0)) || fail 'c7shell-lock exited 0 with no hyprlock to run'
+grep -q 'Traceback' "$lockdir/err" && fail "a missing hyprlock ends in a traceback:\n$(cat "$lockdir/err")"
+grep -qi 'hyprlock' "$lockdir/notified" 2>/dev/null \
+  || fail 'a missing hyprlock was not shown to the person at the screen'
+mv "$lockdir/hyprlock.away" "$lockdir/bin/hyprlock"; rm -f "$lockdir/bin/notify-send"
+
 
 command -v hyprlock >/dev/null || {
   echo 'SKIP: hyprlock not installed, only the file itself was checked'

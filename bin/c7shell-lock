@@ -303,7 +303,19 @@ def main():
         # Deliberately not fatal, and deliberately noisy in the journal only.
         print(f"c7shell-lock: falling back to plain hyprlock: {e}", file=sys.stderr)
 
-    os.execvp("hyprlock", plain)
+    try:
+        os.execvp("hyprlock", plain)
+    except OSError as e:
+        # Nothing can lock the screen. Say so where the person is looking:
+        # a traceback in the journal reads as a lock that worked.
+        msg = f"hyprlock could not start ({e.strerror}); the screen is NOT locked"
+        print(f"c7shell-lock: {msg}", file=sys.stderr)
+        try:
+            subprocess.run(["notify-send", "-u", "critical", "Lock failed", msg],
+                           timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        sys.exit(1)
 
 
 if __name__ == "__main__":
