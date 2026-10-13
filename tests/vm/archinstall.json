@@ -1,0 +1,27 @@
+{
+  "archinstall-language": "English",
+  "bootloader": "Systemd-boot",
+  "uki": false,
+  "disk_config": {
+    "config_type": "default_layout",
+    "device_modifications": [],
+    "_comment": "Replace with the default ext4 layout on /dev/vda from an archinstall --dry-run on the pinned ISO"
+  },
+  "hostname": "c7test",
+  "kernels": ["linux"],
+  "locale_config": { "kb_layout": "us", "sys_enc": "UTF-8", "sys_lang": "en_US" },
+  "mirror_config": { "mirror_regions": {} },
+  "network_config": { "type": "nm" },
+  "packages": ["openssh", "git", "sudo"],
+  "profile_config": { "profile": { "main": "Minimal" } },
+  "services": ["sshd"],
+  "swap": true,
+  "timezone": "UTC",
+  "ntp": true,
+  "custom_commands": [
+    "install -d -m 700 -o 1000 -g 1000 /home/c7test/.ssh",
+    "@AUTHORIZED_KEYS@",
+    "echo 'c7test ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/c7test",
+    "chmod 440 /etc/sudoers.d/c7test"
+  ]
+}
