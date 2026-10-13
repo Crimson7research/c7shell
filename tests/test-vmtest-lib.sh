@@ -82,7 +82,7 @@ if command -v magick >/dev/null; then
   # shellcheck source=vm/lib/screen.sh
   . "$vm/lib/screen.sh"
   magick -size 200x200 xc:black "$tmp/black.png"
-  magick -size 200x200 xc:'#202020' -fill '#c0c0c0' -draw 'rectangle 0,0 199,39' "$tmp/bar.png"
+  magick -size 200x200 xc:gray12 -fill silver -draw 'rectangle 0,0 199,39' "$tmp/bar.png"
 
   if screen_not_uniform "$tmp/black.png"; then fail 'screen: a solid image is uniform'; fi
   screen_not_uniform "$tmp/bar.png" || fail 'screen: the bar image is not uniform'
