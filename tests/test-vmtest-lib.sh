@@ -162,6 +162,11 @@ set +e; ( run=$tmp/frun keep=1; unset completed; true; finish ) >/dev/null 2>&1;
 grep -qx PASS "$results/summary.txt" && fail 'finish: an unfinished run must not write PASS'
 grep -qx 'FAIL: interrupted' "$results/summary.txt" || fail 'finish: an unfinished run must say it was interrupted'
 [[ $s == 2 ]] || fail "finish: an interrupted run must exit 2, got $s"
+# main boots QEMU and never runs here, so check its shape instead: the last
+# thing it does is mark the run complete, or every good run reads as interrupted.
+[[ $(declare -f main | grep -v '^}' | tail -1) == *'completed=1'* ]] \
+  || fail 'main: completed=1 must be its last statement'
+declare -f main | grep -qF "trap 'exit 2' INT TERM HUP" || fail 'main: a signal must exit 2 so finish runs'
 
 # The branch and URL reach the VM's shell quoted, never spliced in.
 script=$(remote_install_script "a';touch /x;'" 'u r')
