@@ -230,6 +230,8 @@ if ((skipped)); then
   printf '  %s\n' "${skipped_parts[@]/#/$conf/}"
   printf 'The session will not be c7shell until they are replaced:\n'
   printf '  c7shell-setup --force        (backs the current ones up first)\n'
+  printf 'or, to update them in place without losing your edits:\n'
+  printf '  c7shell-upgrade --config-only\n'
   exit 4
 fi
 

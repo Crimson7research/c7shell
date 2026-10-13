@@ -125,7 +125,8 @@ if [[ -z ${skip_bootstrap:-} ]]; then
   # The checkout's own bootstrap first: an older one installed in /usr/bin
   # would ignore a fix in this tree, and may not know the flags passed below.
   bootstrap=${C7SHELL_BOOTSTRAP:-$(dirname -- "$0")/bin/c7shell-bootstrap}
-  [[ -x $bootstrap ]] || bootstrap=$(command -v c7shell-bootstrap)
+  [[ -x $bootstrap ]] || bootstrap=$(command -v c7shell-bootstrap) \
+    || { echo 'install.sh: no c7shell-bootstrap, neither in this checkout nor on PATH' >&2; exit 1; }
   rc=0
   "$bootstrap" ${bootstrap_args[@]+"${bootstrap_args[@]}"} || rc=$?
   # 3 is a declined plan: stop here rather than build a package for a machine

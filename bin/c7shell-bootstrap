@@ -48,8 +48,8 @@ system services, and the optional programs the keybinds expect.
   -h, --help       this text
 
 Nothing is installed, enabled or written until you confirm the plan.
-exit: 0 done, 2 bad option, 3 you declined the plan (or there was no
-      terminal to ask on and no --yes)
+exit: 0 done, 1 not an Arch system, 2 bad option or run as root,
+      3 you declined the plan (or there was no answer to read and no --yes)
 USAGE
 }
 
