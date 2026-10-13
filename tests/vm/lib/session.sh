@@ -38,7 +38,8 @@ kill -KILL "$old"
 back=
 for _ in $(seq 60); do
   sleep 1
-  new=$(pgrep -P "$sup" -x "qs|quickshell" | head -1)
+  # Between the old shell and the new one there is no child: not an error.
+  new=$(pgrep -P "$sup" -x "qs|quickshell" | head -1) || true
   if [[ -n $new && $new != "$old" ]] && hyprctl layers | grep -q 'namespace: c7shell-bar' \
      && pgrep -u "$(id -u)" -f '/c7-authd$' | grep -qvx "$old_authd"; then back=1; break; fi
 done
