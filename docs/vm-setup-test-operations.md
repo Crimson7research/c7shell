@@ -72,7 +72,7 @@ Each run has its own directory, `$C7VT_CACHE/runs/<timestamp>-<branch>/`. It hol
   - The `c7shell-bar` layer is mapped.
   - `c7shell-doctor` exits 0.
   - The user journal has no QML errors.
-  - `c7shell-session` runs, and after `kill -SEGV` on `qs` a new shell maps the bar and `c7-authd` is back within 60 s.
+  - `c7shell-session` runs, and after `kill -KILL` on its `qs` child a new shell maps the bar and a new `c7-authd` starts within 60 s. (On SIGSEGV quickshell relaunches itself inside the same process, so SIGKILL is what tests the supervisor.)
 
 ## 4. Screenshots and keyboard: QMP
 
