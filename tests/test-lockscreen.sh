@@ -250,8 +250,8 @@ layered=$(grep -cE '^\s*zindex = 1$' "$conf")
 # --- suspend waits for the lock, and a dead lock can be replaced ------------
 # before_sleep_cmd only asks for a lock; c7shell-lock can take seconds before
 # hyprlock maps (the overlay render, the fprintd probe). inhibit_sleep = 3 holds
-# the sleep until the session is actually locked, so resume never shows the
-# desktop. Spelled out rather than left to hypridle's "auto", which guesses
+# the sleep until the session is actually locked -- up to logind's
+# InhibitDelayMaxSec (5 s by default), after which it suspends anyway. Spelled out rather than left to hypridle's "auto", which guesses
 # from whether lock_cmd mentions hyprlock.
 idle=$here/../hypr/hypridle.conf
 grep -qE '^\s*inhibit_sleep\s*=\s*3\s*$' "$idle" \
@@ -520,7 +520,6 @@ grep -q 'Traceback' "$lockdir/err" && fail "a missing hyprlock ends in a traceba
 grep -qi 'hyprlock' "$lockdir/notified" 2>/dev/null \
   || fail 'a missing hyprlock was not shown to the person at the screen'
 mv "$lockdir/hyprlock.away" "$lockdir/bin/hyprlock"; rm -f "$lockdir/bin/notify-send"
-
 
 command -v hyprlock >/dev/null || {
   echo 'SKIP: hyprlock not installed, only the file itself was checked'
