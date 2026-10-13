@@ -392,8 +392,9 @@ direction, at the cost of more `.new` files on the first run.
 
 `--package-only` and `--config-only` run one half. To replace your copies
 outright instead, `c7shell-setup --force` still backs them up to
-`.bak-<stamp>` first; without `--force` it refuses and exits 3, so it can never
-eat local edits by accident.
+`.bak-<stamp>` first; without `--force` it leaves every existing part alone,
+so it can never eat local edits by accident. It exits 3 when it copied nothing
+and 4 when it copied only some parts.
 
 ## What is where
 

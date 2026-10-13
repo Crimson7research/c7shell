@@ -669,6 +669,18 @@ case "${1-}" in
       # links here and the shell opens it in $TERMINAL.
       merge)
         f=${2-}
+        # c7up-root refuses to write these (see check_not_privileged_config
+        # there); say so before the user spends a three-pane merge on one.
+        case $f in
+          /etc/sudoers|/etc/sudoers.d/*|/etc/shadow|/etc/gshadow|/etc/passwd|/etc/group \
+          |/etc/pam.d/*|/etc/polkit-1/*)
+            printf '%s decides who gets root, so it is not merged here.\n' "$f"
+            case $f in
+              /etc/sudoers*) printf 'merge it in a terminal: sudo visudo -f %s  (compare with %s.pacnew)\n' "$f" "$f" ;;
+              *) printf 'merge it in a terminal: sudo %s %s %s.pacnew\n' "${DIFFPROG:-vimdiff}" "$f" "$f" ;;
+            esac
+            exit 2 ;;
+        esac
         if prog=$(merge_prog); then
           # The editor runs as the user, on a copy. /etc is root-owned, so a
           # merge run as the user opens fine and then cannot save -- and

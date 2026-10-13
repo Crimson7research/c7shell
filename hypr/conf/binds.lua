@@ -68,7 +68,7 @@ hl.bind("XF86AudioPrev",  hl.dsp.exec_cmd("playerctl previous"),   { locked = tr
 
 -- c7shell: lock, launcher, capture (targets land as the shell modules merge;
 -- until then the ipc calls are harmless no-ops with an error on stderr)
-hl.bind(mainMod .. " + L",     hl.dsp.exec_cmd("c7shell-lock"))
+hl.bind(mainMod .. " + L",     hl.dsp.exec_cmd("pidof hyprlock || c7shell-lock"), { locked = true })
 hl.bind(mainMod .. " + SPACE", hl.dsp.exec_cmd("qs -c c7shell ipc call launcher toggle"))
 hl.bind("Print",               hl.dsp.exec_cmd("qs -c c7shell ipc call capture toggle"))
 hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd("qs -c c7shell ipc call recording toggle"))

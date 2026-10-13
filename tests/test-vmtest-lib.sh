@@ -152,8 +152,30 @@ set +e; ( phase host 5 host_step ) >/dev/null 2>&1; s=$?; set -e
 # finish must report PASS even when stopping the VM fails.
 mkdir -p "$tmp/frun"; : > "$results/summary.txt"
 vm_stop() { return 1; }
-( run=$tmp/frun keep=1; true; finish ) >/dev/null 2>&1 || fail 'finish: a failed vm_stop must not fail a pass'
+( run=$tmp/frun keep=1 completed=1; true; finish ) >/dev/null 2>&1 || fail 'finish: a failed vm_stop must not fail a pass'
 grep -qx PASS "$results/summary.txt" || fail 'finish: must write PASS'
+
+# A run stopped from outside before the last phase is not a pass, even when
+# the shell exits 0, and it is a host problem (exit 2), not a test failure.
+: > "$results/summary.txt"
+set +e; ( run=$tmp/frun keep=1; unset completed; true; finish ) >/dev/null 2>&1; s=$?; set -e
+grep -qx PASS "$results/summary.txt" && fail 'finish: an unfinished run must not write PASS'
+grep -qx 'FAIL: interrupted' "$results/summary.txt" || fail 'finish: an unfinished run must say it was interrupted'
+[[ $s == 2 ]] || fail "finish: an interrupted run must exit 2, got $s"
+# main boots QEMU and never runs here, so check its shape instead: the last
+# thing it does is mark the run complete, or every good run reads as interrupted.
+[[ $(declare -f main | grep -v '^}' | tail -1) == *'completed=1'* ]] \
+  || fail 'main: completed=1 must be its last statement'
+declare -f main | grep -qF "trap 'exit 2' INT TERM HUP" || fail 'main: a signal must exit 2 so finish runs'
+
+# A reboot is a new boot id. The same id, or no answer at all, is not one yet.
+vm_ssh() { cat "$tmp/bootid" 2>/dev/null || return 255; }; run=$tmp/frun
+echo aaa > "$tmp/bootid"
+if _rebooted aaa; then fail '_rebooted: the same boot id is not a reboot'; fi
+rm -f "$tmp/bootid"
+if _rebooted aaa; then fail '_rebooted: no answer is not a reboot'; fi
+echo bbb > "$tmp/bootid"
+_rebooted aaa || fail '_rebooted: a new boot id is a reboot'
 
 # The branch and URL reach the VM's shell quoted, never spliced in.
 script=$(remote_install_script "a';touch /x;'" 'u r')

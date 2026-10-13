@@ -282,11 +282,91 @@ grep -q 'MediaPopover' "$real_conf/quickshell/c7shell/shell.qml" \
 grep -q 'MediaPill' "$real_conf/quickshell/c7shell/Modules/Bar/Bar.qml" \
   || fail 'the upgraded Bar.qml does not place MediaPill'
 
+# --- generated files and setup's own rewrites survive an upgrade --------------
+# Each check runs in its own tree, with setup laying it down the way it would on
+# a real machine.
+fresh() {
+  export C7SHELL_SHARE=$tmp/$1/share XDG_CONFIG_HOME=$tmp/$1/conf C7SHELL_STATE=$tmp/$1/state
+  mkdir -p "$C7SHELL_SHARE"/{hypr,quickshell/c7shell,xdg-desktop-portal}
+  ship quickshell/c7shell/shell.qml 'v1 shell'
+}
+saved=("$C7SHELL_SHARE" "$XDG_CONFIG_HOME" "$C7SHELL_STATE")
+
+# The lock palette is written by the theme exporter, never shipped. An install
+# whose manifest claimed it (every setup before this fix) must keep it.
+fresh palette
+ship hypr/hyprland.lua 'v1'
+"$setup" >/dev/null
+printf '$accent = rgb(1,2,3)\n' > "$XDG_CONFIG_HOME/hypr/hyprlock-palette.conf"
+printf 'hypr/hyprlock-palette.conf\t%s\n' "$(sha256sum < "$XDG_CONFIG_HOME/hypr/hyprlock-palette.conf" | cut -d' ' -f1)" \
+  >> "$C7SHELL_STATE/manifest"
+out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
+[[ -f $XDG_CONFIG_HOME/hypr/hyprlock-palette.conf ]] \
+  || fail "the upgrade deleted the generated lock palette:\n$out"
+
+# Setup points hyprlock.conf at the real palette when the config dir is not
+# ~/.config. The upgrade must compare against the same rewrite, or it "updates"
+# the file back to a path that does not exist.
+fresh lockpath
+ship hypr/hyprlock.conf 'source = $HOME/.config/hypr/hyprlock-palette.conf'
+"$setup" >/dev/null
+want="source = $XDG_CONFIG_HOME/hypr/hyprlock-palette.conf"
+local_is hypr/hyprlock.conf "$want"
+out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
+grep -q 'hyprlock.conf' <<<"$out" && fail "the rewritten hyprlock.conf read as changed:\n$out"
+local_is hypr/hyprlock.conf "$want"
+
+# Shipped files are written whole: through a temp file and a rename, keeping the
+# shipped mode, and never leaving the temp file behind.
+fresh atomic
+ship hypr/hyprland.lua 'v1'
+"$setup" >/dev/null
+inode=$(stat -c %i "$XDG_CONFIG_HOME/hypr/hyprland.lua")
+ship hypr/hyprland.lua 'v2'
+ship quickshell/c7shell/bin/run.sh '#!/bin/sh'
+chmod +x "$C7SHELL_SHARE/quickshell/c7shell/bin/run.sh"
+out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
+local_is hypr/hyprland.lua 'v2'
+# A new inode is a rename; writing in place keeps the old one.
+[[ $(stat -c %i "$XDG_CONFIG_HOME/hypr/hyprland.lua") != "$inode" ]] \
+  || fail 'hyprland.lua was rewritten in place, not renamed into place'
+[[ -x $XDG_CONFIG_HOME/quickshell/c7shell/bin/run.sh ]] || fail "an added script lost its exec bit:\n$out"
+leftover=$(find "$XDG_CONFIG_HOME" "$C7SHELL_STATE" -name '*.tmp.*')
+[[ -z $leftover ]] || fail "temp files left behind:\n$leftover"
+
+# A symlinked config (stow, chezmoi) is updated at its target and stays a link.
+fresh symlink
+ship hypr/hyprland.lua 'v1'
+"$setup" >/dev/null
+mkdir -p "$tmp/dotfiles"
+mv "$XDG_CONFIG_HOME/hypr/hyprland.lua" "$tmp/dotfiles/hyprland.lua"
+ln -s "$tmp/dotfiles/hyprland.lua" "$XDG_CONFIG_HOME/hypr/hyprland.lua"
+ship hypr/hyprland.lua 'v2'
+out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
+[[ -L $XDG_CONFIG_HOME/hypr/hyprland.lua ]] || fail "the upgrade replaced a symlinked config with a plain file:\n$out"
+[[ $(cat "$tmp/dotfiles/hyprland.lua") == v2 ]] || fail "the symlink's target was not updated:\n$out"
+# An edited symlinked config taken over with --take-shipped keeps a real backup
+# of the edit: a backup that is just another link would follow the target to
+# the shipped bytes.
+printf 'mine\n' > "$tmp/dotfiles/hyprland.lua"
+ship hypr/hyprland.lua 'v3'
+out=$("$upgrade" --config-only --no-doctor --no-greeter --take-shipped 2>&1) || true
+bak=$(find "$XDG_CONFIG_HOME/hypr" -name 'hyprland.lua.bak-*' | head -1)
+[[ -n $bak && ! -L $bak && $(cat "$bak") == mine ]] \
+  || fail "the backup of an edited symlinked config lost the edit:\n$out\n$(ls -l "$XDG_CONFIG_HOME/hypr")"
+[[ $(cat "$tmp/dotfiles/hyprland.lua") == v3 ]] || fail "--take-shipped did not reach the symlink's target:\n$out"
+
+export C7SHELL_SHARE=${saved[0]} XDG_CONFIG_HOME=${saved[1]} C7SHELL_STATE=${saved[2]}
+
 # --- the shell restart --------------------------------------------------
 # A change under quickshell/ leaves the running shell half-migrated, so the
 # upgrade restarts it. The instance is matched by config path: this test tree
 # is a temporary $XDG_CONFIG_HOME that no quickshell is running, and the
 # developer's own shell -- which very much is running -- must survive the suite.
+# A qs that runs nothing, so this does not depend on whether the machine
+# running the suite has quickshell installed: without one on PATH the step is
+# skipped and never says anything.
+printf '#!/bin/sh\nexit 0\n' > "$tmp/bin/qs"; chmod +x "$tmp/bin/qs"
 ship quickshell/c7shell/shell.qml 'v9 shell'
 out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
 grep -q 'update  quickshell/c7shell/shell.qml' <<<"$out" || fail "the shell file was not updated:\n$out"

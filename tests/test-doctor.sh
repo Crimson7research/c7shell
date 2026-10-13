@@ -771,4 +771,17 @@ grep -q 'FAIL.*hyprpolkitagent' <<<"$out" \
   && fail "still starting the old agent was reported as a failure; it is not:\n$out"
 printf 'hl.exec_cmd("/usr/lib/pam_kwallet_init")\n' > "$conf/hypr/conf/autostart.lua"
 
+# --- --fix re-checks with the flags it was given, not all of them ------------
+# The flags default to 0, and ${quiet:+--quiet} expands for "0" as much as for
+# "1", so the re-check used to run --quiet --setup-pending --optional whatever
+# was asked. A sudo that "installs" grim lets the re-check pass.
+rm -f "$bin/grim"
+printf '#!/bin/sh\nprintf "#!/bin/sh\\nexit 0\\n" > "%s/grim"; chmod +x "%s/grim"\n' "$bin" "$bin" > "$bin/sudo"
+chmod +x "$bin/sudo"; stub pacman
+ln -s "$(command -v chmod)" "$bin/chmod"; ln -s /usr/bin/bash "$bin/bash"
+out=$(run --fix 2>&1) || fail "--fix did not end in a passing re-check:\n$out"
+grep -q 're-checking' <<<"$out" || fail "--fix did not re-check:\n$out"
+grep -q '^  ok    ' <<<"${out#*re-checking}" || fail "the re-check ran --quiet without being asked:\n$out"
+rm -f "$bin/sudo" "$bin/pacman" "$bin/chmod" "$bin/bash"
+
 echo 'PASS: c7shell-doctor'

@@ -1056,7 +1056,13 @@ if ((fail)) && ((fix)) && ((${#missing_pkgs[@]})); then
       exit 1
     }
     printf '\nre-checking...\n'
-    exec "$0" ${quiet:+--quiet} ${pending:+--setup-pending} ${optional:+--optional}
+    # The flags hold 0 or 1, and ${x:+...} expands for "0" too, so pass on
+    # only the ones that are set.
+    again=()
+    ((quiet)) && again+=(--quiet)
+    ((pending)) && again+=(--setup-pending)
+    ((optional)) && again+=(--optional)
+    exec "$0" ${again[@]+"${again[@]}"}
   fi
 fi
 
