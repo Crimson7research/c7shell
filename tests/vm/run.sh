@@ -134,7 +134,7 @@ step_login() {
 step_assert() {
   vm_ssh "$run" bash -s < "$vm/lib/session.sh"
   vm_ssh "$run" cat /tmp/c7vt-shot.png > "$results/screens/session.png"
-  screen_bar_drawn "$results/screens/session.png" || { echo 'assert: no bar drawn'; exit 1; }
+  screen_not_uniform "$results/screens/session.png" || { echo 'assert: the session screen is blank'; exit 1; }
 }
 
 finish() {

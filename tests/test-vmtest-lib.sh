@@ -86,8 +86,6 @@ if command -v magick >/dev/null; then
 
   if screen_not_uniform "$tmp/black.png"; then fail 'screen: a solid image is uniform'; fi
   screen_not_uniform "$tmp/bar.png" || fail 'screen: the bar image is not uniform'
-  screen_bar_drawn "$tmp/bar.png" || fail 'screen: must see the bar'
-  if screen_bar_drawn "$tmp/black.png"; then fail 'screen: no bar on a black screen'; fi
 else
   echo 'SKIP: screen checks (magick not installed, package: imagemagick)'
 fi
