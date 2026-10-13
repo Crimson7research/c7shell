@@ -100,8 +100,8 @@ echo "\$*" >> "$tmp/launches"
 echo \$! > "$tmp/child"
 rm -f "$tmp/run/wayland-1"; exit 0
 QS
-printf '#!/bin/sh\nexec /usr/bin/sleep "$@"\n' > "$bin/sleep"
-out=$(run) || fail "the supervisor failed:\n$out"
+printf '#!/bin/sh\nexec %s "$@"\n' "$(command -v sleep)" > "$bin/sleep"
+out=$(run) || { kill "$(cat "$tmp/child" 2>/dev/null)" 2>/dev/null; fail "the supervisor failed:\n$out"; }
 child=$(cat "$tmp/child")
 exec 8>"$tmp/run/c7shell-session.lock"
 flock -n 8 || { kill "$child"; fail "the shell's child still holds the supervisor's lock"; }

@@ -25,13 +25,16 @@ fi
 # bar and c7-authd (the polkit agent is the shell's child).
 pgrep -u "$(id -u)" -x c7shell-session >/dev/null || { echo 'assert: c7shell-session is not running'; exit 1; }
 old=$(pgrep -u "$(id -u)" -x qs | head -1)
+old_authd=$(pgrep -u "$(id -u)" -x c7-authd | head -1)
+[[ -n $old_authd ]] || { echo 'assert: c7-authd is not running'; exit 1; }
 kill -SEGV "$old"
 back=
 for _ in $(seq 60); do
   sleep 1
   new=$(pgrep -u "$(id -u)" -x qs | head -1)
   if [[ -n $new && $new != "$old" ]] && hyprctl layers | grep -q 'namespace: c7shell-bar' \
-     && pgrep -u "$(id -u)" -f c7-authd >/dev/null; then back=1; break; fi
+     && authd=$(pgrep -u "$(id -u)" -x c7-authd | head -1) \
+     && [[ -n $authd && $authd != "$old_authd" ]]; then back=1; break; fi
 done
 [[ -n $back ]] || { echo 'assert: the shell did not come back after a crash'; exit 1; }
 grim /tmp/c7vt-shot.png
