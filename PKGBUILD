@@ -197,6 +197,7 @@ package() {
             "$pkgdir/usr/share/$pkgname/quickshell/c7shell/bin/screenshare-picker.sh"
 
   install -Dm755 bin/c7shell-setup "$pkgdir/usr/bin/c7shell-setup"
+  # Autostarted by hypr/conf/autostart.lua; relaunches the shell after a crash.
   install -Dm755 bin/c7shell-session "$pkgdir/usr/bin/c7shell-session"
   # Checks what depends= cannot: the Hyprland version, the QML modules
   # quickshell was built with, the DRM device, and whether the configs have

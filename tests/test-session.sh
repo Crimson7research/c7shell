@@ -84,7 +84,30 @@ esac
 echo "\$*" >> "$tmp/launches"; rm -f "$tmp/run/wayland-1"; exit 0
 QS
 out=$(run) || fail "failed while another shell was running:\n$out"
+[[ $(cat "$tmp/listed" 2>/dev/null) == 2 ]] || fail 'launched while another shell was still running'
 (($(wc -l < "$tmp/launches") == 1)) || fail "expected one launch after the other shell went away, got:\n$(cat "$tmp/launches" 2>&1)"
+
+# --- the lock is not handed to the shell ----------------------------------
+# A child that outlives the session (a tmux server started from a terminal)
+# must not keep the next login's supervisor from getting the lock.
+: > "$tmp/run/wayland-1"; rm -f "$tmp/launches"
+cat > "$bin/qs" <<QS
+#!/bin/sh
+case "\$1" in list) exit 0 ;; esac
+echo "\$*" >> "$tmp/launches"
+# Holds whatever descriptors it was given, for longer than this test runs.
+( exec 0</dev/null 1>/dev/null 2>/dev/null; sleep 30 ) &
+echo \$! > "$tmp/child"
+rm -f "$tmp/run/wayland-1"; exit 0
+QS
+printf '#!/bin/sh\nexec /usr/bin/sleep "$@"\n' > "$bin/sleep"
+out=$(run) || fail "the supervisor failed:\n$out"
+child=$(cat "$tmp/child")
+exec 8>"$tmp/run/c7shell-session.lock"
+flock -n 8 || { kill "$child"; fail "the shell's child still holds the supervisor's lock"; }
+exec 8>&-
+kill "$child" 2>/dev/null || true
+printf '#!/bin/sh\nexit 0\n' > "$bin/sleep"
 
 # --- autostart uses it -----------------------------------------------------
 grep -q 'c7shell-session' "$here/../hypr/conf/autostart.lua" || fail 'autostart does not start the shell through c7shell-session'

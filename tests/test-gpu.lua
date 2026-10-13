@@ -115,7 +115,7 @@ local function autostartLine(driver)
     require("conf/autostart")
     for _, fn in ipairs(rec.start) do fn() end
     for _, cmd in ipairs(rec.exec) do
-      if cmd:find("qs -c c7shell", 1, true) then line = cmd end
+      if cmd:find("c7shell-session", 1, true) then line = cmd end
     end
   end)
   return line or ""
@@ -124,7 +124,7 @@ end
 check("virtual GPU: hyprpaper is not autostarted",
   autostartLine("vmwgfx"):find("hyprpaper", 1, true) ~= nil, false)
 check("virtual GPU: the shell still is",
-  autostartLine("vmwgfx"):find("qs -c c7shell", 1, true) ~= nil, true)
+  autostartLine("vmwgfx"):find("c7shell-session", 1, true) ~= nil, true)
 check("virtual GPU: hypridle still is",
   autostartLine("vmwgfx"):find("hypridle", 1, true) ~= nil, true)
 check("real GPU: hyprpaper is autostarted",

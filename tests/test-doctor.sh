@@ -23,7 +23,7 @@ stub() { printf '#!/bin/sh\nexit 0\n' > "$bin/$1"; chmod +x "$bin/$1"; }
 
 required_cmds=(hyprctl start-hyprland qs hypridle hyprlock hyprpaper hyprpicker grim
                wf-recorder wl-copy notify-send wpctl bluetoothctl nmcli systemctl
-               c7-authd c7-askpass)
+               c7-authd c7-askpass c7shell-session)
 for cmd in "${required_cmds[@]}"; do stub "$cmd"; done
 # Every python import the appmenu daemon needs is reported present.
 stub python3

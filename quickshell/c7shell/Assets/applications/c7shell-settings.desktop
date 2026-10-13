@@ -5,9 +5,8 @@
 # the window lives inside the one qs instance, so there is nothing to spawn.
 # Nothing happens if the shell is not running, which is the same as every
 # other c7shell bind. `-c c7shell` names the config the shell runs under
-# (hypr/conf/autostart.lua starts it as `qs -c c7shell -n` through
-# c7shell-session); without it qs looks
-# for a `default` config that no longer exists and the entry does nothing.
+# (c7shell-session starts it as `qs -c c7shell -n`); without it qs looks for a
+# `default` config that no longer exists and the entry does nothing.
 #
 # Icon=c7shell-settings resolves through the icon theme, from the sibling
 # c7shell-settings.svg symlinked into ~/.local/share/icons/hicolor/scalable/apps.

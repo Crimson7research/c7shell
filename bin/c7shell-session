@@ -46,12 +46,16 @@ while session_alive; do
   if ((${#starts[@]} > max_starts)); then
     notify-send -u critical 'c7shell stopped' \
       "The shell exited ${max_starts} times in a minute, so it is not restarted again. See why with: qs -c c7shell" \
-      2>/dev/null || true
+      2>/dev/null 9>&- || true
     printf 'c7shell-session: the shell keeps exiting; giving up (run qs -c c7shell to see why)\n' >&2
     exit 1
   fi
 
-  QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -c c7shell -n
+  # 9>&-: the lock stays with this process. Inherited, it would be held by
+  # everything the shell starts -- c7-authd, every app from the launcher -- and
+  # one of those outliving the session would keep the next login's supervisor
+  # from ever starting a shell.
+  QT_WAYLAND_DISABLE_WINDOWDECORATION=1 qs -c c7shell -n 9>&-
   status=$?
   session_alive || break
   printf 'c7shell-session: the shell exited with status %s; restarting\n' "$status" >&2
