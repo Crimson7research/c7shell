@@ -68,7 +68,9 @@ Item {
 
     // Both models remember what was used last, which is the whole reason the
     // greeter opens on the right account with the right session preselected.
-    userIndex: userModel.lastIndex >= 0 ? userModel.lastIndex : 0
+    // The account goes over as a name, not as lastIndex: the greeter has to
+    // cope with an account that is not in the list at all. See applyLastUser().
+    lastUser: userModel.lastUser
     sessionIndex: sessionModel.lastIndex >= 0 ? sessionModel.lastIndex : 0
 
     onLoginRequested: function (user, password, sessionIndex) {

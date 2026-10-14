@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Effects
 import qs.Theme
 import qs.Common
 
@@ -278,11 +279,50 @@ Item {
           border.width: 1
           border.color: Theme.alpha(Theme.accent, 0.32)
 
+          // The same avatar the greeter shows. AccountsService keeps it under
+          // the login name, which is where a directory backend drops the photo
+          // it fetched; a local account that never set one simply has no file
+          // and keeps its initials. Only the name polkit resolved is used, and
+          // only if it looks like a login name -- the path must not be able to
+          // point outside that directory.
+          readonly property string user: root.request?.user ?? ""
+          readonly property url picture: /^[a-z0-9._-]+$/.test(avatar.user)
+                                         ? "file:///var/lib/AccountsService/icons/" + avatar.user
+                                         : ""
+          readonly property bool hasPicture: avatar.picture != "" && face.status === Image.Ready
+
           Text {
             anchors.centerIn: parent
-            text: (root.request?.user ?? "").slice(0, 2).toUpperCase()
+            visible: !avatar.hasPicture
+            text: avatar.user.slice(0, 2).toUpperCase()
             font { family: Theme.fontMono; pixelSize: 8; weight: 600 }
             color: Theme.text
+          }
+
+          Image {
+            id: face
+            anchors.fill: parent
+            source: avatar.picture
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            visible: false
+            sourceSize.width: 44
+          }
+
+          MultiEffect {
+            anchors.fill: parent
+            source: face
+            visible: avatar.hasPicture
+            maskEnabled: true
+            maskSource: faceMask
+          }
+
+          Item {
+            id: faceMask
+            anchors.fill: parent
+            layer.enabled: true
+            visible: false
+            Rectangle { anchors.fill: parent; radius: 11; color: "black" }
           }
         }
 

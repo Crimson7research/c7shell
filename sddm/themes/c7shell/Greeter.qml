@@ -13,6 +13,10 @@ FocusScope {
   property var users: null           // userModel: name, realName, icon roles
   property var sessions: null        // sessionModel: name, comment, type roles
   property var layouts: []           // keyboard.layouts, a QList<QObject*>
+  // userModel.lastUser: the account sddm recorded on the last successful
+  // login. A name rather than an index, which is what makes it usable here --
+  // see applyLastUser().
+  property string lastUser: ""
   property int currentLayout: 0
   property bool capsLock: false
   property bool canSuspend: true
@@ -52,6 +56,8 @@ FocusScope {
   // -- state ---------------------------------------------------------------
   property int userIndex: 0
   property int sessionIndex: 0
+  // Whether the last account has been preselected yet; see applyLastUser().
+  property bool lastUserApplied: false
   property bool usersHidden: false    // "hide users" on a multi-user machine
   property bool usersForced: false    // "switch user" on a single-user one
   property bool sessionsOpen: false
@@ -101,6 +107,76 @@ FocusScope {
     return row ? row.shortName : ""
   }
 
+  // Preselect the account that logged in last.
+  //
+  // sddm also offers userModel.lastIndex, but that is an index into a model
+  // the account need not be in. sddm builds the list from NSS and then drops
+  // anything outside Users/MinimumUid..MaximumUid, which defaults to
+  // 1000..60513 -- a directory backend that derives uids by hash lands far
+  // above that (Himmelblau's default range is 200000..2000200000), so the
+  // account enumerates perfectly well and is discarded anyway. lastIndex then
+  // lands on whichever local account happens to be first, which is how
+  // logging out used to hand you somebody else's name.
+  //
+  // Match on the name instead. Names need normalising: NSS may report a
+  // directory account under a short name while sddm recorded the UPN that was
+  // typed, so compare case-insensitively and treat "adriaan" and
+  // "adriaan@crimson7.io" as the same account. When the name really is not in
+  // the list, take the manual row and fill it in -- logging out should return
+  // you to yourself either way.
+  // "ADRIAAN@crimson7.io" and "adriaan" both reduce to "adriaan".
+  function userKey(name) {
+    const n = String(name).toLowerCase()
+    const at = n.indexOf("@")
+    return at > 0 ? n.substring(0, at) : n
+  }
+
+  // Where AccountsService keeps avatars, and where sddm itself looks for one
+  // (it builds "/var/lib/AccountsService/icons/%1" from the login name). The
+  // model's icon role already resolves this for a listed account; this is for
+  // the manual row, where there is no model row to ask. Himmelblau writes the
+  // file under the same short name, so userKey() lands on it.
+  //
+  // The name is typed, so keep it to the characters a login name can have --
+  // a path built from free text has no business reaching outside this
+  // directory. A miss is harmless: Image fails, hasPicture stays false and
+  // the monogram shows instead.
+  function accountsServiceIcon(name) {
+    const key = root.userKey(name)
+    if (key === "" || !/^[a-z0-9._-]+$/.test(key)) return ""
+    return "file:///var/lib/AccountsService/icons/" + key
+  }
+
+  function applyLastUser() {
+    if (root.lastUserApplied || root.lastUser === "") return
+    const want = root.userKey(root.lastUser)
+    for (let i = 0; i < root.userCount; i++) {
+      if (root.userKey(root.userField(i, "name")) === want) {
+        root.userIndex = i
+        root.lastUserApplied = true
+        lastUserFallback.stop()
+        return
+      }
+    }
+    // Not there -- but the models arrive a frame or two after the properties,
+    // so let them settle before concluding the account is unlistable.
+    lastUserFallback.restart()
+  }
+
+  Timer {
+    id: lastUserFallback
+    interval: 250
+    onTriggered: {
+      if (root.lastUserApplied || root.lastUser === "" || !root.allowManualLogin) return
+      root.userIndex = root.userCount      // the manual row
+      usernameInput.text = root.lastUser
+      root.lastUserApplied = true
+      // The name is already filled in, so the password is what is being asked
+      // for -- focus belongs there, not back on the username.
+      field.forceActiveFocus()
+    }
+  }
+
   // Repeater, not Instantiator: Instantiator's objects do not pick up model
   // roles as required properties, and a Repeater's do. The delegates are
   // sizeless and invisible -- they exist to be read by index.
@@ -115,7 +191,10 @@ FocusScope {
       width: 0
       height: 0
     }
-    onCountChanged: root.rowsRevision = root.rowsRevision + 1
+    onCountChanged: {
+      root.rowsRevision = root.rowsRevision + 1
+      root.applyLastUser()
+    }
   }
   Repeater {
     id: sessionRows
@@ -367,9 +446,14 @@ FocusScope {
 
       Avatar {
         anchors.horizontalCenter: parent.horizontalCenter
-        name: root.manual ? "" : root.userField(root.userIndex, "name")
+        // On the manual row there is no model row to read, but there is a
+        // name in the field -- typed, or filled in by applyLastUser() after a
+        // logout. Monogram it and look for its avatar, so returning to your
+        // own account looks like your own account.
+        name: root.manual ? usernameInput.text : root.userField(root.userIndex, "name")
         realName: root.manual ? "" : root.userField(root.userIndex, "realName")
-        picture: root.manual ? "" : root.userField(root.userIndex, "icon")
+        picture: root.manual ? root.accountsServiceIcon(usernameInput.text)
+                             : root.userField(root.userIndex, "icon")
       }
 
       Text {
@@ -594,6 +678,7 @@ FocusScope {
 
   Component.onCompleted: {
     root.applyScale()
+    root.applyLastUser()
     field.forceActiveFocus()
   }
 }
