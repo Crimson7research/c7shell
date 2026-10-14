@@ -16,11 +16,12 @@ You need Arch with VT-x or AMD-V enabled, 16 GB RAM (8 GB minimum), and about
 tests/vm/setup-host.sh
 ```
 
-Before the first build, check `archinstall.json` against the archinstall on
-the pinned ISO: boot the ISO once, run
-`archinstall --config archinstall.json --dry-run`, fix any key it rejects, and
-replace the `disk_config` placeholder with the default ext4 layout on
-`/dev/vda`.
+When you bump `iso.version`, check `archinstall.json` against the archinstall
+on the new pinned ISO: boot the ISO once, run
+`archinstall --config archinstall.json --dry-run`, and fix any key it rejects.
+The committed `disk_config` is a `manual_partitioning` for the test VM's
+`/dev/vda` (1 GiB ESP + ext4 root); keep it in step with whatever that archinstall
+expects.
 
 ## Run a test
 
@@ -41,5 +42,6 @@ Exit codes: `0` pass, `1` test failure, `2` harness or host problem.
 
 ## Known gap
 
-The VM uses virtio-gpu, so the NVIDIA and Intel driver paths of
-`c7shell-bootstrap` are not exercised.
+The VM draws through `virtio-vga` with software rendering (`-display none`),
+so the NVIDIA and Intel driver paths of `c7shell-bootstrap` are not
+exercised.
