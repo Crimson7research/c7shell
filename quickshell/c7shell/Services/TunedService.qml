@@ -257,7 +257,14 @@ Singleton {
   Process {
     id: monitor
 
-    command: ["gdbus", "monitor", "--system", "--dest", root.busName]
+    // setpriv --pdeathsig: ask the kernel to kill this when the shell dies.
+    // quickshell reaps its Processes on a clean exit, but the shell does not
+    // always get one -- when the compositor goes, it loses its wayland
+    // connection and can be torn down before it reaps anything. A surviving
+    // gdbus keeps the logind session scope alive, which leaves the session
+    // `closing` on its VT and strands the next login on the same VT.
+    command: ["setpriv", "--pdeathsig", "SIGTERM",
+              "gdbus", "monitor", "--system", "--dest", root.busName]
     stdout: SplitParser {
       onRead: line => {
         if (line.includes("does not have an owner")) {
