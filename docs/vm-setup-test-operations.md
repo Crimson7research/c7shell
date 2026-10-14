@@ -12,7 +12,7 @@ This is the runbook for the VM setup test in `tests/vm/`. It describes how you r
 ## The three machines
 
 ```
-your machine ──SSH (key)──▶ test laptop (c7@10.249.158.253)
+your machine ──SSH (key)──▶ test laptop (c7@100.85.21.32)
                               │  runs QEMU/KVM
                               ├─ SSH to 127.0.0.1:<port> ─▶ VM (c7test)
                               └─ QMP socket (socat)      ─▶ QEMU: screen + keyboard
@@ -20,7 +20,7 @@ your machine ──SSH (key)──▶ test laptop (c7@10.249.158.253)
 
 ## 1. Your machine to the laptop: SSH
 
-- **Login.** Connect with `ssh -o BatchMode=yes c7@10.249.158.253`. The user installed the developer machine's public key (`~/.ssh/id_ed25519.pub`) with `ssh-copy-id`. With `BatchMode=yes`, SSH fails instead of asking for a password. Never type the password; if key login fails, ask the user to fix it.
+- **Login.** Connect with `ssh -o BatchMode=yes c7@100.85.21.32`. The user installed the developer machine's public key (`~/.ssh/id_ed25519.pub`) with `ssh-copy-id`. With `BatchMode=yes`, SSH fails instead of asking for a password. Never type the password; if key login fails, ask the user to fix it.
 - **Sudo.** `c7` has passwordless sudo through `/etc/sudoers.d/c7`. That lets `setup-host.sh` and `pacman` run over SSH without prompts.
 - **Getting code onto the laptop.** The laptop clones from GitHub:
   - `~/c7shell` tracks `main`.
@@ -29,7 +29,7 @@ your machine ──SSH (key)──▶ test laptop (c7@10.249.158.253)
   After you push, run `git pull` in the matching clone. To try a change before committing, stream it from your worktree; the laptop has no `rsync`:
 
   ```bash
-  tar -C tests -cf - vm | ssh c7@10.249.158.253 'tar -C c7shell-pr/tests -xf -'
+  tar -C tests -cf - vm | ssh c7@100.85.21.32 'tar -C c7shell-pr/tests -xf -'
   ```
 
   Never change the files of a clone while a run uses it. Bash reads a script as it runs, so a swapped file breaks the run. Use a separate clone for a parallel run.
