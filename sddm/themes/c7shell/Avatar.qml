@@ -2,7 +2,9 @@ import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
 
-// The user's face: ~/.face if sddm found one, initials otherwise. The crimson
+// The user's face when one was found, initials otherwise. sddm resolves the
+// model's icon role from /usr/share/sddm/faces and from AccountsService, which
+// is where a directory backend drops the photo it fetched. The crimson
 // gradient disc is the shell's MonogramTile grown up to 76px, with the accent
 // glow the mockup puts behind it.
 Item {

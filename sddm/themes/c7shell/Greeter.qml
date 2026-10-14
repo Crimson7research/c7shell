@@ -131,6 +131,22 @@ FocusScope {
     return at > 0 ? n.substring(0, at) : n
   }
 
+  // Where AccountsService keeps avatars, and where sddm itself looks for one
+  // (it builds "/var/lib/AccountsService/icons/%1" from the login name). The
+  // model's icon role already resolves this for a listed account; this is for
+  // the manual row, where there is no model row to ask. Himmelblau writes the
+  // file under the same short name, so userKey() lands on it.
+  //
+  // The name is typed, so keep it to the characters a login name can have --
+  // a path built from free text has no business reaching outside this
+  // directory. A miss is harmless: Image fails, hasPicture stays false and
+  // the monogram shows instead.
+  function accountsServiceIcon(name) {
+    const key = root.userKey(name)
+    if (key === "" || !/^[a-z0-9._-]+$/.test(key)) return ""
+    return "file:///var/lib/AccountsService/icons/" + key
+  }
+
   function applyLastUser() {
     if (root.lastUserApplied || root.lastUser === "") return
     const want = root.userKey(root.lastUser)
@@ -430,9 +446,14 @@ FocusScope {
 
       Avatar {
         anchors.horizontalCenter: parent.horizontalCenter
-        name: root.manual ? "" : root.userField(root.userIndex, "name")
+        // On the manual row there is no model row to read, but there is a
+        // name in the field -- typed, or filled in by applyLastUser() after a
+        // logout. Monogram it and look for its avatar, so returning to your
+        // own account looks like your own account.
+        name: root.manual ? usernameInput.text : root.userField(root.userIndex, "name")
         realName: root.manual ? "" : root.userField(root.userIndex, "realName")
-        picture: root.manual ? "" : root.userField(root.userIndex, "icon")
+        picture: root.manual ? root.accountsServiceIcon(usernameInput.text)
+                             : root.userField(root.userIndex, "icon")
       }
 
       Text {
