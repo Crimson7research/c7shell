@@ -10,6 +10,11 @@ import QtQuick
 FocusScope {
   id: root
 
+  // Qt Quick defaults activeFocusOnTab to false, which left the greeter with
+  // no focus chain at all -- Tab did nothing. The field is the one thing a
+  // keyboard user must always be able to reach.
+  activeFocusOnTab: true
+
   property string error: ""          // "" = accepting input
   property int attempt: 0            // failures so far
   property int maxAttempts: 3

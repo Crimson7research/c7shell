@@ -237,6 +237,16 @@ FocusScope {
   // Those are instructions, not rejections, so they must not consume an
   // attempt, clear what has been typed, or move the user toward the cooldown.
   // A genuine failure arrives separately, on sddm's loginFailed signal.
+  // The backend asked something we have no answer for: a PIN to enrol, a new
+  // password, a second factor. Put the question up and clear the field, but do
+  // not touch the attempt counter -- nothing has been rejected.
+  function promptAgain(text) {
+    if (text && text !== "") root.showMessage(text)
+    root.message = ""
+    field.clear()
+    field.forceActiveFocus()
+  }
+
   function showMessage(text) {
     root.messages = root.messages.concat([text])
 
@@ -522,6 +532,11 @@ FocusScope {
 
           TextInput {
             id: usernameInput
+            activeFocusOnTab: true
+            // Tab moves on to the secret, which is the order the card is read
+            // in; without this the chain follows declaration order and lands
+            // somewhere arbitrary.
+            KeyNavigation.tab: field
             anchors.fill: parent
             anchors.leftMargin: Theme.px(14)
             anchors.rightMargin: Theme.px(14)

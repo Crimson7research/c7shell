@@ -73,6 +73,13 @@ optdepends=(
   # and a machine running gdm or greetd installs this package just as happily.
   # The theme under /usr/share/sddm/themes is inert without it.
   'sddm: the greeter the c7shell theme styles'
+  # The other way to run the same design. greetd hands the greeter the PAM
+  # conversation one message at a time rather than replaying a single stored
+  # secret, so a mistyped PIN costs one attempt and a second prompt -- enrolling
+  # a PIN, changing an expired password -- reaches the user instead of looping.
+  # cage is the kiosk compositor it runs the greeter inside.
+  'greetd: the login daemon c7shell-greeter talks to'
+  'cage: the compositor greetd runs c7shell-greeter inside'
   'kitty: terminal bound to SUPER+Q'
   'dolphin: file manager bound to SUPER+E, and the capture toast'"'"'s "folder" button (auto-detected; override with shell.json fileManager)'
   # QT_QPA_PLATFORMTHEME=kde (hypr/conf/environment.lua) only means something
@@ -147,6 +154,14 @@ build() {
   # optimisation, not a CMake build type.
   cmake -S plugin -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build build
+
+  # The greetd greeter. greetd speaks only an authentication protocol -- no
+  # user list, no session list, no power actions and no theme config -- so
+  # unlike the sddm theme, which is QML sddm loads itself, this one needs a
+  # binary to supply those and to drive the conversation.
+  cmake -S greetd-greeter -B build-greeter -G Ninja \
+    -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build-greeter
 }
 
 check() {
@@ -247,6 +262,9 @@ package() {
   # and not executable -- it is a library, so it sits with the other non-PATH
   # helpers and the three scripts find it there once installed.
   install -Dm644 share/c7shell-sddm.sh "$pkgdir/usr/lib/c7shell/c7shell-sddm.sh"
+  # The same, for greetd. /etc/greetd/config.toml is system state a package must
+  # not write, so the body lives here and bootstrap/upgrade install it.
+  install -Dm644 share/c7shell-greetd.sh "$pkgdir/usr/lib/c7shell/c7shell-greetd.sh"
   # Sourced from ~/.zshrc and ~/.bashrc (c7shell-setup adds the line): an
   # interactive `sudo CMD` becomes `run0 CMD`, which asks through polkit.
   install -Dm644 share/sudo-run0.sh "$pkgdir/usr/lib/c7shell/sudo-run0.sh"
@@ -278,6 +296,22 @@ package() {
   install -dm755 "$pkgdir/usr/share/sddm/themes"
   cp -a sddm/themes/c7shell "$pkgdir/usr/share/sddm/themes/"
   chmod -R u=rwX,go=rX "$pkgdir/usr/share/sddm/themes/c7shell"
+
+  # The greetd greeter: a binary, and the same QML the sddm theme uses with its
+  # own Main.qml. Main.qml is the only file that differs between the two -- it
+  # is the adapter, and everything it adapts to lives in that one file -- so the
+  # rest is copied from the same source rather than kept twice in the tree.
+  install -Dm755 build-greeter/c7shell-greeter "$pkgdir/usr/bin/c7shell-greeter"
+  install -dm755 "$pkgdir/usr/share/c7shell/greeter"
+  cp -a sddm/themes/c7shell/. "$pkgdir/usr/share/c7shell/greeter/"
+  install -Dm644 greetd-greeter/Main.qml "$pkgdir/usr/share/c7shell/greeter/Main.qml"
+  chmod -R u=rwX,go=rX "$pkgdir/usr/share/c7shell/greeter"
+
+  # Where the greeter remembers the last account. greetd keeps no state of its
+  # own, and the directory must be writable by the greeter user -- which the
+  # greetd package creates, so the ownership is set by c7shell-bootstrap rather
+  # than here.
+  install -dm755 "$pkgdir/var/lib/c7shell-greeter"
 
   # What the greeter's network pill reads. The greeter is QML with no D-Bus
   # binding, running as the sddm user before any session exists, so it cannot
