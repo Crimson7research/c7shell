@@ -47,5 +47,21 @@ Current=c7shell
 # file:// reads unless this is set. Without it the greeter still comes up; the
 # line just loses everything but the session name.
 GreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1
+
+[Users]
+# sddm builds its user list from NSS and then drops anything outside this
+# window. A directory backend that derives uids by hash puts them far above
+# the 60513 default -- Himmelblau's range is 200000-2000200000 -- so an Entra
+# account enumerates perfectly well and is thrown away before it reaches the
+# greeter. Widen the window to cover it.
+MinimumUid=1000
+MaximumUid=2000200000
+
+# Widening it also admits the system accounts that live between the two
+# ranges: nobody at 65534, and a daemon running as a systemd DynamicUser.
+# Filter those by shell rather than by name or uid -- a DynamicUser's uid is
+# assigned at start and moves between reboots, so there is no stable name or
+# number to exclude. Real accounts keep a login shell and are unaffected.
+HideShells=/usr/bin/nologin,/sbin/nologin,/usr/bin/false,/bin/false
 CONF
 }
