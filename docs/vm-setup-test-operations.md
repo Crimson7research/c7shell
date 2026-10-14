@@ -2,12 +2,12 @@
 
 This is the runbook for the VM setup test in `tests/vm/`. It describes how you reach the test laptop, its VMs and their screens, and how to continue the work. For the design, read `docs/superpowers/specs/2026-10-13-vm-setup-test-design.md`. For plain usage, read `tests/vm/README.md`.
 
-## Status on 2026-10-13
+## Status on 2026-10-14
 
-- **Positive run passes.** `tests/vm/run.sh --branch jv/vmtest-laptop-fixes` passed on the laptop: base, install (441 s), greeter (11 s), login (5 s), assert (1 s).
-- **Fixes not merged yet.** The fixes from the laptop runs are on `jv/vmtest-laptop-fixes`, in draft PR Jonohas/c7shell#257. That PR closes Jonohas/c7shell#256 (`install.sh --yes` still prompted). Until it merges, `main` cannot pass the test.
+- **Positive run passes against `main`.** `tests/vm/run.sh --branch main` passed on the laptop at `9f148c4`: base (cached, reused), install (390 s), greeter (11 s), login (5 s), assert (1 s).
+- **Fixes merged.** The laptop fixes landed on `main` through Jonohas/c7shell#257, which closed Jonohas/c7shell#256 (`install.sh --yes` still prompted). A run stopped from outside now reports `FAIL: interrupted`, not `PASS` (Jonohas/c7shell#266, closing #267).
 - **Negative run passes.** On a throwaway branch where `c7shell-setup` exits 1, the run reported `FAIL: install`. `PKGBUILD check()` caught the break before the package installed. The throwaway branch is deleted.
-- **Open:** Jonohas/c7shell#254 tracks the laptop verification. One item is left: once #257 merges, run against `main` to confirm.
+- **Verification complete.** Jonohas/c7shell#254 (the laptop-verification tracker) is closed: every acceptance criterion held, including the post-merge `main` run above.
 
 ## The three machines
 
