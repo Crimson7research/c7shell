@@ -17,7 +17,9 @@ conf=$tmp/conf
 mkdir -p "$bin" "$root" "$conf"
 
 # The doctor itself needs these to run under a PATH with nothing else on it.
-for helper in grep head date stat; do ln -s "$(command -v "$helper")" "$bin/$helper"; done
+# readlink: display-manager.service is a symlink, and which greeter runs is the
+# only unambiguous way to read it -- several display managers can be installed.
+for helper in grep head date stat readlink; do ln -s "$(command -v "$helper")" "$bin/$helper"; done
 
 stub() { printf '#!/bin/sh\nexit 0\n' > "$bin/$1"; chmod +x "$bin/$1"; }
 
@@ -404,47 +406,53 @@ grep -q 'runs c7shell-lock, which is not installed' <<<"$out" \
 rm -f "$bin/c7shell-lock" "$conf/hypr/conf/binds.lua"
 printf 'general {\n    ignore_empty_input = true\n}\n' > "$conf/hypr/hyprlock.conf"
 
-# --- the greeter theme -----------------------------------------------------
-# The theme QML comes with the package; the selection is a drop-in in
-# /etc/sddm.conf.d that c7shell-bootstrap or c7shell-upgrade writes. Every
-# state here is a warning: a machine may run another display manager and the
-# session works regardless.
-out=$(run 2>&1) || fail "an sddm-less machine should not fail:\n$out"
-grep -q 'sddm is not installed' <<<"$out" || fail "no note about the unused theme:\n$out"
+# --- the greeter -----------------------------------------------------------
+# The greeter binary and its QML come with the package; which greeter greetd
+# runs is /etc/greetd/config.toml, written by c7shell-bootstrap or
+# c7shell-upgrade. Every state here is a warning: the session works regardless
+# of what is on the login screen.
+out=$(run 2>&1) || fail "a machine without the greeter should not fail:\n$out"
+grep -q 'c7shell-greeter is not installed' <<<"$out" \
+  || fail "the missing greeter binary was not reported:\n$out"
 
-stub sddm   # sddm here, theme not: the package needs rebuilding
-out=$(run 2>&1) || fail "a missing theme should not fail:\n$out"
-grep -q 'themes/c7shell is not' <<<"$out" || fail "the missing theme was not reported:\n$out"
-grep -q 'c7shell-upgrade' <<<"$out" || fail "no repair command for the missing theme:\n$out"
+mkdir -p "$root/usr/bin" "$root/usr/share/c7shell/greeter" "$root/etc/greetd" \
+         "$root/etc/systemd/system"
+: > "$root/usr/bin/c7shell-greeter"; chmod +x "$root/usr/bin/c7shell-greeter"
+out=$(run 2>&1) || fail "a greeter without QML should not fail:\n$out"
+grep -q 'greeter QML is missing' <<<"$out" || fail "the missing QML was not reported:\n$out"
 
-mkdir -p "$root/usr/share/sddm/themes/c7shell" "$root/etc/sddm.conf.d" "$root/usr/bin"
-: > "$root/usr/share/sddm/themes/c7shell/Main.qml"
-theme_meta=$root/usr/share/sddm/themes/c7shell/metadata.desktop
-printf '[SddmGreeterTheme]\nName=c7shell\nQtVersion=6\nMainScript=Main.qml\n' > "$theme_meta"
-# The binary sddm derives from QtVersion, and an ldd that reports its libraries
-# resolve -- what a machine that will actually show a login screen looks like.
-: > "$root/usr/bin/sddm-greeter-qt6"; chmod +x "$root/usr/bin/sddm-greeter-qt6"
-printf '#!/bin/sh\nexit 0\n' > "$bin/ldd"; chmod +x "$bin/ldd"
-out=$(run 2>&1) || fail "an unselected theme should not fail:\n$out"
-grep -q 'no sddm theme is selected' <<<"$out" || fail "the unselected theme was not reported:\n$out"
+: > "$root/usr/share/c7shell/greeter/Main.qml"
+out=$(run 2>&1) || fail "an unconfigured greetd should not fail:\n$out"
+grep -q 'greetd has nothing to run' <<<"$out" || fail "the missing config was not reported:\n$out"
+grep -q 'c7shell-upgrade' <<<"$out" || fail "no repair command for the missing config:\n$out"
 
-printf '[Theme]\nCurrent=breeze\n' > "$root/etc/sddm.conf"
-out=$(run 2>&1) || fail "another theme should not fail:\n$out"
-grep -q 'set to the "breeze" theme' <<<"$out" || fail "another theme was not reported:\n$out"
+printf 'command = "cage -s -- /usr/bin/some-other-greeter"\n' > "$root/etc/greetd/config.toml"
+out=$(run 2>&1) || fail "another greeter should not fail:\n$out"
+grep -q 'other than the c7shell greeter' <<<"$out" || fail "another greeter was not reported:\n$out"
 
-# Selected, but without the greeter environment the kernel and battery readouts
-# are silently empty -- worth saying, since nothing else shows it.
-printf '[Theme]\nCurrent=c7shell\n' > "$root/etc/sddm.conf.d/10-c7shell.conf"
-rm -f "$root/etc/sddm.conf"
-out=$(run 2>&1) || fail "a selected theme should not fail:\n$out"
-grep -q 'uses the c7shell greeter theme' <<<"$out" || fail "the selection was not recognised:\n$out"
-grep -q 'QML_XHR_ALLOW_FILE_READ' <<<"$out" || fail "the missing greeter env was not reported:\n$out"
+printf 'command = "cage -s -- /usr/bin/c7shell-greeter"\n' > "$root/etc/greetd/config.toml"
+out=$(run 2>&1) || fail "a configured greetd should not fail:\n$out"
+grep -q 'greetd runs the c7shell greeter' <<<"$out" || fail "the config was not recognised:\n$out"
 
-printf '[Theme]\nCurrent=c7shell\n\n[General]\nGreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1\n' \
-  > "$root/etc/sddm.conf.d/10-c7shell.conf"
-out=$(run 2>&1) || fail "a fully configured greeter should not fail:\n$out"
-grep -q 'may read /proc' <<<"$out" || fail "the greeter env was not recognised:\n$out"
-grep -q 'greeter binary sddm-greeter-qt6 runs' <<<"$out" || fail "the greeter binary was not checked:\n$out"
+# cage is the compositor greetd runs the greeter inside; without it the login
+# screen never appears and the reason is only in greetd's journal.
+grep -q 'cage is not installed' <<<"$out" || fail "the missing cage was not reported:\n$out"
+: > "$root/usr/bin/cage"; chmod +x "$root/usr/bin/cage"
+
+# Where the greeter remembers the last account.
+out=$(run 2>&1) || fail "a missing state dir should not fail:\n$out"
+grep -q 'cannot remember the last account' <<<"$out" \
+  || fail "the missing state dir was not reported:\n$out"
+mkdir -p "$root/var/lib/c7shell-greeter"
+
+# A machine on another display manager is told, since the greeter will not run.
+ln -sf /usr/lib/systemd/system/sddm.service \
+  "$root/etc/systemd/system/display-manager.service"
+out=$(run 2>&1) || fail "another display manager should not fail:\n$out"
+grep -q 'display manager is sddm, not greetd' <<<"$out" \
+  || fail "the other display manager was not reported:\n$out"
+ln -sf /usr/lib/systemd/system/greetd.service \
+  "$root/etc/systemd/system/display-manager.service"
 
 # The network pill's only source: nothing publishes the connection without it,
 # and "my greeter shows no wifi" has no other explanation.
@@ -456,28 +464,6 @@ mkdir -p "$root/usr/lib/NetworkManager/dispatcher.d"
 chmod +x "$root/usr/lib/NetworkManager/dispatcher.d/50-c7shell-greeter"
 out=$(run 2>&1) || fail "a present dispatcher should not fail:\n$out"
 grep -q 'greeter network readout' <<<"$out" || fail "the dispatcher was not recognised:\n$out"
-
-# The black-screen case, and the reason this is checked at all: sddm builds the
-# greeter path as sddm-greeter + (QtVersion ? "-qt<n>" : ""), so a theme that
-# declares nothing gets handed to the Qt5 greeter -- present on Arch, but its
-# Qt5 libraries are only an optdepend of sddm. It exits 127 and the login screen
-# is black, with the reason only in sddm's journal. A failure, not a warning:
-# this machine will not let anyone in.
-printf '[SddmGreeterTheme]\nName=c7shell\nMainScript=Main.qml\n' > "$theme_meta"
-rc=0; out=$(run 2>&1) || rc=$?
-((rc == 1)) || fail "a greeter binary that is not installed should fail, got exit $rc:\n$out"
-grep -q 'black screen' <<<"$out" || fail "the black screen was not predicted:\n$out"
-
-# Same, for a binary that is there but cannot load its libraries
-: > "$root/usr/bin/sddm-greeter"; chmod +x "$root/usr/bin/sddm-greeter"
-printf '#!/bin/sh\necho "\tlibQt5Quick.so.5 => not found"\n' > "$bin/ldd"; chmod +x "$bin/ldd"
-rc=0; out=$(run 2>&1) || rc=$?
-((rc == 1)) || fail "an unloadable greeter binary should fail, got exit $rc:\n$out"
-grep -q 'cannot start' <<<"$out" || fail "the unloadable binary was not reported:\n$out"
-grep -q 'declares no QtVersion' <<<"$out" || fail "the missing QtVersion was not named:\n$out"
-
-printf '[SddmGreeterTheme]\nName=c7shell\nQtVersion=6\nMainScript=Main.qml\n' > "$theme_meta"
-printf '#!/bin/sh\nexit 0\n' > "$bin/ldd"; chmod +x "$bin/ldd"
 
 # --- the optional-package picker -------------------------------------------
 # It needs a terminal to prompt on, so drive it through a pty with `script`.

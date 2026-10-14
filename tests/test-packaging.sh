@@ -50,7 +50,7 @@ done
 # A library a bin/ script sources is not a program, so the loop above does not
 # see it -- and an uninstalled one is worse than a missing program: the source
 # fails, `set -e` ends the run, and the user gets a line number instead of a
-# reason. share/c7shell-sddm.sh is the first of these; the check is general so
+# reason. share/c7shell-greetd.sh is the first of these; the check is general so
 # the second one cannot arrive unnoticed.
 # --------------------------------------------------------------------------
 while read -r lib; do

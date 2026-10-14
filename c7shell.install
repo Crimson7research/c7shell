@@ -8,12 +8,11 @@ own user (not root):
 
 Then log out and pick the "c7shell" session in your display manager.
 
-The sddm greeter theme is installed to /usr/share/sddm/themes/c7shell, but
+The c7shell greeter is installed to /usr/bin/c7shell-greeter, but
 selecting it is a write to /etc that a package must not make. c7shell-bootstrap
 does it (see below), or by hand:
 
-    sudo mkdir -p /etc/sddm.conf.d
-    printf '[Theme]\nCurrent=c7shell\n' | sudo tee /etc/sddm.conf.d/10-c7shell.conf
+    sudo c7shell-bootstrap     # writes /etc/greetd/config.toml
 
 If the session does not come up, run:
 
@@ -41,12 +40,12 @@ post_upgrade() {
   # means the c7shell-upgrade that just ran predates it and skipped it. Later
   # versions hand over to the newly installed script for exactly this reason;
   # this one transition needs saying out loud.
-  if [ -d /usr/share/sddm/themes/c7shell ] \
-     && [ ! -e /etc/sddm.conf.d/10-c7shell.conf ] \
-     && [ -x /usr/bin/sddm ]; then
+  if [ -x /usr/bin/c7shell-greeter ] \
+     && [ -x /usr/bin/greetd ] \
+     && ! grep -q c7shell-greeter /etc/greetd/config.toml 2>/dev/null; then
     cat <<'MSG'
 
-The sddm greeter theme is installed but not selected yet. One more run picks it
+The c7shell greeter is installed but greetd is not pointed at it yet. One more run does it
 up (nothing else is rebuilt):
 
     c7shell-upgrade --config-only
@@ -65,7 +64,7 @@ or, to replace your copies outright:
 
     c7shell-setup --force           # backs up ~/.config/{hypr,quickshell} first
 
-c7shell-upgrade also selects the c7shell greeter theme in sddm if nothing else
+c7shell-upgrade also points greetd at the c7shell greeter if nothing else
 has claimed it -- an install from before the theme existed has the files but not
 the selection.
 

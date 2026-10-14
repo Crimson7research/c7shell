@@ -36,9 +36,9 @@ do_doctor=1
 do_greeter=1
 force=0
 
-# The greeter theme lives outside both halves above: the QML ships with the
-# package (under /usr/share/sddm/themes, so a rebuild updates it), but selecting
-# it is a line in /etc/sddm.conf.d that no package may write. An install from
+# The greeter lives outside both halves above: the binary and its QML ship with
+# the package, but which greeter greetd runs is a line in /etc/greetd/config.toml
+# that no package may write. An install from
 # before the theme existed has the files and not the selection, which is exactly
 # the gap this step closes.
 # Bumped whenever a step is added after the package half below, or an existing
@@ -52,8 +52,8 @@ force=0
 # a "restart it yourself" with no command in it, which is precisely the pair of
 # things rev 2 had just fixed.
 upgrade_revision=3
-# The sddm theme parse and the drop-in body, shared with
-# c7shell-bootstrap and c7shell-doctor: share/c7shell-sddm.sh. The repo layout
+# The greetd config body and the display-manager lookup, shared with
+# c7shell-bootstrap and c7shell-doctor: share/c7shell-greetd.sh. The repo layout
 # answers first, so a checkout and the test suite run the copy beside them;
 # an installed script falls through to /usr/lib/c7shell. A missing lib fails
 # the source and `set -e` ends the run, which is right -- c7shell-upgrade
@@ -61,13 +61,11 @@ upgrade_revision=3
 # Pure parameter expansion, no dirname: c7shell-doctor runs its own checks
 # with PATH pointed at a fake tree, where no external command exists yet.
 _c7lib=${C7SHELL_LIB:-${0%/*}/../share}
-[[ -r $_c7lib/c7shell-sddm.sh ]] || _c7lib=/usr/lib/c7shell
-# shellcheck source=../share/c7shell-sddm.sh
-. "$_c7lib/c7shell-sddm.sh"
+[[ -r $_c7lib/c7shell-greetd.sh ]] || _c7lib=/usr/lib/c7shell
+# shellcheck source=../share/c7shell-greetd.sh
+. "$_c7lib/c7shell-greetd.sh"
 
 etc_root=${C7SHELL_ROOT:-}
-sddm_dropin=$etc_root/etc/sddm.conf.d/10-c7shell.conf
-sddm_theme_dir=${C7SHELL_SDDM_THEMES:-$etc_root/usr/share/sddm/themes}/c7shell
 
 usage() {
   cat <<USAGE
@@ -586,38 +584,24 @@ as_root() {
 }
 
 if ((do_greeter)); then
-  step 'greeter theme'
-  current=$(sddm_theme_current "$etc_root")
-  # By path, not by `command -v`: the whole step is prefixed by C7SHELL_ROOT so
-  # it can be exercised against a fake tree, and /usr/share/sddm/themes proves
-  # nothing -- this package creates it whether sddm is installed or not.
-  if [[ ! -x $etc_root/usr/bin/sddm && ! -x $etc_root/usr/bin/sddm-greeter-qt6 ]]; then
-    # A machine on gdm or greetd has no use for the selection, and dropping a
-    # file in /etc/sddm.conf.d for a display manager that is not installed is
-    # just litter.
-    info 'sddm is not installed -- the greeter theme is not selected'
-  elif [[ ! -d $sddm_theme_dir ]]; then
-    # No theme on disk: either sddm is not installed here, or the package this
-    # machine has predates the theme and the package half was skipped.
-    info "no $sddm_theme_dir -- nothing to select"
-    ((do_package)) || info 'run without --config-only to rebuild the package first'
-  elif [[ $current == c7shell ]] && [[ -f $sddm_dropin ]]; then
-    info 'sddm already uses the c7shell theme'
-  elif [[ -n $current && $current != c7shell ]] && [[ ! -f $sddm_dropin ]]; then
-    # Somebody chose that theme; an upgrade is not the place to overrule it.
-    warn "sddm is set to the \"$current\" theme, leaving it alone"
-    info 'to switch, write the drop-in yourself or run: c7shell-bootstrap'
-    greeter_note="sddm still uses the \"$current\" theme"
+  # greetd runs the greeter as a binary rather than loading QML, so there is no
+  # theme to select -- only a config telling greetd what to run.
+  step 'greeter'
+  if [[ ! -x $etc_root/usr/bin/c7shell-greeter ]]; then
+    info 'c7shell-greeter is not installed -- greetd is left alone'
+  elif greetd_is_c7shell "$etc_root"; then
+    info 'greetd already runs the c7shell greeter'
   else
-    info "selecting the c7shell theme in $sddm_dropin"
-    as_root mkdir -p "$etc_root/etc/sddm.conf.d"
+    info "pointing greetd at the c7shell greeter in $GREETD_CONFIG"
     if ((dry)); then
-      printf '  would write %s\n' "$sddm_dropin"
+      printf '  would write %s\n' "$etc_root$GREETD_CONFIG"
     else
-      sddm_dropin_body | as_root tee "$sddm_dropin" >/dev/null \
-        || warn "could not write $sddm_dropin"
+      as_root mkdir -p "$etc_root/etc/greetd"
+      greetd_config_body | as_root tee "$etc_root$GREETD_CONFIG" >/dev/null \
+        || warn "could not write $etc_root$GREETD_CONFIG"
+      as_root install -dm755 -o greeter -g greeter "$etc_root/var/lib/c7shell-greeter" 2>/dev/null \
+        || as_root install -dm755 "$etc_root/var/lib/c7shell-greeter" 2>/dev/null || true
     fi
-    greeter_note='the new greeter theme appears at the next boot (or after: sudo systemctl restart sddm)'
   fi
 fi
 

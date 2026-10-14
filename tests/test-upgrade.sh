@@ -18,7 +18,6 @@ export C7SHELL_SHARE=$tmp/share
 export XDG_CONFIG_HOME=$tmp/conf
 export C7SHELL_STATE=$tmp/state
 export C7SHELL_ROOT=$tmp/root
-export C7SHELL_SDDM_THEMES=$tmp/root/usr/share/sddm/themes
 
 ship() { mkdir -p -- "$(dirname -- "$C7SHELL_SHARE/$1")"; printf '%s\n' "$2" > "$C7SHELL_SHARE/$1"; }
 local_is() { [[ $(cat "$XDG_CONFIG_HOME/$1") == "$2" ]] || fail "$1 should be '$2', is '$(cat "$XDG_CONFIG_HOME/$1")'"; }
@@ -148,60 +147,47 @@ rev=$(sed -n 's/^upgrade_revision=\([0-9]\+\)$/\1/p' "$upgrade" | head -1)
 [[ -n $rev ]] || fail 'upgrade_revision is not a bare "upgrade_revision=<n>" line; the hand-over cannot read it'
 grep -q 'C7SHELL_HANDOVER=1 exec' "$upgrade" || fail 'the hand-over to the newly installed script is gone'
 
-# --- the greeter theme ----------------------------------------------------
-# The theme QML rides along with the package, but the selection is a line in
-# /etc/sddm.conf.d that no package may write -- so an install from before the
-# theme existed has the files and not the selection. Closing that gap is what
-# this step is for.
-dropin=$tmp/root/etc/sddm.conf.d/10-c7shell.conf
+# --- the greeter ----------------------------------------------------------
+# The greeter binary and its QML ride along with the package, but which greeter
+# greetd runs is a line in /etc/greetd/config.toml that no package may write --
+# so an install from before the greeter existed has the files and not the
+# config. Closing that gap is what this step is for.
+greetd_conf=$tmp/root/etc/greetd/config.toml
 
-# A machine with no sddm gets no drop-in at all
+# A machine without the greeter installed is left alone entirely
 out=$("$upgrade" --config-only --no-doctor 2>&1) || true
-grep -q 'sddm is not installed' <<<"$out" || fail "an sddm-less machine was not reported:\n$out"
-[[ -e $dropin ]] && fail 'wrote a drop-in on a machine without sddm'
+grep -q 'c7shell-greeter is not installed' <<<"$out" \
+  || fail "a machine without the greeter was not reported:\n$out"
+[[ -e $greetd_conf ]] && fail 'wrote a greetd config without the greeter installed'
 
-# From here on sddm is present but the theme is not
+# From here on the greeter is present
 mkdir -p "$tmp/root/usr/bin" "$tmp/bin"
-printf '#!/bin/sh\nexit 0\n' > "$tmp/root/usr/bin/sddm"; chmod +x "$tmp/root/usr/bin/sddm"
+printf '#!/bin/sh\nexit 0\n' > "$tmp/root/usr/bin/c7shell-greeter"
+chmod +x "$tmp/root/usr/bin/c7shell-greeter"
 
-# Nothing to select while the theme is not installed
-out=$("$upgrade" --config-only --no-doctor 2>&1) || true
-grep -q 'nothing to select' <<<"$out" || fail "an absent theme was not reported:\n$out"
-[[ -e $dropin ]] && fail 'wrote a drop-in for a theme that is not installed'
-
-# With the theme installed and no selection anywhere, it gets selected
-mkdir -p "$C7SHELL_SDDM_THEMES/c7shell"
-touch "$C7SHELL_SDDM_THEMES/c7shell/Main.qml"
 out=$("$upgrade" --config-only --no-doctor --dry-run 2>&1)
-grep -q "would write $dropin" <<<"$out" || fail "--dry-run did not plan the drop-in:\n$out"
-[[ -e $dropin ]] && fail '--dry-run wrote the drop-in'
+grep -q "would write $greetd_conf" <<<"$out" || fail "--dry-run did not plan the config:\n$out"
+[[ -e $greetd_conf ]] && fail '--dry-run wrote the config'
 
 # For real, with a stub in front of the real sudo: a test must never reach for
 # root, and must never sit on a password prompt either.
 printf '#!/bin/sh\nexec "$@"\n' > "$tmp/bin/sudo"; chmod +x "$tmp/bin/sudo"
 export PATH="$tmp/bin:$PATH"
 out=$("$upgrade" --config-only --no-doctor 2>&1) || true
-grep -q 'selecting the c7shell theme' <<<"$out" || fail "the selection was not attempted:\n$out"
-[[ -f $dropin ]] || fail "the drop-in was not written:\n$out"
-grep -q '^Current=c7shell$' "$dropin" || fail "the drop-in does not select c7shell:\n$(cat "$dropin")"
-grep -q 'GreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1' "$dropin" \
-  || fail "the drop-in does not let the greeter read /proc:\n$(cat "$dropin")"
-
-# Somebody else's theme is left alone: an upgrade does not overrule a choice
-mkdir -p "$tmp/root/etc/sddm.conf.d"
-rm -f "$dropin"
-printf '[Theme]\nCurrent=breeze\n' > "$tmp/root/etc/sddm.conf"
-out=$("$upgrade" --config-only --no-doctor 2>&1) || true
-grep -q 'leaving it alone' <<<"$out" || fail "another theme was not respected:\n$out"
-[[ -e $dropin ]] && fail "overwrote somebody else's theme selection"
+grep -q 'pointing greetd at the c7shell greeter' <<<"$out" \
+  || fail "the config was not written:\n$out"
+[[ -f $greetd_conf ]] || fail "the greetd config was not written:\n$out"
+grep -q 'c7shell-greeter' "$greetd_conf" \
+  || fail "the config does not run our greeter:\n$(cat "$greetd_conf")"
+grep -q 'QML_XHR_ALLOW_FILE_READ=1' "$greetd_conf" \
+  || fail "the config does not let the greeter read /proc:\n$(cat "$greetd_conf")"
 
 # Once ours is in place there is nothing to do, and --no-greeter says nothing
-printf '[Theme]\nCurrent=c7shell\n' > "$dropin"
-rm -f "$tmp/root/etc/sddm.conf"
 out=$("$upgrade" --config-only --no-doctor 2>&1) || true
-grep -q 'already uses the c7shell theme' <<<"$out" || fail "an applied theme was not recognised:\n$out"
+grep -q 'already runs the c7shell greeter' <<<"$out" \
+  || fail "an applied config was not recognised:\n$out"
 out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
-grep -q 'greeter theme' <<<"$out" && fail "--no-greeter still touched the greeter:\n$out"
+grep -qE '^ *greeter$' <<<"$out" && fail "--no-greeter still touched the greeter:\n$out"
 
 # --- the real tree, upgraded from a version that predates a feature --------
 # Everything above runs on a synthetic three-file tree, which proves the merge

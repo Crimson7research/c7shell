@@ -1,7 +1,7 @@
 # Shared by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the greetd
 # config c7shell wants, in one place rather than three copies that drift.
 #
-# This is the greetd counterpart of c7shell-sddm.sh. /etc/greetd/config.toml is
+# /etc/greetd/config.toml is
 # system state, so a package must not write it -- bootstrap does it on a fresh
 # machine and upgrade on an existing one, the same arrangement sddm's drop-in
 # has.
@@ -44,4 +44,19 @@ CONF
 greetd_is_c7shell() {
   local root=${1:-}
   grep -q 'c7shell-greeter' "${root}${GREETD_CONFIG}" 2>/dev/null
+}
+
+# Which display manager the machine is set up to use, as a bare word: greetd,
+# sddm, the name of whatever else owns display-manager.service, or nothing at
+# all. systemd keeps that as a symlink, which is the only place the answer is
+# unambiguous -- several display managers can be installed at once, and more
+# than one can even be enabled.
+c7shell_display_manager() {
+  local root=${1:-}
+  local link=$root/etc/systemd/system/display-manager.service
+  [[ -L $link ]] || return 0
+  local target
+  target=$(readlink "$link" 2>/dev/null) || return 0
+  target=${target##*/}
+  printf '%s\n' "${target%.service}"
 }

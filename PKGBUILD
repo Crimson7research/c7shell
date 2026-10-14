@@ -70,9 +70,8 @@ optdepends=(
   # the battery readout, the idle timings, the charge limit -- carries on.
   'tuned: power profiles in settings -> system -> power'
   # Not a depends=: the greeter is system state that c7shell-bootstrap sets up,
-  # and a machine running gdm or greetd installs this package just as happily.
-  # The theme under /usr/share/sddm/themes is inert without it.
-  'sddm: the greeter the c7shell theme styles'
+  # and a machine running another display manager installs this package just as
+  # happily -- the greeter under /usr/share/c7shell/greeter is simply inert.
   # The other way to run the same design. greetd hands the greeter the PAM
   # conversation one message at a time rather than replaying a single stored
   # secret, so a mistyped PIN costs one attempt and a second prompt -- enrolling
@@ -257,11 +256,10 @@ package() {
   # tuned.service. Same trust boundary and the same place as c7up-root -- a
   # fixed verb, never a command line, and nowhere near anyone's PATH.
   install -Dm755 bin/c7power-root "$pkgdir/usr/lib/c7shell/c7power-root"
-  # Sourced by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the sddm
+  # Sourced by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the
   # theme parse and the drop-in body they all have to agree about. Not on PATH
   # and not executable -- it is a library, so it sits with the other non-PATH
   # helpers and the three scripts find it there once installed.
-  install -Dm644 share/c7shell-sddm.sh "$pkgdir/usr/lib/c7shell/c7shell-sddm.sh"
   # The same, for greetd. /etc/greetd/config.toml is system state a package must
   # not write, so the body lives here and bootstrap/upgrade install it.
   install -Dm644 share/c7shell-greetd.sh "$pkgdir/usr/lib/c7shell/c7shell-greetd.sh"
@@ -287,21 +285,12 @@ package() {
   install -Dm644 share/c7shell.desktop \
     "$pkgdir/usr/share/wayland-sessions/c7shell.desktop"
 
-  # The sddm greeter theme. It cannot travel with the configs above: sddm runs
-  # the greeter as its own user before any session exists, so the QML has to sit
-  # in /usr/share where that user can read it -- c7shell-setup copies nothing
-  # here. Selecting the theme is a line in /etc/sddm.conf.d, which a package must
-  # not write; c7shell-bootstrap does it on a fresh machine and c7shell-upgrade
-  # on an existing one.
-  install -dm755 "$pkgdir/usr/share/sddm/themes"
-  cp -a sddm/themes/c7shell "$pkgdir/usr/share/sddm/themes/"
-  chmod -R u=rwX,go=rX "$pkgdir/usr/share/sddm/themes/c7shell"
 
   # The greetd greeter: a binary, and the same QML the sddm theme uses with its
   # own Main.qml. Main.qml is the only file that differs between the two -- it
   # is the adapter, and everything it adapts to lives in that one file -- so the
   # rest is copied from the same source rather than kept twice in the tree.
-  install -Dm755 build-greeter/c7shell-greeter "$pkgdir/usr/bin/c7shell-greeter"
+  DESTDIR="$pkgdir" cmake --install build-greeter
   install -dm755 "$pkgdir/usr/share/c7shell/greeter"
   cp -a sddm/themes/c7shell/. "$pkgdir/usr/share/c7shell/greeter/"
   install -Dm644 greetd-greeter/Main.qml "$pkgdir/usr/share/c7shell/greeter/Main.qml"
