@@ -86,7 +86,8 @@ Item {
     function onLoginSucceeded() { greeter.loginSucceeded() }
     // sddm sends no reason with this one -- the greeter supplies the wording.
     function onLoginFailed() { greeter.loginFailed("") }
-    // "your account has expired", "password change required", and the like.
-    function onInformationMessage(message) { greeter.loginFailed(message) }
+    // Informational, not a failure: PAM sends these during a *successful*
+    // authentication as well. A real failure arrives on onLoginFailed above.
+    function onInformationMessage(message) { greeter.showMessage(message) }
   }
 }
