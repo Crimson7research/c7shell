@@ -256,6 +256,18 @@ grep -q 'QML_XHR_ALLOW_FILE_READ=1' <<<"$out" \
 # cage is the compositor greetd runs the greeter inside; without it there is
 # no login screen at all.
 grep -q '\bcage\b' <<<"$out" || fail "cage is not in the plan:\n$out"
+# The greeter redirects its stderr into /var/log/c7greeter.log as user
+# `greeter`, and /var/log is root-owned -- so the file has to exist first.
+# Without it the redirect fails before cage is exec'd, greetd sees a greeter
+# that never created a session, and after five tries systemd gives up: a login
+# screen that never draws, with the reason nowhere near the symptom.
+# Match the install, not the path: the path also appears inside the config
+# body as the redirect target, so grepping for it alone passes even with the
+# creation removed -- which is exactly how this shipped broken the first time.
+grep -qE 'would run \(root\): install .*/var/log/c7greeter.log' <<<"$out" \
+  || fail "the greeter's log is not created, so greetd will not start:\n$out"
+grep -qE 'would run \(root\): install .*-o greeter .*-g greeter .*/var/log/c7greeter.log' <<<"$out" \
+  || fail "the greeter's log is not owned by greeter, so the redirect still fails:\n$out"
 
 # --no-greeter-theme: greetd still installed and enabled, config left alone
 out=$(plan "$AMD" --no-greeter-theme)

@@ -168,6 +168,16 @@ mkdir -p "$tree/quickshell/c7shell/scripts/__pycache__"
 touch "$tree/quickshell/c7shell/scripts/__pycache__/planted.cpython-314.pyc"
 run_fn package "$tree"
 expect_ok 'package()'
+# The greeter's log must be created by the package too, for a machine that
+# installs it without running the bootstrap: the greeter writes there as user
+# `greeter` and cannot create the file itself.
+[[ -f $fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf ]] \
+  || fail 'package() does not ship a tmpfiles entry for /var/log/c7greeter.log'
+grep -q '^f /var/log/c7greeter.log .* greeter greeter' \
+  "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf" \
+  || fail "the tmpfiles entry does not create the log owned by greeter:
+$(cat "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf")"
+
 leaked=$(find "$fake/pkg" -name __pycache__)
 [[ -z $leaked ]] || fail "package() ships Python bytecode, which embeds \$srcdir:
 ${leaked//$fake\/pkg/}"

@@ -1,0 +1,11 @@
+# The greeter's log, created before greetd ever starts.
+#
+# The greeter runs as user `greeter` and its stderr is redirected into this
+# file. /var/log is root-owned, so the redirect cannot create it: the shell
+# fails before cage is even exec'd, greetd sees a greeter that exited without
+# creating a session, and after five tries systemd gives up with start-limit-hit
+# -- a login screen that never draws, with the reason nowhere near the symptom.
+#
+# tmpfiles rather than a one-off mkdir in the installer: this also puts the file
+# back after a /var/log cleanup, and gives log rotation somewhere to land.
+f /var/log/c7greeter.log 0600 greeter greeter -

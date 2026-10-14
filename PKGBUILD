@@ -302,6 +302,12 @@ package() {
   # than here.
   install -dm755 "$pkgdir/var/lib/c7shell-greeter"
 
+  # The greeter's log has to exist before greetd starts: the greeter redirects
+  # its stderr there as user `greeter`, and /var/log is root-owned, so the
+  # redirect cannot create it. tmpfiles also restores it after a cleanup.
+  install -Dm644 share/c7shell-greeter.tmpfiles \
+    "$pkgdir/usr/lib/tmpfiles.d/c7shell-greeter.conf"
+
   # What the greeter's network pill reads. The greeter is QML with no D-Bus
   # binding, running as the sddm user before any session exists, so it cannot
   # ask NetworkManager what it is connected to -- this runs as root on every

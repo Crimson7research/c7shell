@@ -499,6 +499,13 @@ if ((greetd_config_todo)); then
   # the greeter user; this has to be writable by it.
   run_root install -dm755 -o greeter -g greeter "$etc_root/var/lib/c7shell-greeter" \
     || run_root install -dm755 "$etc_root/var/lib/c7shell-greeter"
+  # And its log. The greeter redirects stderr here as user `greeter`, and
+  # /var/log is root-owned -- so without this the redirect fails, cage never
+  # starts, and greetd gives up after five tries with nothing on screen. The
+  # package ships a tmpfiles entry for the same file; this covers the window
+  # before the package is installed.
+  run_root install -Dm600 -o greeter -g greeter /dev/null "$etc_root/var/log/c7greeter.log" \
+    || warn 'could not create /var/log/c7greeter.log; the greeter may not start'
   add_note 'the greeter applies at the next boot, once the c7shell package is installed'
 fi
 
