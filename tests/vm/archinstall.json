@@ -105,6 +105,9 @@
     "install -d -m 700 -o 1000 -g 1000 /home/c7test/.ssh",
     "@AUTHORIZED_KEYS@",
     "echo 'c7test ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/c7test",
-    "chmod 440 /etc/sudoers.d/c7test"
+    "chmod 440 /etc/sudoers.d/c7test",
+    "echo 'Server = http://mirror.1ago.be/archlinux/$repo/os/$arch' > /etc/pacman.d/mirrorlist",
+    "echo 'Server = https://ftp.halifax.rwth-aachen.de/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist",
+    "echo 'Server = https://mirror.netcologne.de/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist"
   ]
 }

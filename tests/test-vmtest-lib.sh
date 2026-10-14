@@ -192,4 +192,22 @@ printf '%s\n' '#!/bin/sh' 'cat >/dev/null' \
 chmod +x "$tmp/socat-ev"
 C7VT_SOCAT=$tmp/socat-ev qmp_quit "$tmp/sock" >/dev/null || fail 'qmp: an event mentioning error must not fail'
 
+# --- archinstall.json -------------------------------------------------------
+# The base image's pacman reads /etc/pacman.d/mirrorlist for the whole install
+# phase. The ISO's geo list puts fastly near the top, and one stalled fastly
+# download aborts the transaction even though the other mirrors are fine
+# (#280). So custom_commands pins a short list of mirrors that reach the test
+# host, and the first of those commands overwrites the file.
+cfg=$vm/archinstall.json
+ml=$(jq -r '.custom_commands[] | select(contains("/etc/pacman.d/mirrorlist"))' "$cfg")
+head -n 1 <<<"$ml" | grep -q "' > /etc/pacman.d/mirrorlist" \
+  || fail 'archinstall.json: the pinned mirrorlist must overwrite the ISO list, not append to it'
+got=$(printf '%s\n' "$ml" | sed -E "s/^echo '(.*)' (>>|>).*$/\1/")
+want='Server = http://mirror.1ago.be/archlinux/$repo/os/$arch
+Server = https://ftp.halifax.rwth-aachen.de/archlinux/$repo/os/$arch
+Server = https://mirror.netcologne.de/archlinux/$repo/os/$arch'
+[[ $got == $want ]] || fail "archinstall.json: the pinned mirrorlist must be these mirrors, in order:\n$got"
+grep -q fastly <<<"$ml" \
+  && fail 'archinstall.json: do not pin the mirror that stalls (#280)'
+
 echo 'PASS: vmtest-lib'
