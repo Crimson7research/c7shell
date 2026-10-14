@@ -58,6 +58,14 @@ FocusScope {
   property int attempt: 0
   property int cooldown: 0
   property string message: ""
+  // What PAM has said during this sign-in attempt -- see showMessage() below.
+  property var messages: []
+  // True once PAM is plainly asking for something this greeter cannot give it;
+  // see showMessage(). The panel then tells the user where they can.
+  property bool conversationStuck: false
+  // How many times the same message may repeat before we call it a loop. Two
+  // is a legitimate retry -- mistyped PIN, wrong number -- three is not.
+  readonly property int stuckAfter: 3
 
   readonly property int userCount: root.users ? root.users.count : 0
   readonly property int sessionCount: root.sessions ? root.sessions.count : 0
@@ -130,6 +138,8 @@ FocusScope {
       return
     }
     root.message = ""
+    root.messages = []
+    root.conversationStuck = false
     root.loginRequested(name, field.text, root.sessionIndex)
   }
 
@@ -143,8 +153,28 @@ FocusScope {
     // "third failure adds a 30 s cooldown"
     if (root.attempt >= root.maxAttempts) root.cooldown = root.cooldownSeconds
   }
+  // PAM talks to us during a successful authentication too, not only a failed
+  // one: an MFA number to type into a phone, "set up a PIN", "please wait".
+  // Those are instructions, not rejections, so they must not consume an
+  // attempt, clear what has been typed, or move the user toward the cooldown.
+  // A genuine failure arrives separately, on sddm's loginFailed signal.
+  function showMessage(text) {
+    root.messages = root.messages.concat([text])
+
+    // sddm's greeter protocol carries one secret per login() call, so a PAM
+    // conversation that asks a second question -- enrolling a PIN, changing an
+    // expired password -- cannot be answered from here. PAM re-asks, sddm sends
+    // nothing, and the pair spin forever. The user sees no error and has no way
+    // to know a text console would work. Spot the repetition and say so.
+    var seen = 0
+    for (var i = 0; i < root.messages.length; i++)
+      if (root.messages[i] === text) seen++
+    if (seen >= root.stuckAfter) root.conversationStuck = true
+  }
   function loginSucceeded() {
     root.message = ""
+    root.messages = []
+    root.conversationStuck = false
     root.cooldown = 0
   }
 
@@ -161,6 +191,8 @@ FocusScope {
     if (count < 2) return
     root.userIndex = (root.userIndex + step + count) % count
     root.message = ""
+    root.messages = []
+    root.conversationStuck = false
     field.clear()
     // Moving through a list you cannot see is disorienting, so show it.
     root.usersHidden = false
@@ -185,6 +217,8 @@ FocusScope {
       if (root.cooldown === 0) {
         root.attempt = 0
         root.message = ""
+        root.messages = []
+        root.conversationStuck = false
         field.forceActiveFocus()
       }
     }
@@ -276,10 +310,23 @@ FocusScope {
     onPicked: function (index) {
       root.userIndex = index
       root.message = ""
+      root.messages = []
+      root.conversationStuck = false
       field.clear()
       if (index === root.userCount) usernameInput.forceActiveFocus()
       else field.forceActiveFocus()
     }
+  }
+
+  // Under the card, because what PAM is asking for belongs next to the field
+  // the user is typing into -- not off to one side with the account list.
+  MessagePanel {
+    visible: root.primary && root.messages.length > 0
+    anchors.top: card.bottom
+    anchors.topMargin: Theme.panelGap
+    anchors.horizontalCenter: card.horizontalCenter
+    messages: root.messages
+    stuck: root.conversationStuck
   }
 
   SessionPanel {
@@ -424,6 +471,8 @@ FocusScope {
         maxAttempts: root.maxAttempts
         cooldown: root.cooldown
         onAccepted: root.login()
+        // Clears the failure text, but not the PAM messages: an MFA number has
+        // to stay readable while the user types it into a phone.
         onEdited: if (text !== "") root.message = ""
       }
 
@@ -521,6 +570,8 @@ FocusScope {
     case Qt.Key_Escape:
       field.clear()
       root.message = ""
+      root.messages = []
+      root.conversationStuck = false
       root.sessionsOpen = false
       event.accepted = true
       break
