@@ -177,6 +177,13 @@ grep -q '^f /var/log/c7greeter.log .* greeter greeter' \
   "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf" \
   || fail "the tmpfiles entry does not create the log owned by greeter:
 $(cat "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf")"
+# install -d cannot chown to a user that may not exist at build time, so the
+# state directory's ownership comes from tmpfiles too. Root-owned, the greeter
+# still runs -- it just never remembers an account, and nothing says why.
+grep -q '^d /var/lib/c7shell-greeter .* greeter greeter' \
+  "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf" \
+  || fail "the state directory is not made writable by the greeter:
+$(cat "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf")"
 
 leaked=$(find "$fake/pkg" -name __pycache__)
 [[ -z $leaked ]] || fail "package() ships Python bytecode, which embeds \$srcdir:

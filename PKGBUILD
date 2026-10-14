@@ -297,9 +297,11 @@ package() {
   chmod -R u=rwX,go=rX "$pkgdir/usr/share/c7shell/greeter"
 
   # Where the greeter remembers the last account. greetd keeps no state of its
-  # own, and the directory must be writable by the greeter user -- which the
-  # greetd package creates, so the ownership is set by c7shell-bootstrap rather
-  # than here.
+  # own, so the greeter writes it -- as user `greeter`, which makes a
+  # root-owned directory silently useless: the greeter still runs, it just
+  # never preselects anyone and nothing says why. makepkg cannot chown to a
+  # user that may not exist at build time, so the tmpfiles entry below sets the
+  # ownership instead, and c7shell-bootstrap does it too.
   install -dm755 "$pkgdir/var/lib/c7shell-greeter"
 
   # The greeter's log has to exist before greetd starts: the greeter redirects
