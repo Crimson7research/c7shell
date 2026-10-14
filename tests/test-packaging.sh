@@ -155,4 +155,21 @@ called cmake "DESTDIR=$fake/pkg" --install build \
 run_fn package "$root" STUB_FAIL=--install
 ((rc != 0)) || fail "package() passed while the plugin install failed"
 
+# check() runs this suite in the source tree before package() copies it, and a
+# test that runs a .py script leaves a __pycache__ behind. That bytecode embeds
+# the build's $srcdir (makepkg warns "Package contains reference to $srcdir")
+# and c7shell-setup would copy it into every user's ~/.config. So run package()
+# against a copy of the tree with a planted __pycache__ and require none of it
+# to ship.
+tree=$tmp/tree
+mkdir -p "$tree"
+git -C "$root" ls-files -z | (cd "$root" && xargs -0 cp --parents -t "$tree")
+mkdir -p "$tree/quickshell/c7shell/scripts/__pycache__"
+touch "$tree/quickshell/c7shell/scripts/__pycache__/planted.cpython-314.pyc"
+run_fn package "$tree"
+expect_ok 'package()'
+leaked=$(find "$fake/pkg" -name __pycache__)
+[[ -z $leaked ]] || fail "package() ships Python bytecode, which embeds \$srcdir:
+${leaked//$fake\/pkg/}"
+
 printf 'PASS: packaging (%s programs in bin/)\n' "$(find "$root/bin" -maxdepth 1 -type f | wc -l)"

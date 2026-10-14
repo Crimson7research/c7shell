@@ -187,6 +187,9 @@ package() {
   cp -a hypr quickshell xdg-desktop-portal "$pkgdir/usr/share/$pkgname/"
   # Dev-facing only, and setup copies whatever is here into the user's config.
   rm -rf "$pkgdir/usr/share/$pkgname/quickshell/c7shell/docs"
+  # check() runs the tests in this tree first, and any that runs a .py script
+  # leaves a __pycache__ whose bytecode embeds $srcdir.
+  find "$pkgdir/usr/share/$pkgname" -type d -name __pycache__ -prune -exec rm -rf {} +
   # The preview harness has to live beside shell.qml to resolve `qs.*`, but it
   # is a development tool -- and PreviewRegistry.qml is generated, so a stale
   # one would ship naming components the release no longer has.
