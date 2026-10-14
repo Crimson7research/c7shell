@@ -1,5 +1,7 @@
 #include "core/version.h"
 
+#include "testing/testmain.h"
+
 #include <QtTest/QTest>
 
 // The library reports the version the build was configured with, not a
@@ -15,5 +17,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestVersion)
+C7_TEST_MAIN(TestVersion)
 #include "tst_version.moc"

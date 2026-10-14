@@ -2,6 +2,8 @@
 
 #include <QtCore/QFileInfo>
 #include <QtQml/QQmlEngine>
+#include "testing/testmain.h"
+
 #include <QtTest/QTest>
 
 // `import C7` resolves from one module directory alone, the way the shell finds
@@ -30,5 +32,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestModule)
+C7_TEST_MAIN(TestModule)
 #include "tst_module.moc"
