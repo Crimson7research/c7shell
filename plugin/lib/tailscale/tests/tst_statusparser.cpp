@@ -180,6 +180,30 @@ private slots:
         QCOMPARE(p.displayName, QStringLiteral("xi"));
     }
 
+    // This machine is a device on the tailnet too, and the admin console names
+    // it by its label like any other. selfName fed the panel's own first row
+    // and its copy menu straight from Self.HostName, so the one machine the
+    // person is sitting at was the last one still reading as its OS name.
+    void namesThisDeviceByItsDnsLabelToo()
+    {
+        const auto s = StatusParser::parse(readFixture("status-idle.json"));
+        // The capture's Self is HostName `omega`, DNS label `host-6`.
+        QCOMPARE(s->selfName, QStringLiteral("host-6"));
+        // The fully qualified name is untouched -- the copy menu offers it
+        // whole, root dot and all, and the contract strips only the dot.
+        QCOMPARE(s->selfDnsName, QStringLiteral("host-6.example-tailnet.ts.net."));
+    }
+
+    // The same fallback the peers get, from the same rule: no MagicDNS name,
+    // so the OS hostname is the only name there is.
+    void fallsBackToThisDevicesHostNameWithoutMagicDns()
+    {
+        const auto s = StatusParser::parse(
+                QByteArrayLiteral("{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"omega\"}}"));
+        QVERIFY(s.has_value());
+        QCOMPARE(s->selfName, QStringLiteral("omega"));
+    }
+
     void joinsExitNodeNameFromItsPeer()
     {
         const auto s = StatusParser::parse(readFixture("status-exitnode.json"));

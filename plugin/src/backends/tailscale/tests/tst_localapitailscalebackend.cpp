@@ -178,10 +178,10 @@ private slots:
         LocalApiTailscaleBackend b(socketPath());
         QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
         QTRY_COMPARE(b.peers()->rowCount(), 20);
-        QCOMPARE(b.selfName(), QStringLiteral("omega"));
+        QCOMPARE(b.selfName(), QStringLiteral("host-6"));
         QCOMPARE(b.selfIp4(), QStringLiteral("100.115.228.122"));
         // The contract strips the root dot tailscaled qualifies Self with.
-        QCOMPARE(b.selfDnsName(), QStringLiteral("omega.example-tailnet.ts.net"));
+        QCOMPARE(b.selfDnsName(), QStringLiteral("host-6.example-tailnet.ts.net"));
         QCOMPARE(b.tailnet(), QStringLiteral("example.com"));
     }
 

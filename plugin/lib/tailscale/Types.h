@@ -57,6 +57,9 @@ bool precedes(const Peer &a, const Peer &b);
 // What `tailscale status --json` says, reduced to what the shell shows.
 struct Status {
     QString backendState;
+    // This device, named by the same rule as Peer::displayName: the DNS
+    // label, falling back to the OS hostname. It is a device on the tailnet
+    // like any other and the console names it the same way.
     QString selfName;
     QString selfIp4;
     QString selfIp6;

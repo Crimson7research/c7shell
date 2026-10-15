@@ -13,7 +13,7 @@
     "NodeID": 9669637038204153,
     "PublicKey": "nodekey:8c5010ed50ef13261e6f0e587c443911cb7dee0961947fec875d0d3cf363cbb1",
     "HostName": "omega",
-    "DNSName": "omega.example-tailnet.ts.net.",
+    "DNSName": "host-6.example-tailnet.ts.net.",
     "OS": "linux",
     "UserID": 119102982455112,
     "TailscaleIPs": [

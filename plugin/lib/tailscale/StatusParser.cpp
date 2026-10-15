@@ -29,11 +29,19 @@ QString withoutTrailingDot(const QString &dnsName)
     return dnsName.endsWith(QLatin1Char('.')) ? dnsName.chopped(1) : dnsName;
 }
 
-// The name Tailscale itself shows: the first label of the MagicDNS name, with
-// the tailnet's domain dropped. "" when the node has no MagicDNS name at all,
-// which is the caller's cue to fall back to the OS hostname.
-QString firstLabel(const QString &dnsName)
+// The name Tailscale itself shows -- the admin console, the macOS app and
+// MagicDNS all use it: the first label of the MagicDNS name, with the
+// tailnet's domain dropped, falling back to the OS hostname when the node has
+// no MagicDNS name at all.
+//
+// One function for peers AND for Self, deliberately: this device is a device
+// on the tailnet like any other, and two copies of this rule is how one of
+// them ends up naming a machine the way nothing else does. It takes the
+// MagicDNS name either qualified or not, since it cuts at the first dot.
+QString displayNameOf(const QString &dnsName, const QString &hostName)
 {
+    if (dnsName.isEmpty())
+        return hostName;
     const qsizetype dot = dnsName.indexOf(QLatin1Char('.'));
     return dot < 0 ? dnsName : dnsName.left(dot);
 }
@@ -101,7 +109,8 @@ std::optional<Status> StatusParser::parse(const QByteArray &json)
 
     Status s;
     s.backendState = root.value(QLatin1String("BackendState")).toString();
-    s.selfName = self.value(QLatin1String("HostName")).toString();
+    s.selfName = displayNameOf(self.value(QLatin1String("DNSName")).toString(),
+                               self.value(QLatin1String("HostName")).toString());
     s.selfIp4 = addressOf(selfIps, Family::V4);
     s.selfIp6 = addressOf(selfIps, Family::V6);
     s.selfDnsName = self.value(QLatin1String("DNSName")).toString();
@@ -133,9 +142,7 @@ std::optional<Status> StatusParser::parse(const QByteArray &json)
         p.ip6 = addressOf(ips, Family::V6);
         // The MagicDNS name is fully qualified, trailing root dot and all.
         p.dnsName = withoutTrailingDot(peer.value(QLatin1String("DNSName")).toString());
-        // MagicDNS off, or a node that never got a name, leaves DNSName empty
-        // and the OS hostname is then the only name there is.
-        p.displayName = p.dnsName.isEmpty() ? p.hostName : firstLabel(p.dnsName);
+        p.displayName = displayNameOf(p.dnsName, p.hostName);
         p.online = peer.value(QLatin1String("Online")).toBool();
         p.exitNodeOption = peer.value(QLatin1String("ExitNodeOption")).toBool();
         p.group = groupOf(peer, users, selfUserId, &p.ownerName);
