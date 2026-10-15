@@ -152,7 +152,7 @@ run_logged build cmake --build "$build"
 # --no-tests=error only needs one test, so name each one that must run.
 run_logged 'ctest -N' ctest --test-dir "$build" -N
 kit=(tst_privatebus tst_fakeservice tst_fakesocketserver tst_fakeprogram tst_wait tst_isolation)
-for t in tst_version tst_statusparser tst_peermodel tst_module "${kit[@]}"; do
+for t in tst_version tst_statusparser tst_peermodel tst_localapiclient tst_module "${kit[@]}"; do
   grep -qE "Test +#[0-9]+: $t\$" "$log" || { cat "$log" >&2; fail "ctest does not run $t"; }
 done
 run_logged ctest ctest --test-dir "$build" --output-on-failure --no-tests=error

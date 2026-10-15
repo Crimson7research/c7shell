@@ -50,11 +50,16 @@ void FakeSocketServer::onRequest(Handler handler, AfterReply after, const QByteA
 
 int FakeSocketServer::pushLine(const QByteArray &line)
 {
+    return pushChunk(line + '\n');
+}
+
+int FakeSocketServer::pushChunk(const QByteArray &bytes)
+{
     // A copy: a write that fails can disconnect a client, which edits m_clients.
     const QList<QPointer<QLocalSocket>> clients = m_clients;
     int reached = 0;
     for (const QPointer<QLocalSocket> &c : clients) {
-        if (c && c->state() == QLocalSocket::ConnectedState && c->write(line + '\n') == line.size() + 1)
+        if (c && c->state() == QLocalSocket::ConnectedState && c->write(bytes) == bytes.size())
             ++reached;
     }
     return reached;

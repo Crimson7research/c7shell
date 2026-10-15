@@ -49,6 +49,12 @@ public:
     // Send `line` and a newline to every connected client; returns how many.
     int pushLine(const QByteArray &line);
 
+    // Send exactly `bytes` -- no newline added -- to every connected client;
+    // returns how many. What pushLine is built on, and what a test uses to
+    // split one line across two sends: a stream keeps no write boundaries, so
+    // a client that reads lines must cope with half of one arriving alone.
+    int pushChunk(const QByteArray &bytes);
+
     // Every request received, in order.
     QByteArrayList requests() const { return m_requests; }
     int clientCount() const { return m_clients.size(); }

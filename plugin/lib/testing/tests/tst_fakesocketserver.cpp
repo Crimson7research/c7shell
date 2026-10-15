@@ -149,6 +149,23 @@ private slots:
         QCOMPARE(b, QByteArray("workspace>>2\n"));
     }
 
+    void pushesExactlyTheBytesOfAChunk()
+    {
+        // Half a line, then the rest: what a client that reads lines out of a
+        // stream has to survive, and what pushLine alone cannot stage.
+        FakeSocketServer server(path);
+        auto client = connectTo(path);
+        QVERIFY(client);
+        QVERIFY(waitUntil([&] { return server.clientCount() == 1; }));
+
+        QCOMPARE(server.pushChunk("{\"half\":"), 1);
+        QByteArray got;
+        QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g == "{\"half\":"; }));
+        QCOMPARE(server.pushChunk("1}\n"), 1);
+        QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g.endsWith('\n'); }));
+        QCOMPARE(got, QByteArray("{\"half\":1}\n"));
+    }
+
     void saysWhenALineReachedNobody()
     {
         FakeSocketServer server(path);
