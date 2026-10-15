@@ -168,6 +168,11 @@ bool LocalApiClient::readHeaders(QLocalSocket *socket)
     it->chunked = headerValue(head, "transfer-encoding").toLower().contains("chunked");
     // A chunked response carries no Content-Length, and must not be cut to one.
     it->contentLength = it->chunked ? -1 : contentLength(head);
+    // Last, because a slot of watchStarted() may stop the watch and take this
+    // exchange away: nothing may touch `it` after the emit. The callers below
+    // look the exchange up again and do nothing when it has gone.
+    if (it->streaming)
+        emit watchStarted();
     return true;
 }
 

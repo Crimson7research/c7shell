@@ -138,6 +138,62 @@ private slots:
         QCOMPARE(ev.at(0).first().toByteArray(), QByteArrayLiteral("{\"a\":1}"));
     }
 
+    // Nothing else says a watch is up: a get ends in replied, but a watch on a
+    // quiet bus is indistinguishable from one that never connected until it
+    // either sends something or dies.
+    void saysWhenTheWatchIsEstablished()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QStringList order;
+        connect(&c, &LocalApiClient::watchStarted, &c, [&order] {
+            order << QStringLiteral("watchStarted");
+        });
+        connect(&c, &LocalApiClient::event, &c, [&order](const QByteArray &) {
+            order << QStringLiteral("event");
+        });
+        c.watch();
+        QTRY_COMPARE(order, QStringList({QStringLiteral("watchStarted")}));
+        // Once per watch, and ahead of the first notification.
+        server.pushLine(QByteArrayLiteral("{\"a\":1}"));
+        server.pushLine(QByteArrayLiteral("{\"b\":2}"));
+        QTRY_COMPARE(order.size(), 3);
+        QCOMPARE(order.first(), QStringLiteral("watchStarted"));
+        QCOMPARE(order.count(QStringLiteral("watchStarted")), 1);
+    }
+
+    void neverSaysAWatchStartedWhenItWasRefused()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy started(&c, &LocalApiClient::watchStarted);
+        QSignalSpy ended(&c, &LocalApiClient::watchEnded);
+        c.watch();
+        QVERIFY(ended.wait());
+        QCOMPARE(started.count(), 0);
+    }
+
+    // A get is not a stream, however it is framed.
+    void neverSaysAWatchStartedForAGet()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy started(&c, &LocalApiClient::watchStarted);
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        c.get(QStringLiteral("/localapi/v0/prefs"));
+        QVERIFY(replied.wait());
+        QCOMPARE(started.count(), 0);
+    }
+
     void neverEmitsAPartialLine()
     {
         FakeSocketServer server(socketPath());

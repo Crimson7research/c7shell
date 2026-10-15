@@ -82,6 +82,26 @@ int requestsFor(const FakeSocketServer &server, const char *path)
     return seen;
 }
 
+// serveFixture's watch answers plain 200, so a pushed line is a notification.
+// This one answers chunked, which makes the stream endable on demand: pushing
+// a final chunk closes it the way tailscaled going away does, leaving the test
+// in charge of *when* an established watch drops.
+void serveEndableWatch(FakeSocketServer &server, const char *statusFixture)
+{
+    server.onRequest(
+            [statusFixture](const QByteArray &request) -> QByteArray {
+                if (request.contains("/localapi/v0/watch-ipn-bus"))
+                    return QByteArrayLiteral("HTTP/1.1 200 OK\r\n"
+                                             "Transfer-Encoding: chunked\r\n\r\n");
+                if (request.contains("/localapi/v0/suggest-exit-node"))
+                    return measured(fixture("suggest-exit-node.json"));
+                if (request.contains("/localapi/v0/prefs"))
+                    return measured(fixture("prefs.json"));
+                return chunked(fixture(statusFixture));
+            },
+            FakeSocketServer::KeepOpen, "\r\n\r\n");
+}
+
 // The node id of the peer with this hostname, read out of the same capture the
 // test serves. Never written out as a literal: the redaction randomises every
 // node id, so a literal is stale the moment a fixture is regenerated.
@@ -369,6 +389,63 @@ private slots:
             QCOMPARE(armed.at(attempt).first().toInt(),
                      LocalApiTailscaleBackend::retryDelayMs(attempt, 1));
         }
+    }
+
+    // The three reads succeeding is not a whole connection, and neither is a
+    // watch that is merely accepted. Each pass here completes all three reads
+    // *first* and only then drops an established stream, which is the ordinary
+    // end of a long-lived watch -- tailscaled restarting, or being upgraded
+    // underneath it. Clearing the curve on anything short of a connection that
+    // has held makes every pass attempt zero, and the reconnect runs flat at
+    // the base delay forever: the Critical again, through a different door.
+    //
+    // The reads finish before the stream drops, so nothing here is protected
+    // by the order open() issues its requests in.
+    void theBackoffAdvancesWhenTheWatchKeepsEndingAfterItStarts()
+    {
+        FakeSocketServer server(socketPath());
+        serveEndableWatch(server, "status-idle.json");
+        // One millisecond of base, and the shipped settle period: a stream
+        // dropped the moment it is up has not held, so nothing clears the
+        // curve and no test waits on the settle.
+        LocalApiTailscaleBackend b(socketPath(), 1);
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        for (int pass = 0; pass < 4; ++pass) {
+            // Four requests a pass, and only the watch still connected: the
+            // three reads have been answered and closed.
+            QTRY_COMPARE(server.requests().size(), 4 * (pass + 1));
+            QTRY_COMPARE(server.clientCount(), 1);
+            server.pushChunk(QByteArrayLiteral("0\r\n\r\n")); // the stream ends
+            QTRY_COMPARE(armed.count(), pass + 1);
+            QCOMPARE(armed.at(pass).first().toInt(),
+                     LocalApiTailscaleBackend::retryDelayMs(pass, 1));
+        }
+    }
+
+    // The other half of that rule: a connection that does hold starts the
+    // curve over, so a daemon that comes back after an outage is not retried
+    // at the cap next time.
+    void aConnectionThatHoldsClearsTheBackoff()
+    {
+        // Nothing listening yet, so the curve climbs first.
+        LocalApiTailscaleBackend b(socketPath(), 1, 1);
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        QTRY_VERIFY(armed.count() >= 3);
+
+        FakeSocketServer server(socketPath());
+        serveEndableWatch(server, "status-idle.json");
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QTRY_COMPARE(server.clientCount(), 1);
+        // A one-millisecond settle, so the connection counts as held almost at
+        // once. Proving it has needs a bounded wait, as proving a negative
+        // does -- the shape tst_localapiclient.cpp already uses.
+        QTest::qWait(50);
+
+        const int before = armed.count();
+        server.pushChunk(QByteArrayLiteral("0\r\n\r\n"));
+        QTRY_COMPARE(armed.count(), before + 1);
+        QCOMPARE(armed.at(before).first().toInt(),
+                 LocalApiTailscaleBackend::retryDelayMs(0, 1));
     }
 
     // tailscaled emits several notifications for one change. While a refresh

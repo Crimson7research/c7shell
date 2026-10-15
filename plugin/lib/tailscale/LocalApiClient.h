@@ -23,10 +23,12 @@ namespace c7::tailscale {
 //
 // One socket per request, so a reply and a running watch never queue behind
 // each other. A get ends in exactly one signal, replied or failed. A watch
-// ends in watchEnded -- preceded by failed, in that order, when it ended
-// because something went wrong, so a caller has both the reason and the
-// trigger to restart on. A watch the caller stops itself is silent, so a
-// caller that reconnects on watchEnded does not fight its own stop().
+// begins with watchStarted, once its response headers have arrived and been
+// accepted, and ends in watchEnded -- preceded by failed, in that order, when
+// it ended because something went wrong, so a caller has both the reason and
+// the trigger to restart on. A watch that is refused outright never emits
+// watchStarted. A watch the caller stops itself is silent, so a caller that
+// reconnects on watchEnded does not fight its own stop().
 //
 // tailscaled answers /status and watch-ipn-bus with Transfer-Encoding:
 // chunked, and /prefs and /suggest-exit-node with a Content-Length, so both
@@ -56,6 +58,15 @@ signals:
     // Why a request ended badly. A watch that fails emits this first and
     // watchEnded straight after, never one without the other.
     void failed(const QString &path, const QString &reason);
+    // The watch's response headers arrived and were accepted: the stream is
+    // up and notifications will follow. Emitted once per watch, before any
+    // event(), and never for a get.
+    //
+    // It exists because nothing else says the stream is established. A caller
+    // that waits for the first event() to decide a watch is working waits on
+    // tailscaled's habit of sending an opening notification, and a quiet bus
+    // may send nothing for hours.
+    void watchStarted();
     // One complete notification. Never a partial line: a line split across two
     // reads is held until the newline arrives.
     void event(const QByteArray &line);
