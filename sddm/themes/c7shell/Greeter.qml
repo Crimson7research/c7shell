@@ -694,6 +694,10 @@ FocusScope {
   Component.onCompleted: {
     root.applyScale()
     root.applyLastUser()
-    field.forceActiveFocus()
+    // Only the primary card takes the keyboard. The greetd greeter also builds
+    // a backdrop-only Greeter, and a hidden item still holds active focus and
+    // receives key events -- so if it completed last, typing went into a field
+    // nobody could see until Tab moved focus on.
+    if (root.primary) field.forceActiveFocus()
   }
 }
