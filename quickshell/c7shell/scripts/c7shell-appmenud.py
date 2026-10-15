@@ -748,6 +748,37 @@ def make_object(daemon, conn):
     return RegistrarObject(conn, REGISTRAR_PATH)
 
 
+def watch_compositor(loop, GLib):
+    """Leave when the compositor that started us does.
+
+    conf/autostart.lua launches this from hyprland's exec-once with `&`, so it
+    is reparented rather than killed when the compositor exits. Everything else
+    started there is a wayland client and dies on its own; this daemon holds no
+    wayland connection, so nothing reaps it.
+
+    That is not merely untidy. The surviving process keeps session-N.scope
+    alive, so logind leaves the session `closing` while it still owns its VT,
+    and the next login lands a second session on the same VT -- two compositors
+    contending for one display, which presents as a frozen screen. Poll for the
+    compositor's socket and quit when it goes.
+    """
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    display = os.environ.get("WAYLAND_DISPLAY")
+    if not runtime or not display:
+        log("no wayland session to watch; not arming the compositor watchdog")
+        return
+    sock = display if os.path.isabs(display) else os.path.join(runtime, display)
+
+    def check():
+        if os.path.exists(sock):
+            return True
+        log("compositor socket %s is gone, exiting" % sock)
+        loop.quit()
+        return False
+
+    GLib.timeout_add_seconds(5, check)
+
+
 def run(dump_seconds=None, sock_path=SOCK_PATH):
     import dbus
     from dbus.mainloop.glib import DBusGMainLoop
@@ -770,6 +801,7 @@ def run(dump_seconds=None, sock_path=SOCK_PATH):
         daemon.listen(sock_path)
         GLib.unix_signal_add(GLib.PRIORITY_HIGH, 2, quit_loop)  # SIGINT
         GLib.unix_signal_add(GLib.PRIORITY_HIGH, 15, quit_loop)  # SIGTERM
+        watch_compositor(loop, GLib)
     else:
         log("collecting registrations for %ds" % dump_seconds)
         GLib.timeout_add_seconds(dump_seconds, lambda: (loop.quit(), False)[1])
