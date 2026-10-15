@@ -176,9 +176,9 @@ private slots:
                  QStringLiteral("host-1.example-tailnet.ts.net"));
         QCOMPARE(gamma.data(PeerModel::NodeIdRole).toString(),
                  QStringLiteral("nPFCxlUqVJ11CNTRL"));
-        QCOMPARE(gamma.data(PeerModel::Ip4Role).toString(), QStringLiteral("100.119.131.48"));
+        QCOMPARE(gamma.data(PeerModel::Ip4Role).toString(), QStringLiteral("100.67.243.58"));
         QCOMPARE(gamma.data(PeerModel::Ip6Role).toString(),
-                 QStringLiteral("fd7a:115c:a1e0::ff3b:8333"));
+                 QStringLiteral("fd7a:115c:a1e0::8d19:e3a4"));
         QCOMPARE(gamma.data(PeerModel::GroupRole).toInt(), int(Group::Tagged));
         QCOMPARE(gamma.data(PeerModel::OnlineRole).toBool(), true);
     }

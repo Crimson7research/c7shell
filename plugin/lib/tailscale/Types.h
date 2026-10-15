@@ -34,7 +34,7 @@ struct ExitNode {
     bool online = false;
 };
 
-// tailscaled reports the exit node's addresses as CIDR ("100.111.18.72/32")
+// tailscaled reports the exit node's addresses as CIDR ("100.101.102.103/32")
 // while a peer's own TailscaleIPs are bare, so the two never compare equal
 // until the prefix is dropped.
 QString stripMask(const QString &cidr);

@@ -50,12 +50,12 @@ public:
     // substrings of what tailscaled reports.
     //
     // This is a policy list, not a workaround for a bug. The one entry is the
-    // standing `--accept-routes` warning on c7-test-2: routes are deliberately
-    // not accepted there, because the fleet advertises four /18s that would
-    // otherwise blackhole the laptop's own LAN. Surfaced naively it is an
-    // issue that never clears, on the only machine this module runs on, so
-    // the panel would warn forever about a setting someone chose. Anything
-    // tailscaled says that is not named here still reaches the panel.
+    // standing `--accept-routes` warning tailscaled raises on a machine whose
+    // tailnet advertises subnet routes it deliberately does not accept --
+    // because accepting them would blackhole the machine's own LAN. Surfaced
+    // naively it is an issue that never clears on such a machine, so the panel
+    // would warn forever about a setting someone chose. Anything tailscaled
+    // says that is not named here still reaches the panel.
     static const QStringList &suppressedHealth();
     // `health` with every suppressed message dropped: what issues() publishes.
     static QStringList reportableHealth(const QStringList &health);

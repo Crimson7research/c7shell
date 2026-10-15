@@ -30,8 +30,9 @@ ListRow {
   // 0 = Mine, 1 = Tagged, 2 = Others, per PeerModel::Group.
   required property int group
   // tailscaled's own device id, and the identity PeerModel keys a row on: not
-  // the hostname, which repeats on a tailnet -- two of c7-test-2's twenty
-  // devices answer to `localhost` and two more to `C7-LAP-G1157C6M`.
+  // the hostname, which repeats on a tailnet -- nothing stops two machines
+  // enrolling under one name, and `localhost` and a vendor's stock laptop name
+  // both turn up more than once on a tailnet of any size.
   required property string nodeId
 
   // (x, y) of the press in scene coordinates -- the owner maps them into

@@ -233,13 +233,13 @@ Window {
     // slot: an uncapped name moves every slot to its right, and the clock with
     // them, every time an exit node comes or goes. Nothing about that is
     // visible in a screenshot of one state, which is why it is pinned here.
-    const house = "c7-lap-g1157c6m.cama-major.ts.net"
-    Tailscale.exitNodeName = "pve1"
+    const house = "yankee-with-a-long-magicdns-name.example-tailnet.ts.net"
+    Tailscale.exitNodeName = "sierra"
     const narrow = root.slotWidth()
     Tailscale.exitNodeName = house
     const capped = root.slotWidth()
     root.check(capped > narrow,
-      `the label contributes no width at all: "pve1" and "${house}" both give ${capped}`)
+      `the label contributes no width at all: "sierra" and "${house}" both give ${capped}`)
     root.check(root.label().truncated,
       `a ${house.length}-character node name was drawn in full rather than elided`)
     Tailscale.exitNodeName = house + house
@@ -248,7 +248,7 @@ Window {
 
     // The cap is a ceiling, not a fixed width: a short name must still shrink
     // the slot back, or the bar simply carries a 90px hole instead.
-    Tailscale.exitNodeName = "pve1"
+    Tailscale.exitNodeName = "sierra"
     root.check(root.slotWidth() === narrow,
       "the slot kept the width of the long name after a short one replaced it")
     root.check(!root.label().truncated, "a short node name was elided")
@@ -293,23 +293,23 @@ Window {
         if (o.forceLayout !== undefined) o.forceLayout()
   }
 
-  // c7-test-2's own tailnet, trimmed to four devices -- one per group, plus
-  // the offline duplicate-hostname device that carries no IPv6. Already in
-  // the order PeerModel sorts them: Mine, Tagged, Others.
+  // A tailnet trimmed to four devices -- one per group, plus an offline one
+  // that carries no IPv6. Already in the order PeerModel sorts them: Mine,
+  // Tagged, Others.
   readonly property var tailnetPeers: [
-    { hostName: "arch-dev01", ip4: "100.116.79.110", ip6: "fd7a:115c:a1e0::9a3b:4f6f",
-      dnsName: "arch-dev01.cama-major.ts.net", online: true, group: 0,
-      ownerName: "adriaan@crimson7.io", nodeId: "nAAA1CNTRL", exitNodeOption: false },
+    { hostName: "tango", ip4: "100.119.215.89", ip6: "fd7a:115c:a1e0::3016:83db",
+      dnsName: "tango.example-tailnet.ts.net", online: true, group: 0,
+      ownerName: "owner@example.com", nodeId: "nAAA1CNTRL", exitNodeOption: false },
     // No IPv6 at all: the copy menu has to draw that entry dead.
-    { hostName: "C7-LAP-G1157C6M", ip4: "100.81.116.117", ip6: "",
-      dnsName: "c7-lap-g1157c6m.cama-major.ts.net", online: false, group: 0,
-      ownerName: "adriaan@crimson7.io", nodeId: "nBBB1CNTRL", exitNodeOption: false },
-    { hostName: "pentest-exit-node", ip4: "100.111.18.72", ip6: "fd7a:115c:a1e0::5101:1248",
-      dnsName: "pentest-exit-node.cama-major.ts.net", online: true, group: 1,
+    { hostName: "yankee", ip4: "100.81.62.41", ip6: "",
+      dnsName: "yankee-with-a-long-magicdns-name.example-tailnet.ts.net", online: false, group: 0,
+      ownerName: "owner@example.com", nodeId: "nBBB1CNTRL", exitNodeOption: false },
+    { hostName: "pentest-exit-node", ip4: "100.124.183.145", ip6: "fd7a:115c:a1e0::bff4:b239",
+      dnsName: "pentest-exit-node.example-tailnet.ts.net", online: true, group: 1,
       ownerName: "Tagged Devices", nodeId: "nCCC1CNTRL", exitNodeOption: true },
-    { hostName: "workstation", ip4: "100.89.152.30", ip6: "fd7a:115c:a1e0::143b:981e",
-      dnsName: "workstation.cama-major.ts.net", online: true, group: 2,
-      ownerName: "Atilla Balin", nodeId: "nDDD1CNTRL", exitNodeOption: false }
+    { hostName: "workstation", ip4: "100.70.33.83", ip6: "fd7a:115c:a1e0::9ca4:f8a4",
+      dnsName: "workstation.example-tailnet.ts.net", online: true, group: 2,
+      ownerName: "Third Example", nodeId: "nDDD1CNTRL", exitNodeOption: false }
   ]
 
   // clear() + append() is a model RESET, which is the one thing PeerModel
@@ -368,11 +368,11 @@ Window {
   // The resting tailnet, with this machine's identity on it.
   function connectedWithPeers() {
     root.connected()
-    Tailscale.selfName = "c7-test-2"
-    Tailscale.selfIp4 = "100.73.10.20"
-    Tailscale.selfIp6 = "fd7a:115c:a1e0::5e3b:a15"
-    Tailscale.selfDnsName = "c7-test-2.cama-major.ts.net"
-    Tailscale.tailnet = "cama-major.ts.net"
+    Tailscale.selfName = "omega"
+    Tailscale.selfIp4 = "100.115.228.122"
+    Tailscale.selfIp6 = "fd7a:115c:a1e0::fd27:82d8"
+    Tailscale.selfDnsName = "omega.example-tailnet.ts.net"
+    Tailscale.tailnet = "example-tailnet.ts.net"
     root.seedPeers(root.tailnetPeers)
     root.layout()
   }
@@ -487,9 +487,9 @@ Window {
 
     // Only Other Users needs an owner line; in the other two the owner is the
     // heading.
-    root.check(root.peerRow("workstation").subtitle === "Atilla Balin",
+    root.check(root.peerRow("workstation").subtitle === "Third Example",
       "a peer belonging to another user does not say whose it is")
-    root.check(root.peerRow("arch-dev01").subtitle === "",
+    root.check(root.peerRow("tango").subtitle === "",
       "a device of your own repeats your own name under it")
 
     // A group with nobody in it draws no heading at all. Removed through the
@@ -507,10 +507,10 @@ Window {
     // Quickshell's clipboard, read straight back. A panel that shelled out to
     // wl-copy would leave this empty -- and would be a new spawn_debt entry in
     // tests/test-native-boundary.sh.
-    const arch = root.peerRow("arch-dev01")
+    const arch = root.peerRow("tango")
     Quickshell.clipboardText = ""
     arch.clicked()
-    root.check(Quickshell.clipboardText === "100.116.79.110",
+    root.check(Quickshell.clipboardText === "100.119.215.89",
       `clicking a peer row put "${Quickshell.clipboardText}" on the clipboard`)
     root.check(arch.copied === true,
       "the row gave no feedback for the copy, and a popover has nowhere else to put it")
@@ -522,7 +522,7 @@ Window {
     // says they are.
     root.check(root.everyTextIsPlain(arch, "a peer row") >= 3,
       "a peer row draws fewer than three strings, so this check is not reaching ListRow's own")
-    root.check(root.peerRow("workstation").subtitle === "Atilla Balin",
+    root.check(root.peerRow("workstation").subtitle === "Third Example",
       "the owner line is not where this check thinks it is")
     root.everyTextIsPlain(root.peerRow("workstation"), "a peer row with an owner line")
     root.everyTextIsPlain(root.panelOne("ts-self-name"), "the this-device row")
@@ -535,15 +535,15 @@ Window {
     root.check(rightButtons.length === 1,
       `the row carries ${rightButtons.length} right-button hit areas, not 1`)
 
-    const wanted = [["ts-copy-ip4", "100.116.79.110"],
-                    ["ts-copy-ip6", "fd7a:115c:a1e0::9a3b:4f6f"],
-                    ["ts-copy-dns", "arch-dev01.cama-major.ts.net"]]
+    const wanted = [["ts-copy-ip4", "100.119.215.89"],
+                    ["ts-copy-ip6", "fd7a:115c:a1e0::3016:83db"],
+                    ["ts-copy-dns", "tango.example-tailnet.ts.net"]]
     for (const [entryName, value] of wanted) {
       root.rightClick(arch)
       const menu = root.panelOne("ts-copy-menu")
       root.check(menu.visible, "a right-click on a peer row raised no copy menu")
-      root.check(menu.hostName === "arch-dev01",
-        `the menu is headed "${menu.hostName}" -- two devices on this tailnet answer to one name`)
+      root.check(menu.hostName === "tango",
+        `the menu is headed "${menu.hostName}", which is not the row that was right-clicked`)
       Quickshell.clipboardText = ""
       const entry = root.panelOne(entryName)
       root.check(entry.entryEnabled, `${entryName} is dead on a peer that has that value`)
@@ -556,7 +556,7 @@ Window {
 
     // A peer with no IPv6 -- the offline laptop. The entry stays in place so
     // the other two do not move under the pointer, and it does nothing.
-    root.rightClick(root.peerRow("C7-LAP-G1157C6M"))
+    root.rightClick(root.peerRow("yankee"))
     const dead = root.panelOne("ts-copy-ip6")
     root.check(dead.visible, "the IPv6 entry was hidden rather than disabled, moving the two below it")
     root.check(dead.entryEnabled === false, "a peer with no IPv6 offers a live Copy IPv6 entry")
@@ -576,7 +576,7 @@ Window {
     pop.view = "root"
     root.layout()
     Tailscale.exitNodes.clear()
-    Tailscale.exitNodes.append({ hostName: "ip-10-20-9-170", nodeId: "nEEE1CNTRL" })
+    Tailscale.exitNodes.append({ hostName: "ip-172-31-0-10", nodeId: "nEEE1CNTRL" })
     Tailscale.exitNodes.append({ hostName: "pentest-exit-node", nodeId: "nCCC1CNTRL" })
     Tailscale.recommendedExitNodeId = "nCCC1CNTRL"
     root.panelOne("ts-exit-row-entry").clicked()
@@ -648,14 +648,14 @@ Window {
     // the model.
     const three = [
       { hostName: "alpha", ip4: "100.64.0.1", ip6: "fd7a:115c:a1e0::1",
-        dnsName: "alpha.cama-major.ts.net", online: true, group: 0,
-        ownerName: "adriaan@crimson7.io", nodeId: "nAAA1CNTRL", exitNodeOption: false },
+        dnsName: "alpha.example-tailnet.ts.net", online: true, group: 0,
+        ownerName: "owner@example.com", nodeId: "nAAA1CNTRL", exitNodeOption: false },
       { hostName: "bravo", ip4: "100.64.0.2", ip6: "fd7a:115c:a1e0::2",
-        dnsName: "bravo.cama-major.ts.net", online: true, group: 0,
-        ownerName: "adriaan@crimson7.io", nodeId: "nBBB1CNTRL", exitNodeOption: false },
+        dnsName: "bravo.example-tailnet.ts.net", online: true, group: 0,
+        ownerName: "owner@example.com", nodeId: "nBBB1CNTRL", exitNodeOption: false },
       { hostName: "gamma", ip4: "100.64.0.3", ip6: "fd7a:115c:a1e0::3",
-        dnsName: "gamma.cama-major.ts.net", online: true, group: 0,
-        ownerName: "adriaan@crimson7.io", nodeId: "nCCC1CNTRL", exitNodeOption: false }
+        dnsName: "gamma.example-tailnet.ts.net", online: true, group: 0,
+        ownerName: "owner@example.com", nodeId: "nCCC1CNTRL", exitNodeOption: false }
     ]
     root.connected()
     root.seedPeers(three)
@@ -717,8 +717,8 @@ Window {
     // corner: a device waking up is one rowsInserted on a list the panel is
     // already showing.
     Tailscale.peers.insert(0, { hostName: "delta", ip4: "100.64.0.4",
-      ip6: "fd7a:115c:a1e0::4", dnsName: "delta.cama-major.ts.net", online: true,
-      group: 0, ownerName: "adriaan@crimson7.io", nodeId: "nDDD1CNTRL",
+      ip6: "fd7a:115c:a1e0::4", dnsName: "delta.example-tailnet.ts.net", online: true,
+      group: 0, ownerName: "owner@example.com", nodeId: "nDDD1CNTRL",
       exitNodeOption: false })
     root.layout()
     root.check(list.count === 4, `the insert left ${list.count} rows`)

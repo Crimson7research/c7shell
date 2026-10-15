@@ -36,12 +36,12 @@ private slots:
     {
         FakeTailscaleBackend fake;
         TailscaleBackend *ts = &fake;
-        fake.setRawSelfDnsName(QStringLiteral("c7-lap.tail1234.ts.net."));
-        QCOMPARE(ts->selfDnsName(), QStringLiteral("c7-lap.tail1234.ts.net"));
+        fake.setRawSelfDnsName(QStringLiteral("laptop.example-tailnet.ts.net."));
+        QCOMPARE(ts->selfDnsName(), QStringLiteral("laptop.example-tailnet.ts.net"));
         // Already stripped, and a name that is nothing but the root dot: both
         // leave at most one dot's worth of difference behind.
-        fake.setRawSelfDnsName(QStringLiteral("c7-lap.tail1234.ts.net"));
-        QCOMPARE(ts->selfDnsName(), QStringLiteral("c7-lap.tail1234.ts.net"));
+        fake.setRawSelfDnsName(QStringLiteral("laptop.example-tailnet.ts.net"));
+        QCOMPARE(ts->selfDnsName(), QStringLiteral("laptop.example-tailnet.ts.net"));
         fake.setRawSelfDnsName(QStringLiteral("."));
         QCOMPARE(ts->selfDnsName(), QString());
     }
@@ -115,7 +115,7 @@ private slots:
         TailscaleBackend *ts = &fake;
         Peer laptop;
         laptop.nodeId = QStringLiteral("nABC123CNTRL");
-        laptop.hostName = QStringLiteral("c7-lap");
+        laptop.hostName = QStringLiteral("laptop");
         Peer relay;
         relay.nodeId = QStringLiteral("nDEF456CNTRL");
         relay.hostName = QStringLiteral("c7-exit-ams");
