@@ -10,9 +10,11 @@
 // with no peers -- and it is the proof that the contract is substitutable
 // rather than a description of LocalApiTailscaleBackend.
 //
-// Built into tests only, never into the installed module: it is absent from
-// qt_add_qml_module(c7 ... SOURCES), which is why `cmake --install` cannot
-// ship it.
+// Built into tests only, never into the installed module. Being absent from
+// qt_add_qml_module(c7 ... SOURCES), and listed in the test target's sources
+// instead, is the entire mechanism: nothing checks it. The plugin gate
+// inspects installed files, and a fake wrongly added to the module's SOURCES
+// would compile into the one .so and be shipped without a word.
 //
 // Each setter emits only when the value moves, so a test can count signals
 // and a redundant set is not mistaken for a change. The derived properties

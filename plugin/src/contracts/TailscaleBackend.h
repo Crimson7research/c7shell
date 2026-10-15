@@ -39,6 +39,16 @@ class QQmlEngine;
 // Normalisation follows the same shape: where one form has to win, the public
 // getter is non-virtual and normalises, and the pure virtual beneath it is
 // what the backend stores (selfDnsName over rawSelfDnsName).
+//
+// A backend therefore stores first and emits second. The chaining is
+// synchronous: a signal emitted before the member moves hands QML the old
+// exitNodeBlocked, and nothing emits again to correct it.
+//
+// One escape exists from all of the above: a subclass redeclaring one of these
+// Q_PROPERTYs shadows it, and QML then reads the subclass's declaration
+// instead of the rule here. It takes writing the property out again, which is
+// not something anyone does by accident -- but it is the way to get this
+// wrong, so it is the thing to look for in review.
 class TailscaleBackend : public QObject {
     Q_OBJECT
     QML_NAMED_ELEMENT(Tailscale)
