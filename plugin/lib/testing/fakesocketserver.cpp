@@ -4,6 +4,8 @@
 #include <QtCore/QFileInfo>
 #include <QtNetwork/QLocalSocket>
 
+#include <utility>
+
 namespace c7::testing {
 
 FakeSocketServer::FakeSocketServer(const QString &path, QObject *parent)
@@ -56,7 +58,34 @@ int FakeSocketServer::pushLine(const QByteArray &line)
 int FakeSocketServer::pushChunk(const QByteArray &bytes)
 {
     // A copy: a write that fails can disconnect a client, which edits m_clients.
-    const QList<QPointer<QLocalSocket>> clients = m_clients;
+    QList<QPointer<QLocalSocket>> clients = m_clients;
+    // A held client is mid-request: bytes pushed at it are read as that
+    // request's body, which is not what a push means.
+    for (const QPointer<QLocalSocket> &held : std::as_const(m_held))
+        clients.removeAll(held);
+    return writeTo(clients, bytes);
+}
+
+void FakeSocketServer::holdNext(const QByteArray &fragment)
+{
+    m_holdFragment = fragment;
+}
+
+int FakeSocketServer::completeHeld(const QByteArray &reply)
+{
+    const QList<QPointer<QLocalSocket>> held = std::exchange(m_held, {});
+    const int reached = writeTo(held, reply);
+    if (m_after == CloseAfterReply) {
+        for (const QPointer<QLocalSocket> &c : held) {
+            if (c)
+                c->disconnectFromServer();
+        }
+    }
+    return reached;
+}
+
+int FakeSocketServer::writeTo(const QList<QPointer<QLocalSocket>> &clients, const QByteArray &bytes)
+{
     int reached = 0;
     for (const QPointer<QLocalSocket> &c : clients) {
         if (c && c->state() == QLocalSocket::ConnectedState && c->write(bytes) == bytes.size())
@@ -72,6 +101,7 @@ void FakeSocketServer::accept()
         connect(client, &QLocalSocket::readyRead, this, [this, client] { read(client); });
         connect(client, &QLocalSocket::disconnected, this, [this, client] {
             m_clients.removeAll(client);
+            m_held.removeAll(client);
             m_pending.remove(client);
             client->deleteLater();
         });
@@ -103,6 +133,12 @@ void FakeSocketServer::read(QLocalSocket *client)
 void FakeSocketServer::answer(QLocalSocket *client, const QByteArray &request)
 {
     m_requests << request;
+    // Held: recorded, unanswered, and left connected -- a request in flight.
+    if (!m_holdFragment.isEmpty() && request.contains(m_holdFragment)) {
+        m_holdFragment.clear();
+        m_held << client;
+        return;
+    }
     if (!m_handler)
         return;
     client->write(m_handler(request));

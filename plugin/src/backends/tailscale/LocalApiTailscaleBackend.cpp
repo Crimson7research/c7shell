@@ -66,14 +66,16 @@ const QStringList &ignoredNotifyFields()
 } // namespace
 
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QObject *parent)
-    : LocalApiTailscaleBackend(defaultSocketPath(), kRetryBaseMs, kRetryCapMs, parent)
+    : LocalApiTailscaleBackend(defaultSocketPath(), kRetryBaseMs, kRetryCapMs,
+                               LocalApiClient::kTimeoutMs, parent)
 {
 }
 
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retryBaseMs,
-                                                   int settleMs, QObject *parent)
-    : TailscaleBackend(parent), m_client(std::move(socketPath), this), m_retryBaseMs(retryBaseMs),
-      m_settleMs(settleMs)
+                                                   int settleMs, int requestTimeoutMs,
+                                                   QObject *parent)
+    : TailscaleBackend(parent), m_client(std::move(socketPath), requestTimeoutMs, this),
+      m_retryBaseMs(retryBaseMs), m_settleMs(settleMs)
 {
     connect(&m_client, &LocalApiClient::replied, this, &LocalApiTailscaleBackend::onReplied);
     connect(&m_client, &LocalApiClient::failed, this, &LocalApiTailscaleBackend::onFailed);
@@ -134,6 +136,10 @@ void LocalApiTailscaleBackend::open()
     m_settle.stop();
     m_refreshInFlight = false;
     m_refreshStale = false;
+    // A reply from the attempt just dropped is not half of this attempt's
+    // snapshot: whichever half arrived goes with the attempt it belonged to.
+    m_pendingStatus.reset();
+    m_pendingExitNodeId.reset();
     m_openingReads = 0;
     m_attemptFailed = false;
     m_established = false;
@@ -144,12 +150,6 @@ void LocalApiTailscaleBackend::open()
     // WatchStarted back however the replies interleave.
     m_client.watch();
     refresh();
-    // Read for the same reason the status is: all three answer 200
-    // unprivileged on a working tailscaled, so one of them refusing means this
-    // socket is not a local API this backend can publish from. /prefs carries
-    // no property of its own today -- every field in it is either already in
-    // the status or belongs to the writes v1 does not do.
-    m_client.get(kPrefsPath);
 }
 
 void LocalApiTailscaleBackend::refresh()
@@ -157,6 +157,15 @@ void LocalApiTailscaleBackend::refresh()
     m_refreshInFlight = true;
     m_refreshStale = false;
     m_client.get(kStatusPath);
+    // The other half of the snapshot, and read on every pass rather than only
+    // on connect: ExitNodeID is what says an exit node is SELECTED, and a
+    // selection made or cleared since the last read would otherwise be
+    // published from a prefs body read minutes ago -- either a block that
+    // never clears or a selection that never shows. It is also the second
+    // health probe: it answers 200 unprivileged on a working tailscaled, so a
+    // refusal means this socket is not a local API this backend can publish
+    // from.
+    m_client.get(kPrefsPath);
     // Re-read alongside the status, not only on connect: the suggestion names
     // a row of exitNodes, so a published id outlives the row it points at
     // whenever the set of exit nodes changes under it.
@@ -205,45 +214,85 @@ void LocalApiTailscaleBackend::noteEstablished()
 void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &body)
 {
     if (path == kSuggestPath) {
+        // Not one of the opening reads and not a health probe: see the note on
+        // OpeningRead. The suggestion is published when it arrives and nothing
+        // about the connection rests on it.
         applySuggestion(body);
-        m_openingReads |= SuggestRead;
-        noteEstablished();
         return;
     }
     if (path == kPrefsPath) {
-        // Nothing is published from the body. A 2xx is the whole point: it is
-        // what says this socket is a local API that answers unprivileged, and
-        // LocalApiClient has already turned anything else into failed(). A
-        // further check on the shape of a 2xx body would only buy a NoState
-        // flap for a reply no tailscaled sends.
+        // ExitNodeID is the only field read: it is what says an exit node is
+        // selected at all, which ExitNodeStatus cannot while it is still
+        // being resolved. A body that is not an object yields an empty id,
+        // which is the same reading as "nothing selected" -- and a /prefs
+        // that is not a prefs object is not something tailscaled sends with a
+        // 2xx, which LocalApiClient has already filtered anything else out of.
+        m_pendingExitNodeId = QJsonDocument::fromJson(body)
+                                      .object()
+                                      .value(QLatin1String("ExitNodeID"))
+                                      .toString();
         m_openingReads |= PrefsRead;
         noteEstablished();
+        applySnapshotWhenWhole();
         return;
     }
     if (path != kStatusPath)
         return;
 
-    m_refreshInFlight = false;
     const std::optional<Status> status = StatusParser::parse(body);
     // `{}` parses, so a reply is only a status if it carries a BackendState:
     // without one there is nothing to publish but the parser's defaults, which
     // would read as a tailnet with no peers rather than as no answer.
     if (!status || status->backendState.isEmpty()) {
+        m_refreshInFlight = false;
         lostTailscaled();
         return;
     }
-    applyStatus(*status);
+    m_pendingStatus = *status;
+    applySnapshotWhenWhole();
+}
+
+void LocalApiTailscaleBackend::applySnapshotWhenWhole()
+{
+    // Half a pass publishes nothing: the exit-node reading is assembled from
+    // both replies, and either alone is the fail-closed flag computed from
+    // half of one pass and half of the next.
+    if (!m_pendingStatus || !m_pendingExitNodeId)
+        return;
+    const Status status = *std::exchange(m_pendingStatus, std::nullopt);
+    const QString exitNodeId = *std::exchange(m_pendingExitNodeId, std::nullopt);
+
+    m_refreshInFlight = false;
+    applyStatus(status, exitNodeId);
     // Deliberately after applyStatus and deliberately not a reset of its own:
-    // a good status is one of three reads this attempt needs, never the whole
+    // a good snapshot is one of the things this attempt needs, never the whole
     // of it.
     m_openingReads |= StatusRead;
     noteEstablished();
+    // A notification that arrived while this pass was out asked a question
+    // this pass's replies were issued before, so it gets a pass of its own.
     if (m_refreshStale)
         refresh();
 }
 
 void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &)
 {
+    // A suggestion that does not arrive is not a tailscaled that is gone. The
+    // endpoint is optional -- a tailnet with no exit nodes has nothing to
+    // suggest -- and a 404, a 500, a timeout and an empty 200 all read the
+    // same way here: no suggestion.
+    //
+    // A 500 in particular is routine rather than a sign of anything wrong.
+    // Measured on a live daemon: before DERP is resolved it answers
+    // `{"error":"no preferred DERP, try again later"}`, which is every cold
+    // boot and every network change, and is also what a daemon that is up and
+    // merely logged out answers indefinitely. Routing any of that to
+    // lostTailscaled() published NoState over a perfectly usable NeedsLogin
+    // and took the whole slot off the bar.
+    if (path == kSuggestPath) {
+        applySuggestion({});
+        return;
+    }
     if (path == kStatusPath)
         m_refreshInFlight = false;
     lostTailscaled();
@@ -289,7 +338,19 @@ int LocalApiTailscaleBackend::retryDelayMs(int attempt, int baseMs)
     return std::min(kRetryCapMs, baseMs * (1 << std::clamp(attempt, 0, 6)));
 }
 
-void LocalApiTailscaleBackend::applyStatus(const Status &status)
+// The hostname of the peer with this id, or the id itself when no peer has it
+// -- the same fallback StatusParser uses for a node that has left the tailnet,
+// so the panel names a machine where it can and never goes blank.
+static QString nameOfPeer(const QList<Peer> &peers, const QString &nodeId)
+{
+    for (const Peer &peer : peers) {
+        if (peer.nodeId == nodeId)
+            return peer.hostName;
+    }
+    return nodeId;
+}
+
+void LocalApiTailscaleBackend::applyStatus(const Status &status, const QString &prefsExitNodeId)
 {
     // Every member moves before any signal does, and the signals go out
     // together at the end. The contract derives exitNodeBlocked from two of
@@ -312,14 +373,28 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status)
     store(m_tailnet, status.tailnet, &TailscaleBackend::tailnetChanged);
     store(m_keyExpiry, status.keyExpiry, &TailscaleBackend::keyExpiryChanged);
 
-    const bool active = status.exitNode.has_value();
+    // Selected if EITHER half of the snapshot says so. /prefs's ExitNodeID is
+    // the selection; /status's ExitNodeStatus is the selection RESOLVED, and
+    // it is absent on some builds and null on others for as long as tailscaled
+    // has not resolved it. An id with no resolvable status is therefore an
+    // exit node that is selected and not known to answer, which is the
+    // fail-closed reading -- and it is the reading for exactly the window in
+    // which egress is most likely to be dropped on the floor.
+    const bool resolved = status.exitNode.has_value();
+    const bool active = resolved || !prefsExitNodeId.isEmpty();
     store(m_exitNodeActive, active, &TailscaleBackend::exitNodeActiveChanged);
     // ExitNodeStatus.Online, never the peer's: the selected peer reads
-    // Online: true while the exit node itself is unreachable. Without a
-    // selection it is false, which is what the contract calls meaningless.
-    store(m_exitNodeOnline, active && status.exitNode->online,
+    // Online: true while the exit node itself is unreachable. Unresolved or
+    // unselected it is false, which is what the contract calls meaningless --
+    // and, with active true, is what makes exitNodeBlocked fail closed.
+    store(m_exitNodeOnline, resolved && status.exitNode->online,
           &TailscaleBackend::exitNodeOnlineChanged);
-    store(m_exitNodeName, active ? status.exitNode->name : QString(),
+    const QString exitNodeId = resolved ? status.exitNode->id : prefsExitNodeId;
+    store(m_exitNodeId, active ? exitNodeId : QString(),
+          &TailscaleBackend::exitNodeIdChanged);
+    const QString exitNodeName =
+            resolved ? status.exitNode->name : nameOfPeer(status.peers, prefsExitNodeId);
+    store(m_exitNodeName, active ? exitNodeName : QString(),
           &TailscaleBackend::exitNodeNameChanged);
 
     store(m_issues, reportableHealth(status.health), &TailscaleBackend::issuesChanged);
@@ -327,11 +402,20 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status)
     // The models diff themselves and emit their own row signals, so they are
     // filled here with the members rather than after them: a view reacting to
     // stateChanged must not find yesterday's rows underneath it.
-    m_peers.setPeers(status.peers);
-    QList<Peer> exitNodes;
-    std::copy_if(status.peers.cbegin(), status.peers.cend(), std::back_inserter(exitNodes),
-                 [](const Peer &peer) { return peer.exitNodeOption; });
-    m_exitNodes.setPeers(exitNodes);
+    //
+    // Only from a reply that actually described the tailnet. A status with no
+    // Peer section at all is not a tailnet with no devices, but setPeers()
+    // cannot tell the two apart: both empty the model, and the panel then
+    // reads "network devices 0" whichever it was. The rows stay as the last
+    // status described them instead; an empty Peer OBJECT -- a tailnet that
+    // really has no other devices -- is a description, and does clear them.
+    if (status.hasPeerSection) {
+        m_peers.setPeers(status.peers);
+        QList<Peer> exitNodes;
+        std::copy_if(status.peers.cbegin(), status.peers.cend(), std::back_inserter(exitNodes),
+                     [](const Peer &peer) { return peer.exitNodeOption; });
+        m_exitNodes.setPeers(exitNodes);
+    }
 
     for (Signal changed : moved)
         emit(this->*changed)();
@@ -341,6 +425,11 @@ void LocalApiTailscaleBackend::applySuggestion(const QByteArray &body)
 {
     // ID, not Name: it is the string id the status, exit-node and suggestion
     // endpoints all share, and the one a row in exitNodes can be found by.
+    //
+    // An empty body -- which is what a failed suggestion is handed -- yields
+    // an empty id, which is what "no suggestion" is: the recommended heading
+    // and its row go, rather than keeping a recommendation nothing stands
+    // behind.
     const QString id = QJsonDocument::fromJson(body)
                                .object()
                                .value(QLatin1String("ID"))

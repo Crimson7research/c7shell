@@ -199,7 +199,13 @@ private slots:
     // carrying nothing but byte counters. The mask governs the initial
     // snapshot, not whether ongoing changes arrive, so the engine bit is not
     // ours to ask for.
-    void watchesWithoutTheEngineUpdateBit()
+    //
+    // 16 is NotifyNoPrivateKeys, which tells tailscaled to strip private key
+    // material out of what it sends. Measured on the same daemon: the
+    // subscribe-time notification for mask=18 is byte-identical to the one
+    // for mask=2, so the bit costs nothing, and omitting it would be a choice
+    // to let key material through our buffers for no gain at all.
+    void watchesWithoutTheEngineUpdateBitAndWithoutPrivateKeys()
     {
         FakeSocketServer server(socketPath());
         server.onRequest([](const QByteArray &) {
@@ -209,7 +215,7 @@ private slots:
         c.watch();
         QTRY_COMPARE(server.requests().size(), 1);
         const QByteArray request = server.requests().first();
-        QVERIFY2(request.contains("/localapi/v0/watch-ipn-bus?mask=2"), request.constData());
+        QVERIFY2(request.contains("/localapi/v0/watch-ipn-bus?mask=18"), request.constData());
     }
 
     void neverEmitsAPartialLine()
@@ -324,6 +330,101 @@ private slots:
         c.watch();
         QTRY_COMPARE(order,
                      QStringList({QStringLiteral("failed"), QStringLiteral("watchEnded")}));
+    }
+
+    // A socket that is open and silent emits nothing at all -- no readyRead,
+    // no disconnected, no errorOccurred -- so without a deadline a get has no
+    // terminal signal and a caller tracking a request in flight is latched on
+    // a reply that is never coming. This is tailscaled wedged, or TS_SOCKET
+    // naming some other listening socket.
+    void aGetWithNoAnswerAtAllEndsInFailedAtItsDeadline()
+    {
+        FakeSocketServer server(socketPath());
+        // No handler: the request is recorded and the client is left open and
+        // unanswered, which is the hang this exists for.
+        server.onRequest(FakeSocketServer::Handler{}, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // 50ms rather than the shipped ten seconds: a test may not sleep out
+        // the real one (docs/architecture.md:204), which is why the deadline
+        // is a constructor parameter.
+        LocalApiClient c(socketPath(), 50);
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/status"));
+        // The request arrived: the socket really is connected and silent, not
+        // refused -- otherwise errorOccurred would end this and the deadline
+        // would prove nothing.
+        QTRY_COMPARE(server.requests().size(), 1);
+        QVERIFY(failed.wait());
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("/localapi/v0/status"));
+        QVERIFY2(failed.first().at(1).toString().contains(QStringLiteral("50 ms")),
+                 qPrintable(failed.first().at(1).toString()));
+        QCOMPARE(replied.count(), 0);
+    }
+
+    // The deadline is on the whole exchange, not on the headers: a reply that
+    // announces a body and then stops is the same latch one step later.
+    void aGetWhoseBodyNeverArrivesEndsInFailedAtItsDeadline()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 99\r\n\r\n{\"Backend");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath(), 50);
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/status"));
+        QVERIFY(failed.wait());
+        QCOMPARE(replied.count(), 0);
+    }
+
+    // A watch that is refused outright never says watchStarted, and one that
+    // is never answered at all must not be any quieter: failed then
+    // watchEnded, in that order, like every other way a watch ends badly.
+    void aWatchThatNeverStartsEndsInFailedAndThenWatchEnded()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest(FakeSocketServer::Handler{}, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath(), 50);
+        QStringList order;
+        QString reason;
+        connect(&c, &LocalApiClient::watchStarted, &c, [&order] { order << QStringLiteral("watchStarted"); });
+        connect(&c, &LocalApiClient::failed, &c, [&order, &reason](const QString &, const QString &why) {
+            order << QStringLiteral("failed");
+            reason = why;
+        });
+        connect(&c, &LocalApiClient::watchEnded, &c, [&order] { order << QStringLiteral("watchEnded"); });
+        c.watch();
+        QTRY_COMPARE(order,
+                     QStringList({QStringLiteral("failed"), QStringLiteral("watchEnded")}));
+        QVERIFY2(reason.contains(QStringLiteral("did not start")), qPrintable(reason));
+    }
+
+    // The other half of that rule, and the reason the watch's deadline stops
+    // at its headers: a quiet bus is the normal state of a tailnet -- measured
+    // silent for 20s on a live daemon, and capable of hours -- so a watch
+    // timed out on silence would be a reconnect loop on a healthy machine.
+    void anEstablishedWatchIsNotTimedOutByAQuietBus()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath(), 50);
+        QSignalSpy started(&c, &LocalApiClient::watchStarted);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        QSignalSpy ended(&c, &LocalApiClient::watchEnded);
+        QSignalSpy ev(&c, &LocalApiClient::event);
+        c.watch();
+        QVERIFY(started.wait());
+        // Four deadlines' worth of silence. Proving a negative needs a bounded
+        // wait, which is the shape the rest of this file uses for one.
+        QTest::qWait(200);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(ended.count(), 0);
+        // And it is still a live stream afterwards, not merely an unreported
+        // dead one.
+        server.pushLine(QByteArrayLiteral("{\"State\":6}"));
+        QTRY_COMPARE(ev.count(), 1);
     }
 
     void saysNothingWhenTheWatchIsStopped()

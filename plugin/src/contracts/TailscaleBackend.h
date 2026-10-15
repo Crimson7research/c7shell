@@ -62,6 +62,7 @@ class TailscaleBackend : public QObject {
     Q_PROPERTY(QString tailnet READ tailnet NOTIFY tailnetChanged)
     Q_PROPERTY(QDateTime keyExpiry READ keyExpiry NOTIFY keyExpiryChanged)
     Q_PROPERTY(bool exitNodeActive READ exitNodeActive NOTIFY exitNodeActiveChanged)
+    Q_PROPERTY(QString exitNodeId READ exitNodeId NOTIFY exitNodeIdChanged)
     Q_PROPERTY(QString exitNodeName READ exitNodeName NOTIFY exitNodeNameChanged)
     Q_PROPERTY(bool exitNodeOnline READ exitNodeOnline NOTIFY exitNodeOnlineChanged)
     Q_PROPERTY(bool exitNodeBlocked READ exitNodeBlocked NOTIFY exitNodeBlockedChanged)
@@ -124,6 +125,18 @@ public:
     QString selfDnsName() const { return withoutRootDot(rawSelfDnsName()); }
 
     virtual bool exitNodeActive() const = 0;
+    // The selected exit node's string ID, matching a row's nodeId in
+    // exitNodes. Empty when none is selected.
+    //
+    // It is here, beside the name, because a view has to be able to say WHICH
+    // row is the one in use, and the name cannot: hostnames repeat on a
+    // tailnet -- nothing stops two machines enrolling under one name -- so a
+    // check mark joined on exitNodeName lands on every row that shares the
+    // name with the node actually carrying the traffic. The ID is the only
+    // peer identity the status, exit-node and suggestion endpoints all share;
+    // NodeID is a number nothing joins on and a public key changes under a
+    // node that re-keys. recommendedExitNodeId is joined the same way.
+    virtual QString exitNodeId() const = 0;
     virtual QString exitNodeName() const = 0;
     // ExitNodeStatus.Online: whether the selected exit node can be reached.
     // Meaningless, and false, when no exit node is selected.
@@ -169,6 +182,7 @@ signals:
     void tailnetChanged();
     void keyExpiryChanged();
     void exitNodeActiveChanged();
+    void exitNodeIdChanged();
     void exitNodeNameChanged();
     void exitNodeOnlineChanged();
     // Emitted by this class off the two signals above, never by a backend.

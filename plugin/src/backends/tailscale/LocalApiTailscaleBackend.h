@@ -9,14 +9,28 @@
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 
+#include <optional>
+
 // The TailscaleBackend that reads tailscaled's local API socket: GET /status,
 // /prefs and /suggest-exit-node on connect, then the /watch-ipn-bus stream
 // that pushes every later change. Nothing here spawns the `tailscale` CLI,
 // and nothing here polls: a notification on the bus is what makes it re-read
 // /status, and with a quiet bus it issues no requests at all.
 //
-// A notification says that something changed, never what, so the reply to the
-// status GET is the authority and no state is reconstructed from the bus.
+// A notification says that something changed, never what, so the replies to
+// the GETs are the authority and no state is reconstructed from the bus.
+//
+// A SNAPSHOT IS A /status AND THE /prefs READ BESIDE IT, applied together.
+// Neither alone describes the exit node: /status's ExitNodeStatus says
+// whether the selected node answers but is absent on some builds and null on
+// others while a selection is still being resolved, and /prefs's ExitNodeID
+// says whether one is selected at all but never whether it works. Publishing
+// one without the other reads "selected, status unresolved" as "nothing
+// selected" -- a plain healthy globe during exactly the window in which
+// egress is most likely to be dropped -- or announces a stale block when a
+// selection has just been cleared. So the two replies of a pass are held
+// until both have landed, and a selection with no resolvable status is
+// published as active and NOT online: fail closed.
 //
 // Everything this publishes is stored before any of it is announced. The
 // contract chains exitNodeActiveChanged and exitNodeOnlineChanged onto
@@ -38,13 +52,16 @@ public:
     static constexpr int kRetryCapMs = 30000;
 
     explicit LocalApiTailscaleBackend(QObject *parent = nullptr);
-    // The socket to read, the first retry delay, and how long a connection
-    // must hold before it counts as one that worked. All three are parameters
-    // so a test can point the backend at a fake tailscaled and step the
-    // reconnect curve without sleeping out the shipped one, which
+    // The socket to read, the first retry delay, how long a connection must
+    // hold before it counts as one that worked, and how long one exchange
+    // with tailscaled may take. All four are parameters so a test can point
+    // the backend at a fake tailscaled and step the reconnect curve, or wedge
+    // one request, without sleeping out the shipped timings, which
     // docs/architecture.md:204 forbids it to do.
     explicit LocalApiTailscaleBackend(QString socketPath, int retryBaseMs = kRetryBaseMs,
-                                      int settleMs = kRetryCapMs, QObject *parent = nullptr);
+                                      int settleMs = kRetryCapMs,
+                                      int requestTimeoutMs = c7::tailscale::LocalApiClient::kTimeoutMs,
+                                      QObject *parent = nullptr);
 
     // Health messages this module never counts as an issue, matched as
     // substrings of what tailscaled reports.
@@ -74,6 +91,7 @@ public:
     QDateTime keyExpiry() const override { return m_keyExpiry; }
 
     bool exitNodeActive() const override { return m_exitNodeActive; }
+    QString exitNodeId() const override { return m_exitNodeId; }
     QString exitNodeName() const override { return m_exitNodeName; }
     bool exitNodeOnline() const override { return m_exitNodeOnline; }
 
@@ -97,17 +115,26 @@ protected:
     QString rawSelfDnsName() const override { return m_selfDnsName; }
 
 private:
-    // What a whole connection consists of: the three reads answered *and* the
-    // stream up. The watch is one of these and not an afterthought -- a local
-    // API that serves the reads and refuses the stream is as broken as one
-    // that refuses a read, and leaving the watch out left the backoff resting
-    // on the order open() happens to issue its requests in.
+    // What a whole connection consists of: the two health probes answered
+    // *and* the stream up. The watch is one of these and not an afterthought
+    // -- a local API that serves the reads and refuses the stream is as
+    // broken as one that refuses a read, and leaving the watch out left the
+    // backoff resting on the order open() happens to issue its requests in.
+    //
+    // /suggest-exit-node is deliberately NOT one of them. It is an optional
+    // feature endpoint: a tailnet with no exit nodes has nothing to suggest,
+    // and a 404, a 500 and an empty 200 all mean the same thing there -- no
+    // suggestion. Counting it as a probe made such a tailnet never complete a
+    // connection at all: nothing ever established, the settle timer never
+    // armed, and the backend flapped Running/NoState at the 30s cap forever,
+    // with the slot and the panel both gated on state !== NoState and so
+    // blank or absent most of the time. /status and /prefs are the health
+    // probes, and an optional endpoint is never one.
     enum OpeningRead {
         StatusRead = 1,
         PrefsRead = 2,
-        SuggestRead = 4,
-        WatchStarted = 8,
-        EveryRead = 15,
+        WatchStarted = 4,
+        EveryRead = 7,
     };
 
     // Drop whatever is in flight, start the watch, read the three endpoints.
@@ -141,7 +168,9 @@ private:
     // running flat at the base delay forever. Only m_settle firing clears it.
     void noteEstablished();
 
-    void applyStatus(const c7::tailscale::Status &status);
+    // Publish the pass once both its replies are in; do nothing until then.
+    void applySnapshotWhenWhole();
+    void applyStatus(const c7::tailscale::Status &status, const QString &prefsExitNodeId);
     void applySuggestion(const QByteArray &body);
 
     State m_state = State::NoState;
@@ -157,6 +186,7 @@ private:
     // False until an exit node is known to be reachable: the fail-closed flag
     // built on this must not start out saying traffic is fine.
     bool m_exitNodeOnline = false;
+    QString m_exitNodeId;
     QString m_exitNodeName;
 
     QStringList m_issues;
@@ -184,6 +214,12 @@ private:
     // cannot be the answer to it.
     bool m_refreshInFlight = false;
     bool m_refreshStale = false;
+    // The two halves of the pass in flight. A pass publishes when both are
+    // here and not before -- see the note on snapshots at the top of this
+    // file -- and open() drops whichever arrived, because a reply from the
+    // previous attempt is not half of this one's answer.
+    std::optional<c7::tailscale::Status> m_pendingStatus;
+    std::optional<QString> m_pendingExitNodeId;
     // Reset by open(), so each attempt is judged on its own.
     int m_openingReads = 0;
     bool m_attemptFailed = false;

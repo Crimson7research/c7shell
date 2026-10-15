@@ -59,6 +59,16 @@ private slots:
         QVERIFY2(now.contains(hostIsolationRoot()), qPrintable(now));
     }
 
+    // A plugin test that builds the Tailscale singleton opens this path in the
+    // singleton's constructor. Unset, that is the host's running tailscaled.
+    void theTailscaleSocketPointsNowhere()
+    {
+        plantAndIsolate("TS_SOCKET", "/var/run/tailscale/tailscaled.sock");
+        const QString now = qEnvironmentVariable("TS_SOCKET");
+        QVERIFY2(isPrivate(now), qPrintable(now));
+        QVERIFY2(!QFileInfo::exists(now), qPrintable(now));
+    }
+
     void directoriesArePrivate_data()
     {
         QTest::addColumn<QByteArray>("var");
