@@ -21,6 +21,18 @@ depends=(
   # when c7-authd will not start: an unstyled dialog is worth having when the
   # alternative is a desktop where pkexec silently does nothing.
   'hyprpolkitagent'
+  # The login screen is part of the shell, not an optional extra: this package
+  # ships /usr/bin/c7shell-greeter, and that binary speaks greetd's protocol and
+  # nothing else. greetd hands the greeter the PAM conversation one message at a
+  # time instead of replaying a single stored secret, which is why a mistyped
+  # PIN costs one attempt here and a second prompt -- enrolling a PIN, changing
+  # an expired password -- reaches the user rather than looping. cage is the
+  # kiosk compositor it runs the greeter inside.
+  #
+  # Which greeter greetd actually runs is still a write to /etc that a package
+  # must not make; c7shell-bootstrap does that.
+  'greetd'
+  'cage'
   'qt6-declarative'
   'wireplumber'
   'networkmanager'
@@ -69,16 +81,6 @@ optdepends=(
   # popover both show the "tuned is not running" card and everything else --
   # the battery readout, the idle timings, the charge limit -- carries on.
   'tuned: power profiles in settings -> system -> power'
-  # Not a depends=: the greeter is system state that c7shell-bootstrap sets up,
-  # and a machine running another display manager installs this package just as
-  # happily -- the greeter under /usr/share/c7shell/greeter is simply inert.
-  # The other way to run the same design. greetd hands the greeter the PAM
-  # conversation one message at a time rather than replaying a single stored
-  # secret, so a mistyped PIN costs one attempt and a second prompt -- enrolling
-  # a PIN, changing an expired password -- reaches the user instead of looping.
-  # cage is the kiosk compositor it runs the greeter inside.
-  'greetd: the login daemon c7shell-greeter talks to'
-  'cage: the compositor greetd runs c7shell-greeter inside'
   'kitty: terminal bound to SUPER+Q'
   'dolphin: file manager bound to SUPER+E, and the capture toast'"'"'s "folder" button (auto-detected; override with shell.json fileManager)'
   # QT_QPA_PLATFORMTHEME=kde (hypr/conf/environment.lua) only means something
