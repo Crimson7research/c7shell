@@ -48,10 +48,8 @@ Group groupOf(const QJsonObject &peer, const QJsonObject &users, qint64 selfUser
     return Group::Others;
 }
 
-// The Peer member order in the JSON is tailscaled's own and carries no
-// meaning, so the list is sorted into the order the panel reads top to bottom:
-// section, then offline last, then hostname. nodeId breaks the final tie,
-// because hostnames repeat on a tailnet and an unstable order flakes tests.
+} // namespace
+
 bool precedes(const Peer &a, const Peer &b)
 {
     if (a.group != b.group)
@@ -63,8 +61,6 @@ bool precedes(const Peer &a, const Peer &b)
         return byHostName < 0;
     return a.nodeId < b.nodeId;
 }
-
-} // namespace
 
 QString stripMask(const QString &cidr)
 {
@@ -117,6 +113,8 @@ std::optional<Status> StatusParser::parse(const QByteArray &json)
         p.group = groupOf(peer, users, selfUserId, &p.ownerName);
         s.peers.append(p);
     }
+    // The Peer member order in the JSON is tailscaled's own and carries no
+    // meaning; precedes() is the order the panel reads.
     std::sort(s.peers.begin(), s.peers.end(), precedes);
 
     // Missing while no exit node is selected — on some builds absent, on others

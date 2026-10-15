@@ -39,6 +39,13 @@ struct ExitNode {
 // until the prefix is dropped.
 QString stripMask(const QString &cidr);
 
+// The order the device list reads top to bottom: section, then offline last,
+// then hostname, case-insensitively. nodeId breaks the final tie, because
+// hostnames repeat on a tailnet and an order that depends on where a peer sat
+// in tailscaled's JSON is no order at all. Declared here, and used by both the
+// parser and the model, so the list cannot end up sorted two ways.
+bool precedes(const Peer &a, const Peer &b);
+
 // What `tailscale status --json` says, reduced to what the shell shows.
 struct Status {
     QString backendState;
