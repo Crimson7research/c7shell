@@ -159,5 +159,5 @@ because it has no equivalent of this deliberate `RouteAll: false`.
   `tailscaled.sock`.
 - The socket path is `${TS_SOCKET:-/var/run/tailscale/tailscaled.sock}`, so
   tests point it at a `FakeSocketServer`.
-- The visual reference is the visual mock attached to the pull request, built against
+- The visual reference is `tailscale-mock.html`, attached to the pull request, built against
   `palette.json` and `Theme.qml`.
