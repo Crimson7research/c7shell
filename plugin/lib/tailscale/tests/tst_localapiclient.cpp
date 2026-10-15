@@ -3,6 +3,7 @@
 #include "testing/fakesocketserver.h"
 #include "testing/testmain.h"
 
+#include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
@@ -72,6 +73,24 @@ private slots:
         c.get(QStringLiteral("/localapi/v0/status"));
         QVERIFY(replied.wait());
         QCOMPARE(replied.first().at(1).toByteArray(), QByteArrayLiteral("{\"a\":1,\"b\":2}"));
+        QCOMPARE(failed.count(), 0);
+    }
+
+    void readsABodyThatEndsAtTheClose()
+    {
+        // Neither Content-Length nor chunked: the body is whatever had arrived
+        // when the connection closed, so the close has to complete the
+        // response off what the final drain brought, not call it unfinished.
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n{\"ok\":true}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/status"));
+        QVERIFY(replied.wait());
+        QCOMPARE(replied.first().at(1).toByteArray(), QByteArrayLiteral("{\"ok\":true}"));
         QCOMPARE(failed.count(), 0);
     }
 
@@ -209,6 +228,28 @@ private slots:
         server.reset();
         QVERIFY(ended.wait());
         QCOMPARE(ended.count(), 1);
+    }
+
+    void aFailingWatchSaysWhyAndThenThatItEnded()
+    {
+        // Two signals, in this order. A watch is the one path that ends in
+        // both: a caller restarts on watchEnded and wants failed's reason, so
+        // it must not have to guess which of the two it is given.
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QStringList order;
+        connect(&c, &LocalApiClient::failed, &c, [&order](const QString &, const QString &) {
+            order << QStringLiteral("failed");
+        });
+        connect(&c, &LocalApiClient::watchEnded, &c, [&order] {
+            order << QStringLiteral("watchEnded");
+        });
+        c.watch();
+        QTRY_COMPARE(order,
+                     QStringList({QStringLiteral("failed"), QStringLiteral("watchEnded")}));
     }
 
     void saysNothingWhenTheWatchIsStopped()

@@ -22,9 +22,11 @@ namespace c7::tailscale {
 // loop. This runs on the QML engine's thread, where a stall freezes the bar.
 //
 // One socket per request, so a reply and a running watch never queue behind
-// each other. Every path ends in exactly one signal: replied or failed for a
-// get, watchEnded for a watch -- save a watch the caller stops itself, which
-// is silent so a caller that reconnects on watchEnded does not fight stop().
+// each other. A get ends in exactly one signal, replied or failed. A watch
+// ends in watchEnded -- preceded by failed, in that order, when it ended
+// because something went wrong, so a caller has both the reason and the
+// trigger to restart on. A watch the caller stops itself is silent, so a
+// caller that reconnects on watchEnded does not fight its own stop().
 //
 // tailscaled answers /status and watch-ipn-bus with Transfer-Encoding:
 // chunked, and /prefs and /suggest-exit-node with a Content-Length, so both
@@ -51,6 +53,8 @@ public:
 signals:
     // The response body, headers stripped.
     void replied(const QString &path, const QByteArray &body);
+    // Why a request ended badly. A watch that fails emits this first and
+    // watchEnded straight after, never one without the other.
     void failed(const QString &path, const QString &reason);
     // One complete notification. Never a partial line: a line split across two
     // reads is held until the newline arrives.

@@ -8,7 +8,9 @@ namespace c7::tailscale {
 
 namespace {
 
-// mask=1 is notifyState: the stream the real client asks for.
+// mask=1 is notifyState, the least a watcher can ask for and all this backend
+// reads today. The CLI ORs further bits -- netmap, prefs deltas -- so treat
+// this as a floor: widen the mask when a caller needs more off the bus.
 const QString kWatchPath = QStringLiteral("/localapi/v0/watch-ipn-bus?mask=1");
 
 constexpr auto kHeaderEnd = "\r\n\r\n";
@@ -259,16 +261,20 @@ void LocalApiClient::closed(QLocalSocket *socket)
     const auto it = m_exchanges.find(socket);
     if (it == m_exchanges.end())
         return;
-    // Whatever the close left unread is still part of the response.
+    // Whatever the close left unread is still part of the response, headers
+    // and all: read it first and judge the ending on what it brought, never on
+    // what was known before the drain.
     it->buffer += socket->readAll();
-    if (!it->headersDone) {
-        fail(socket, QStringLiteral("the connection closed before the response headers"));
-        return;
-    }
     deliver(socket);
     const auto rest = m_exchanges.find(socket);
     if (rest == m_exchanges.end())
         return; // deliver() reported the ending already
+    // Ahead of the streaming branch: a response whose headers never came is a
+    // failure for a watch as much as for a get, not a quiet ending.
+    if (!rest->headersDone) {
+        fail(socket, QStringLiteral("the connection closed before the response headers"));
+        return;
+    }
     if (rest->streaming) {
         finish(socket); // tailscaled went: the watch is over, not broken
         return;
