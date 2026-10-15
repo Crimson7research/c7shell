@@ -194,6 +194,24 @@ private slots:
         QCOMPARE(started.count(), 0);
     }
 
+    // mask=1 is watch-engine-updates, not the floor this once claimed it was:
+    // on a live tailscaled 1.104.1 it delivers a notification every 2.0s
+    // carrying nothing but byte counters. The mask governs the initial
+    // snapshot, not whether ongoing changes arrive, so the engine bit is not
+    // ours to ask for.
+    void watchesWithoutTheEngineUpdateBit()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+        }, FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        c.watch();
+        QTRY_COMPARE(server.requests().size(), 1);
+        const QByteArray request = server.requests().first();
+        QVERIFY2(request.contains("/localapi/v0/watch-ipn-bus?mask=2"), request.constData());
+    }
+
     void neverEmitsAPartialLine()
     {
         FakeSocketServer server(socketPath());

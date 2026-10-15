@@ -316,7 +316,7 @@ private slots:
         QTRY_COMPARE(server.requests().size(), 4);
         for (const char *path : {"/localapi/v0/status ", "/localapi/v0/prefs ",
                                  "/localapi/v0/suggest-exit-node ",
-                                 "/localapi/v0/watch-ipn-bus?mask=1 "})
+                                 "/localapi/v0/watch-ipn-bus?mask=2 "})
             QCOMPARE(requestsFor(server, path), 1);
         // Nothing polls: with no notification on the bus, nothing is re-read.
         QTest::qWait(100);
@@ -488,6 +488,55 @@ private slots:
         QTest::qWait(50);
         QCOMPARE(*statusReads, 2);
         QCOMPARE(requestsFor(server, "/localapi/v0/suggest-exit-node "), suggestReads);
+    }
+
+    // Dropping the engine bit from our own mask is necessary and not
+    // sufficient: tailscaled broadcasts an ongoing notification to every
+    // watcher whatever mask it asked for, so any other process on the machine
+    // watching with mask=1 puts the 2s byte-counter drumbeat on this stream
+    // too. Measured on a live 1.104.1 -- a mask=2 watcher sat silent for 20s,
+    // then took six Engine notifications the moment a mask=1 watcher joined.
+    //
+    // Re-reading a 28KB status for counters nothing displays is the polling
+    // docs/architecture.md keeps backends away from, and coalescing does not
+    // help: each one lands after the last refresh finished.
+    void aNotificationCarryingNothingThisModuleReadsDoesNotRefresh()
+    {
+        FakeSocketServer server(socketPath());
+        serveFixture(server, "status-idle.json");
+        LocalApiTailscaleBackend b(socketPath());
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QTRY_COMPARE(server.clientCount(), 1);
+        QCOMPARE(requestsFor(server, "/localapi/v0/status "), 1);
+
+        // Verbatim from the live bus, byte counts and all.
+        server.pushLine(QByteArrayLiteral(
+                "{\"Version\":\"1.104.1\",\"ErrMessage\":null,\"LoginFinished\":null,"
+                "\"State\":null,\"Prefs\":null,\"Engine\":{\"RBytes\":17844928,"
+                "\"WBytes\":683992,\"NumLive\":1,\"LiveDERPs\":1},"
+                "\"BrowseToURL\":null,\"DriveShares\":null}"));
+        // Proving a negative needs a bounded wait.
+        QTest::qWait(50);
+        QCOMPARE(requestsFor(server, "/localapi/v0/status "), 1);
+
+        // Skipped, not lost: a notification that does carry something still
+        // re-reads, so the filter cannot quietly deafen the module.
+        server.pushLine(QByteArrayLiteral("{\"Version\":\"1.104.1\",\"State\":6}"));
+        QTRY_COMPARE(requestsFor(server, "/localapi/v0/status "), 2);
+    }
+
+    // Fails safe: a notification naming something this module does not know
+    // is a reason to re-read, not a reason to ignore it.
+    void refreshesOnANotificationItDoesNotRecognise()
+    {
+        FakeSocketServer server(socketPath());
+        serveFixture(server, "status-idle.json");
+        LocalApiTailscaleBackend b(socketPath());
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QTRY_COMPARE(server.clientCount(), 1);
+        server.pushLine(QByteArrayLiteral(
+                "{\"Version\":\"1.104.1\",\"Engine\":null,\"SomethingNewIn2027\":{}}"));
+        QTRY_COMPARE(requestsFor(server, "/localapi/v0/status "), 2);
     }
 
     // The suggestion names a row of exitNodes, so reading it only on connect

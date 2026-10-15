@@ -8,10 +8,27 @@ namespace c7::tailscale {
 
 namespace {
 
-// mask=1 is notifyState, the least a watcher can ask for and all this backend
-// reads today. The CLI ORs further bits -- netmap, prefs deltas -- so treat
-// this as a floor: widen the mask when a caller needs more off the bus.
-const QString kWatchPath = QStringLiteral("/localapi/v0/watch-ipn-bus?mask=1");
+// mask=2 asks for one notification carrying the current state at subscribe,
+// and nothing else. Measured against a live tailscaled 1.104.1, which
+// corrected what this comment used to claim:
+//
+//   mask=1  a notification every 2.0s, forever, carrying nothing but Engine
+//           byte counters. It is the watch-engine-updates bit, not a floor.
+//   mask=2  one notification at subscribe (SessionID, State), then silence.
+//
+// The mask governs the initial snapshot and whether the engine poller runs.
+// It does not gate ongoing change notifications: tailscaled broadcasts those
+// to every watcher whatever it asked for. That was measured too -- a mask=2
+// watcher sat silent for 20s and then took six Engine notifications it had
+// never asked for, the moment a separate mask=1 watcher connected. There is
+// no bit that subscribes to state or prefs *changes*, because none is needed.
+//
+// Two things follow for a caller. Ongoing changes still arrive with the
+// engine bit dropped, which is what makes mask=2 safe. And quiet cannot be
+// assumed: any other process on the machine watching with mask=1 puts that
+// 2s drumbeat on this stream as well, so a caller has to judge a notification
+// by what it carries before acting on it.
+const QString kWatchPath = QStringLiteral("/localapi/v0/watch-ipn-bus?mask=2");
 
 constexpr auto kHeaderEnd = "\r\n\r\n";
 constexpr qsizetype kHeaderEndSize = 4;
