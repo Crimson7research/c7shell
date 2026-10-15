@@ -59,6 +59,11 @@ public:
     // `health` with every suppressed message dropped: what issues() publishes.
     static QStringList reportableHealth(const QStringList &health);
 
+    // The reconnect curve, as a pure function of the attempt number, so it can
+    // be checked without waiting for it: Services/AuthService.qml:202's shape,
+    // doubling from `baseMs` six times and then flat at kRetryCapMs.
+    static int retryDelayMs(int attempt, int baseMs);
+
     State state() const override { return m_state; }
 
     QString selfName() const override { return m_selfName; }
@@ -80,12 +85,24 @@ public:
 
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
 
+signals:
+    // The delay this backend armed, each time it armed one. Nothing in QML
+    // binds to it: it is here so a test can read the curve the reconnect
+    // actually used instead of sleeping through it, which
+    // docs/architecture.md:204 forbids it to do.
+    void retryScheduled(int delayMs);
+
 protected:
     QString rawSelfDnsName() const override { return m_selfDnsName; }
 
 private:
-    // Drop whatever is in flight and read the three endpoints again, then
-    // watch. Also the retry timer's slot.
+    // Which of the opening reads has answered. The connection counts as
+    // established only when all of them have and nothing has failed, which is
+    // what makes the backoff advance -- see noteEstablished().
+    enum OpeningRead { StatusRead = 1, PrefsRead = 2, SuggestRead = 4, EveryRead = 7 };
+
+    // Drop whatever is in flight, start the watch, read the three endpoints.
+    // Also the retry timer's slot.
     void open();
     void onReplied(const QString &path, const QByteArray &body);
     void onFailed(const QString &path, const QString &reason);
@@ -94,7 +111,14 @@ private:
     // again.
     void lostTailscaled();
     void scheduleRetry();
-    void requestStatus();
+    // Re-read what a notification can have changed: the status, and the
+    // suggestion that is keyed on a row of it.
+    void refresh();
+    // Clear the backoff, but only once this connection has wholly proved
+    // itself. A status reply alone is not proof: a local API that answers
+    // /status and refuses anything else would otherwise reset the curve on
+    // every pass and retry flat at the base delay forever.
+    void noteEstablished();
 
     void applyStatus(const c7::tailscale::Status &status);
     void applySuggestion(const QByteArray &body);
@@ -128,10 +152,15 @@ private:
     QTimer m_retry;
     int m_retryBaseMs;
     int m_attempts = 0;
-    // One status request at a time: tailscaled emits several notifications for
-    // one change, and a socket per notification would be a storm. A
-    // notification that arrives while a request is out is remembered, not
-    // dropped -- the reply in flight was asked for before the change.
-    bool m_statusInFlight = false;
-    bool m_statusStale = false;
+    // One refresh at a time: tailscaled emits several notifications for one
+    // change, and a pair of sockets per notification would be a storm. A
+    // notification that arrives while a refresh is out is remembered, not
+    // dropped -- the reply in flight was asked for before the change, so it
+    // cannot be the answer to it.
+    bool m_refreshInFlight = false;
+    bool m_refreshStale = false;
+    // Reset by open(), so each attempt is judged on its own.
+    int m_openingReads = 0;
+    bool m_attemptFailed = false;
+    bool m_established = false;
 };
