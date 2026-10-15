@@ -189,6 +189,63 @@ grep -q 'already runs the c7shell greeter' <<<"$out" \
 out=$("$upgrade" --config-only --no-doctor --no-greeter 2>&1) || true
 grep -qE '^ *greeter$' <<<"$out" && fail "--no-greeter still touched the greeter:\n$out"
 
+# greetd's own package ships a config running agreety on a text console. That
+# one is ours to replace; a greeter somebody chose is not.
+printf '[default_session]\ncommand = "agreety --cmd /bin/sh"\nuser = "greeter"\n' > "$greetd_conf"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+grep -q 'c7shell-greeter' "$greetd_conf" \
+  || fail "the stock agreety config was not replaced:\n$out"
+printf '[default_session]\ncommand = "tuigreet --cmd Hyprland"\nuser = "greeter"\n' > "$greetd_conf"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+grep -q 'greetd runs another greeter' <<<"$out" \
+  || fail "a deliberate greeter was not reported:\n$out"
+grep -q 'tuigreet' "$greetd_conf" || fail "a deliberate greeter config was overwritten:\n$(cat "$greetd_conf")"
+rm -f "$greetd_conf"
+"$upgrade" --config-only --no-doctor >/dev/null 2>&1 || true
+
+# A machine set up when c7shell used sddm moves to greetd -- enabled for the
+# next boot, never started under the running session. Any other display
+# manager was somebody's choice and is only advised about.
+dm_link=$tmp/root/etc/systemd/system/display-manager.service
+mkdir -p "${dm_link%/*}"
+printf '#!/bin/sh\necho "$*" >> "%s"\n' "$tmp/systemctl.log" > "$tmp/bin/systemctl"
+chmod +x "$tmp/bin/systemctl"
+
+: > "$tmp/systemctl.log"
+ln -sf /usr/lib/systemd/system/sddm.service "$dm_link"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+grep -q 'switching the display manager from sddm to greetd' <<<"$out" \
+  || fail "a machine on sddm was not switched:\n$out"
+grep -qx 'disable sddm.service' "$tmp/systemctl.log" \
+  || fail "sddm was not disabled:\n$(cat "$tmp/systemctl.log")"
+grep -qx 'enable greetd.service' "$tmp/systemctl.log" \
+  || fail "greetd was not enabled:\n$(cat "$tmp/systemctl.log")"
+grep -qE 'start|--now' "$tmp/systemctl.log" \
+  && fail "the display manager was started mid-upgrade:\n$(cat "$tmp/systemctl.log")"
+
+: > "$tmp/systemctl.log"
+"$upgrade" --config-only --no-doctor --dry-run >/dev/null 2>&1 || true
+[[ -s $tmp/systemctl.log ]] && fail "--dry-run ran systemctl:\n$(cat "$tmp/systemctl.log")"
+
+: > "$tmp/systemctl.log"
+ln -sf /usr/lib/systemd/system/gdm.service "$dm_link"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+grep -q 'the display manager is gdm -- left alone' <<<"$out" \
+  || fail "a machine on gdm was not left alone:\n$out"
+[[ -s $tmp/systemctl.log ]] && fail "gdm was touched:\n$(cat "$tmp/systemctl.log")"
+
+ln -sf /usr/lib/systemd/system/greetd.service "$dm_link"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+[[ -s $tmp/systemctl.log ]] && fail "a machine already on greetd was touched:\n$(cat "$tmp/systemctl.log")"
+
+# No display manager at all: greetd is set up, the same as on a fresh machine.
+rm -f "$dm_link"
+out=$("$upgrade" --config-only --no-doctor 2>&1) || true
+grep -q 'no display manager is enabled -- enabling greetd' <<<"$out" \
+  || fail "a machine without a display manager was not given greetd:\n$out"
+grep -qx 'enable greetd.service' "$tmp/systemctl.log" \
+  || fail "greetd was not enabled:\n$(cat "$tmp/systemctl.log")"
+
 # --- the real tree, upgraded from a version that predates a feature --------
 # Everything above runs on a synthetic three-file tree, which proves the merge
 # rules but not that THIS repository's files reach an existing install. A shell

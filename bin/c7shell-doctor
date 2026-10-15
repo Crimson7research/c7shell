@@ -522,80 +522,105 @@ if [[ -f $entry ]]; then
 fi
 
 section 'greeter'
-# The greeter is where a broken session shows up, and where the theme is easiest
-# to get half-installed: the QML ships with the package, the selection is a line
-# in /etc/sddm.conf.d that only c7shell-bootstrap or c7shell-upgrade writes. All
-# warnings, never failures -- a machine may deliberately run another display
-# manager, and the session works either way.
-
-# Which display manager owns the machine decides what is worth checking. The
-# same design runs on either: under sddm it is a theme sddm loads, under greetd
-# it is a binary that drives the conversation itself.
+# The greeter is where a broken session shows up, and where it is easiest to
+# get half-installed: the binary and its QML ship with the package, but the line
+# telling greetd to run it is in /etc/greetd/config.toml, which only
+# c7shell-bootstrap or c7shell-upgrade writes. All warnings, never failures -- a
+# machine may deliberately run another display manager, and the session works
+# either way.
 dm=$(c7shell_display_manager "$root")
-if [[ -n $dm && $dm != greetd ]]; then
+if [[ -z $dm ]]; then
+  warn 'no display manager is enabled, so nothing shows the c7shell greeter at boot'
+  note 'c7shell-upgrade enables greetd, or by hand: sudo systemctl enable greetd.service'
+elif [[ $dm == sddm ]]; then
+  warn "this machine's display manager is sddm, not greetd"
+  note 'c7shell has moved to greetd; c7shell-upgrade switches it at the next boot'
+elif [[ $dm != greetd ]]; then
   warn "this machine's display manager is $dm, not greetd"
-  note 'the c7shell greeter runs on greetd; to switch, run: c7shell-bootstrap'
+  note "the c7shell greeter runs on greetd; to switch: sudo systemctl disable $dm.service && sudo systemctl enable greetd.service"
 fi
 
-if true; then
-  if [[ -x $root/usr/bin/c7shell-greeter ]]; then
-    ok '/usr/bin/c7shell-greeter'
-  else
-    warn 'greetd is the display manager but c7shell-greeter is not installed'
-    note 'the greeter comes with the c7shell package; reinstall it'
-  fi
+if [[ -x $root/usr/bin/c7shell-greeter ]]; then
+  ok '/usr/bin/c7shell-greeter'
+else
+  warn '/usr/bin/c7shell-greeter is not installed'
+  note 'the greeter comes with the c7shell package; reinstall it'
+fi
 
-  if [[ -f $root/usr/share/c7shell/greeter/Main.qml ]]; then
-    ok '/usr/share/c7shell/greeter'
-  else
-    warn 'the greeter QML is missing, so the login screen cannot draw'
-    note 'it ships with the c7shell package; reinstall it'
-  fi
+if [[ -f $root/usr/share/c7shell/greeter/Main.qml ]]; then
+  ok '/usr/share/c7shell/greeter'
+else
+  warn 'the greeter QML is missing, so the login screen cannot draw'
+  note 'it ships with the c7shell package; reinstall it'
+fi
 
-  if greetd_is_c7shell "$root"; then
-    ok 'greetd runs the c7shell greeter'
-  elif [[ -f $root$GREETD_CONFIG ]]; then
-    warn 'greetd is configured to run something other than the c7shell greeter'
-    note 'that may well be deliberate; to switch, run: c7shell-upgrade'
-  else
-    warn "no $GREETD_CONFIG, so greetd has nothing to run"
-    note 'write it:  c7shell-upgrade   (or c7shell-bootstrap on a fresh machine)'
-  fi
+if greetd_is_c7shell "$root"; then
+  ok 'greetd runs the c7shell greeter'
+elif [[ -f $root$GREETD_CONFIG ]]; then
+  warn 'greetd is configured to run something other than the c7shell greeter'
+  note 'that may well be deliberate; to switch, run: c7shell-upgrade'
+else
+  warn "no $GREETD_CONFIG, so greetd has nothing to run"
+  note 'write it:  c7shell-upgrade   (or c7shell-bootstrap on a fresh machine)'
+fi
 
-  # greetd runs the greeter as its own user inside cage; without either, the
-  # login screen never appears and the reason is only in greetd's journal.
-  if [[ -x $root/usr/bin/cage ]]; then
-    ok 'cage'
-  else
-    warn 'cage is not installed, so greetd has no compositor to run the greeter in'
-    note 'install it:  pacman -S cage'
-  fi
+# greetd runs the greeter as its own user inside cage; without either, the
+# login screen never appears and the reason is only in greetd's journal.
+if [[ -x $root/usr/bin/cage ]]; then
+  ok 'cage'
+else
+  warn 'cage is not installed, so greetd has no compositor to run the greeter in'
+  note 'install it:  pacman -S cage'
+fi
 
-  # Where the greeter remembers the last account. Not fatal -- it simply will
-  # not preselect anyone -- but easy to miss and easy to fix.
-  if [[ -d $root/var/lib/c7shell-greeter ]]; then
-    ok '/var/lib/c7shell-greeter'
-  else
-    warn 'no /var/lib/c7shell-greeter, so the greeter cannot remember the last account'
-    note 'create it:  install -dm755 -o greeter -g greeter /var/lib/c7shell-greeter'
-  fi
+# The greeter runs as its own user and writes to two root-owned places, so both
+# must exist and belong to it. Both have broken a fresh install before, and
+# neither says so anywhere obvious: without the log the stderr redirect fails
+# before cage is exec'd and nothing is drawn; without a writable state
+# directory the greeter runs but never preselects an account.
+greeter_user=${C7SHELL_GREETER_USER:-greeter}
+owned_by_greeter() {
+  local owner
+  command -v stat >/dev/null || return 0
+  owner=$(stat -c %U "$1" 2>/dev/null) || return 1
+  [[ $owner == "$greeter_user" ]]
+}
 
-  # The network pill's only source of truth. Nothing breaks without it -- the
-  # pill just never appears -- but "my greeter shows no wifi" has no other
-  # explanation, and a dispatcher script is easy to lose to a manual /usr edit.
-  if command -v nmcli >/dev/null; then
-    dispatcher=''
-    for d in "$root"/usr/lib/NetworkManager/dispatcher.d "$root"/etc/NetworkManager/dispatcher.d; do
-      [[ -x $d/50-c7shell-greeter ]] && dispatcher=$d/50-c7shell-greeter
-    done
-    if [[ -n $dispatcher ]]; then
-      ok "greeter network readout (${dispatcher#"$root"})"
-    else
-      warn 'the greeter shows no network: 50-c7shell-greeter is not in'
-      note 'NetworkManager'"'"'s dispatcher.d, so nothing publishes the connection'
-      note 'where the greeter (running as the greeter user, with no D-Bus) can read it.'
-      note 'It ships with the package, so a rebuild restores it: c7shell-upgrade'
-    fi
+if [[ ! -e $root/var/log/c7greeter.log ]]; then
+  warn 'no /var/log/c7greeter.log, so the greeter cannot start: its stderr redirect fails before cage runs'
+  note 'create it:  sudo install -m600 -o greeter -g greeter /dev/null /var/log/c7greeter.log'
+elif ! owned_by_greeter "$root/var/log/c7greeter.log"; then
+  warn "/var/log/c7greeter.log is not owned by $greeter_user, so the greeter cannot start"
+  note 'fix it:  sudo chown greeter:greeter /var/log/c7greeter.log'
+else
+  ok '/var/log/c7greeter.log'
+fi
+
+if [[ ! -d $root/var/lib/c7shell-greeter ]]; then
+  warn 'no /var/lib/c7shell-greeter, so the greeter cannot remember the last account'
+  note 'create it:  sudo install -dm755 -o greeter -g greeter /var/lib/c7shell-greeter'
+elif ! owned_by_greeter "$root/var/lib/c7shell-greeter"; then
+  warn "/var/lib/c7shell-greeter is not owned by $greeter_user, so the greeter cannot remember the last account"
+  note 'fix it:  sudo chown greeter:greeter /var/lib/c7shell-greeter'
+else
+  ok '/var/lib/c7shell-greeter'
+fi
+
+# The network pill's only source of truth. Nothing breaks without it -- the
+# pill just never appears -- but "my greeter shows no wifi" has no other
+# explanation, and a dispatcher script is easy to lose to a manual /usr edit.
+if command -v nmcli >/dev/null; then
+  dispatcher=''
+  for d in "$root"/usr/lib/NetworkManager/dispatcher.d "$root"/etc/NetworkManager/dispatcher.d; do
+    [[ -x $d/50-c7shell-greeter ]] && dispatcher=$d/50-c7shell-greeter
+  done
+  if [[ -n $dispatcher ]]; then
+    ok "greeter network readout (${dispatcher#"$root"})"
+  else
+    warn 'the greeter shows no network: 50-c7shell-greeter is not in'
+    note 'NetworkManager'"'"'s dispatcher.d, so nothing publishes the connection'
+    note 'where the greeter (running as the greeter user, with no D-Bus) can read it.'
+    note 'It ships with the package, so a rebuild restores it: c7shell-upgrade'
   fi
 fi
 

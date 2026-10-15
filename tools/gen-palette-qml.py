@@ -5,10 +5,11 @@ The shell itself does not need this: Quickshell has FileView, so
 Services/PaletteStore.qml reads the JSON directly and a change takes effect on the
 next start. Two consumers cannot.
 
-  - The sddm greeter is plain QtQuick. It has no FileView, and QML's
+  - The login greeter is plain QtQuick. It has no FileView, and QML's
     XMLHttpRequest refuses to read a local file unless QML_XHR_ALLOW_FILE_READ
-    is set in the environment -- which, for a process sddm launches as the sddm
-    user before any session exists, is not ours to set. Its PaletteStore.qml is
+    is set in the environment -- which only the greetd config sets, and a file
+    read that depends on a line in /etc is one more way for the login screen to
+    come up wrong. Its PaletteStore.qml is
     therefore generated and committed, and tests/test-greeter.sh fails if it has
     gone stale. A login screen is the last place to put a file read that can
     fail.

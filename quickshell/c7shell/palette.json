@@ -4,7 +4,7 @@
     "",
     "Six things used to hold their own literals and drift apart: Theme/Theme.qml,",
     "Services/AppearanceStore.qml, scripts/c7shell-theme-export.py,",
-    "hypr/conf/appearance.lua, hypr/conf/look-and-feel.lua and the sddm greeter's",
+    "hypr/conf/appearance.lua, hypr/conf/look-and-feel.lua and the login greeter's",
     "own Theme.qml. They had already drifted -- appearance.lua called itself the",
     "mirror of the JsonAdapter and was missing inactiveBorder, which",
     "look-and-feel.lua consumes -- so all six now read this file instead.",
@@ -44,7 +44,7 @@
     "negative": "#ff7a6b",
     "neutral": "#f0a44a",
 
-    "_greeterBg": "The sddm greeter's ground. Deeper than the shell's `dark` bg on purpose: there is no compositor behind the greeter to blur with, so the fill carries the whole glass effect.",
+    "_greeterBg": "The login greeter's ground. Deeper than the shell's `dark` bg on purpose: there is no compositor behind the greeter to blur with, so the fill carries the whole glass effect.",
     "greeterBg": "#08080a",
 
     "_accentChoices": [

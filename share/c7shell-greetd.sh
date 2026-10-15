@@ -1,10 +1,8 @@
 # Shared by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the greetd
 # config c7shell wants, in one place rather than three copies that drift.
 #
-# /etc/greetd/config.toml is
-# system state, so a package must not write it -- bootstrap does it on a fresh
-# machine and upgrade on an existing one, the same arrangement sddm's drop-in
-# has.
+# /etc/greetd/config.toml is system state, so a package must not write it --
+# bootstrap does it on a fresh machine and upgrade on an existing one.
 
 GREETD_CONFIG=${GREETD_CONFIG:-/etc/greetd/config.toml}
 
@@ -44,6 +42,16 @@ CONF
 greetd_is_c7shell() {
   local root=${1:-}
   grep -q 'c7shell-greeter' "${root}${GREETD_CONFIG}" 2>/dev/null
+}
+
+# True when the greetd config is ours to replace: there is none, or it is the
+# one greetd's package ships, which runs agreety on a text console. Anything
+# else -- tuigreet, gtkgreet, a hand-written command -- is somebody's choice.
+greetd_config_replaceable() {
+  local root=${1:-}
+  local conf=${root}${GREETD_CONFIG}
+  [[ -f $conf ]] || return 0
+  grep -qE '^[[:space:]]*command[[:space:]]*=.*agreety' "$conf"
 }
 
 # Which display manager the machine is set up to use, as a bare word: greetd,

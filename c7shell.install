@@ -45,7 +45,7 @@ keys, ...) at any time:
 
     c7shell-doctor --optional
 
-And to (re)configure the system side -- GPU driver, SDDM, pipewire, fonts,
+And to (re)configure the system side -- GPU driver, greetd, pipewire, fonts,
 services -- on a machine that was never bootstrapped:
 
     c7shell-bootstrap --dry-run     # show the plan

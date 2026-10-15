@@ -38,20 +38,22 @@ force=0
 
 # The greeter lives outside both halves above: the binary and its QML ship with
 # the package, but which greeter greetd runs is a line in /etc/greetd/config.toml
-# that no package may write. An install from
-# before the theme existed has the files and not the selection, which is exactly
-# the gap this step closes.
+# that no package may write, and which display manager starts at boot is a
+# systemd link. A machine set up when c7shell used sddm has the files and
+# neither of those, which is exactly the gap this step closes.
 # Bumped whenever a step is added after the package half below, or an existing
 # one changes in a way that matters on the run that installs the change. That
 # half replaces this very script, so it is otherwise the *old* code that runs
 # the rest -- see the hand-over after the package step.
+#
+# Rev 4 is the greeter step moving machines from sddm to greetd.
 #
 # Rev 3 is the restart step below. Rev 2 shipped a fix to it and did not bump,
 # so the run that installed that fix went on using the code it replaced -- the
 # report from the machine it happened on is a shell wedged on a failed load and
 # a "restart it yourself" with no command in it, which is precisely the pair of
 # things rev 2 had just fixed.
-upgrade_revision=3
+upgrade_revision=4
 # The greetd config body and the display-manager lookup, shared with
 # c7shell-bootstrap and c7shell-doctor: share/c7shell-greetd.sh. The repo layout
 # answers first, so a checkout and the test suite run the copy beside them;
@@ -84,7 +86,8 @@ must not do the second (the configs are yours to edit).
                        usual case on a machine set up before the manifest
                        existed -- this is what you want.
       --no-doctor      skip the c7shell-doctor run at the end
-      --no-greeter     don't touch the sddm greeter theme selection
+      --no-greeter     don't point greetd at the c7shell greeter or switch
+                       the display manager to it
   -f, --force          rebuild even when the installed version is current
   -h, --help           this text
 
@@ -585,23 +588,77 @@ as_root() {
 
 if ((do_greeter)); then
   # greetd runs the greeter as a binary rather than loading QML, so there is no
-  # theme to select -- only a config telling greetd what to run.
+  # theme to select -- only a config telling greetd what to run, and greetd
+  # being the display manager that starts at boot.
   step 'greeter'
+  greetd_ours=0
   if [[ ! -x $etc_root/usr/bin/c7shell-greeter ]]; then
     info 'c7shell-greeter is not installed -- greetd is left alone'
   elif greetd_is_c7shell "$etc_root"; then
     info 'greetd already runs the c7shell greeter'
+    greetd_ours=1
+  elif ! greetd_config_replaceable "$etc_root"; then
+    # Someone chose another greeter on purpose; it is theirs to undo.
+    info "greetd runs another greeter -- $GREETD_CONFIG is left alone"
+    greeter_note="to run the c7shell greeter instead, replace $GREETD_CONFIG with: c7shell-bootstrap"
   else
     info "pointing greetd at the c7shell greeter in $GREETD_CONFIG"
+    greetd_ours=1
     if ((dry)); then
       printf '  would write %s\n' "$etc_root$GREETD_CONFIG"
     else
       as_root mkdir -p "$etc_root/etc/greetd"
       greetd_config_body | as_root tee "$etc_root$GREETD_CONFIG" >/dev/null \
         || warn "could not write $etc_root$GREETD_CONFIG"
-      as_root install -dm755 -o greeter -g greeter "$etc_root/var/lib/c7shell-greeter" 2>/dev/null \
-        || as_root install -dm755 "$etc_root/var/lib/c7shell-greeter" 2>/dev/null || true
     fi
+  fi
+
+  if ((greetd_ours)); then
+    # Written as user greeter into root-owned directories, so both must exist
+    # and belong to it before greetd starts: without the log the stderr
+    # redirect fails before cage is exec'd and nothing is drawn; without the
+    # state directory the greeter never preselects an account. Only when the
+    # user exists -- it comes with greetd's package.
+    if ((dry)); then
+      printf '  would create /var/lib/c7shell-greeter and /var/log/c7greeter.log, owned by greeter\n'
+    elif getent passwd greeter >/dev/null 2>&1; then
+      as_root install -dm755 -o greeter -g greeter "$etc_root/var/lib/c7shell-greeter" \
+        || warn 'could not create /var/lib/c7shell-greeter owned by greeter'
+      [[ -e $etc_root/var/log/c7greeter.log ]] \
+        || as_root install -Dm600 -o greeter -g greeter /dev/null "$etc_root/var/log/c7greeter.log" \
+        || warn 'could not create /var/log/c7greeter.log; the greeter may not start'
+    fi
+
+    # c7shell used to set machines up with sddm. Move those to greetd, and set
+    # greetd up where no display manager is enabled at all. Any other display
+    # manager was somebody's choice and is only advised about. Enabled, not
+    # started: starting it would take the console away mid-upgrade, so it
+    # takes over at the next boot.
+    dm=$(c7shell_display_manager "$etc_root")
+    case $dm in
+      greetd) ;;
+      sddm)
+        info 'switching the display manager from sddm to greetd (at the next boot)'
+        if as_root systemctl disable sddm.service && as_root systemctl enable greetd.service; then
+          greeter_note='greetd takes over at the next boot -- the login screen is then the c7shell greeter'
+        else
+          warn 'could not switch from sddm to greetd; to do it by hand:'
+          warn '  sudo systemctl disable sddm.service && sudo systemctl enable greetd.service'
+        fi
+        ;;
+      '')
+        info 'no display manager is enabled -- enabling greetd (at the next boot)'
+        if as_root systemctl enable greetd.service; then
+          greeter_note='greetd takes over at the next boot -- the login screen is then the c7shell greeter'
+        else
+          warn 'could not enable greetd.service; to do it by hand: sudo systemctl enable greetd.service'
+        fi
+        ;;
+      *)
+        info "the display manager is $dm -- left alone"
+        greeter_note="to use the c7shell greeter: sudo systemctl disable $dm.service && sudo systemctl enable greetd.service"
+        ;;
+    esac
   fi
 fi
 

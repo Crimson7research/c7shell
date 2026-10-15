@@ -10,7 +10,7 @@ import QtQuick
 // Reads ../palette.json, which is the single source for every colour in the
 // shell and for the appearance defaults. Theme.qml takes the palette half and
 // AppearanceStore the defaults half; the exporter, hypr/conf/appearance.lua and
-// the sddm greeter read the same file in their own languages.
+// the login greeter read the same file in their own languages.
 //
 // Resolved off this file, not off $HOME: the packaged shell lives in
 // /usr/share/c7shell, and a hardcoded ~/.config path would silently read

@@ -25,7 +25,7 @@ usage() {
 usage: c7shell-bootstrap [options]
 
 Installs and configures what a bare Arch install lacks before the c7shell
-session can start: GPU driver, SDDM, pipewire, fonts, icon theme, xdg-utils,
+session can start: GPU driver, greetd, pipewire, fonts, icon theme, xdg-utils,
 system services, and the optional programs the keybinds expect.
 
   -n, --dry-run    print the whole plan and change nothing
@@ -36,10 +36,10 @@ system services, and the optional programs the keybinds expect.
       --no-upgrade   skip the full system upgrade (and the database refresh:
                      -Sy without -u is a partial upgrade)
       --no-drivers   don't touch GPU drivers
-      --no-greeter   don't install or enable SDDM
+      --no-greeter   don't install or enable greetd
       --no-greeter-theme
-                   install SDDM but leave its theme alone (keep whatever
-                   theme the machine already uses)
+                   install greetd but leave /etc/greetd/config.toml alone
+                   (keep whatever greeter the machine already runs)
       --no-aur       don't install paru or any AUR package
       --no-extras    skip kitty, dolphin, ddcutil, brightnessctl, playerctl
       --no-fingerprint
@@ -273,10 +273,6 @@ if ((want_greeter)); then
   fi
 fi
 
-# The greeter theme. sddm reads its config from /etc/sddm.conf and the drop-ins
-# in /etc/sddm.conf.d, so selecting a theme is a write to /etc -- which a
-# package must not do, and which is why it lives here next to the unit enables.
-# The theme itself is shipped by the package, under /usr/share/sddm/themes.
 greetd_config_todo=0
 # Which greeter greetd runs is a line in /etc/greetd/config.toml -- a write to
 # /etc, which a package must not do, so it happens here. The greeter binary and
@@ -610,5 +606,5 @@ The system side is ready. What is left is the c7shell package itself:
     ./install.sh          # build and install it, then check the requirements
     c7shell-setup         # copy the configs into ~/.config
 
-Then reboot and pick the "c7shell" session in SDDM.
+Then reboot and log in at the c7shell greeter.
 MSG

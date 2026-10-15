@@ -157,9 +157,8 @@ build() {
   cmake --build build
 
   # The greetd greeter. greetd speaks only an authentication protocol -- no
-  # user list, no session list, no power actions and no theme config -- so
-  # unlike the sddm theme, which is QML sddm loads itself, this one needs a
-  # binary to supply those and to drive the conversation.
+  # user list, no session list, no power actions and no theme config -- so the
+  # greeter is a binary that supplies those and drives the conversation.
   cmake -S greetd-greeter -B build-greeter -G Ninja \
     -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build build-greeter
@@ -173,7 +172,7 @@ check() {
   # Every one of these stubs the machine it tests (pacman, lspci, systemctl,
   # $HOME), so they are safe to run mid-build and mean the package cannot be
   # built out of a tree whose scripts are broken. The two exceptions still are:
-  # test-greeter.sh renders the sddm theme with qml6 offscreen, and
+  # test-greeter.sh renders the greeter's QML with qml6 offscreen, and
   # test-lockscreen.sh has hyprlock validate its own config against a Wayland
   # display that does not exist -- neither can touch a running session, and both
   # skip themselves when the tool is not installed (in a clean chroot, neither
@@ -288,10 +287,10 @@ package() {
     "$pkgdir/usr/share/wayland-sessions/c7shell.desktop"
 
 
-  # The greetd greeter: a binary, and the same QML the sddm theme uses with its
-  # own Main.qml. Main.qml is the only file that differs between the two -- it
-  # is the adapter, and everything it adapts to lives in that one file -- so the
-  # rest is copied from the same source rather than kept twice in the tree.
+  # The greetd greeter: a binary, and the QML in sddm/themes/c7shell with
+  # greetd-greeter/Main.qml in place of the sddm one. Main.qml is the adapter --
+  # everything it adapts to lives in that one file -- so the rest is copied as
+  # it is.
   DESTDIR="$pkgdir" cmake --install build-greeter
   install -dm755 "$pkgdir/usr/share/c7shell/greeter"
   cp -a sddm/themes/c7shell/. "$pkgdir/usr/share/c7shell/greeter/"
@@ -313,7 +312,7 @@ package() {
   install -dm755 "$pkgdir/var/lib/c7shell-greeter"
 
   # What the greeter's network pill reads. The greeter is QML with no D-Bus
-  # binding, running as the sddm user before any session exists, so it cannot
+  # binding, running as the greeter user before any session exists, so it cannot
   # ask NetworkManager what it is connected to -- this runs as root on every
   # connection change and writes the answer where the greeter can read it.
   # /usr/lib, not /etc/NetworkManager/dispatcher.d: it is a program, and

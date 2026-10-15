@@ -92,9 +92,13 @@ printf 'import Quickshell\nScope { AuthWindow {} }\n' > "$conf/quickshell/c7shel
 mkdir -p "$conf/hypr/conf"
 printf 'hl.exec_cmd("/usr/lib/pam_kwallet_init")\n' > "$conf/hypr/conf/autostart.lua"
 
+# The greeter's paths are checked for belonging to the greeter user. Files in
+# the fake tree belong to whoever runs the suite, so that is the owner the
+# doctor expects unless a case says otherwise.
 run() {
   env -i PATH="$bin" HOME="$tmp" \
     C7SHELL_ROOT="$root" C7SHELL_SHARE="$tmp/share" XDG_CONFIG_HOME="$conf" \
+    C7SHELL_GREETER_USER="${greeter_owner:-$(id -un)}" \
     /usr/bin/bash "$doctor" "$@"
 }
 
@@ -414,6 +418,9 @@ printf 'general {\n    ignore_empty_input = true\n}\n' > "$conf/hypr/hyprlock.co
 out=$(run 2>&1) || fail "a machine without the greeter should not fail:\n$out"
 grep -q 'c7shell-greeter is not installed' <<<"$out" \
   || fail "the missing greeter binary was not reported:\n$out"
+# Nothing enabled at all: no display manager means no greeter at boot.
+grep -q 'no display manager is enabled' <<<"$out" \
+  || fail "a machine with no display manager was not reported:\n$out"
 
 mkdir -p "$root/usr/bin" "$root/usr/share/c7shell/greeter" "$root/etc/greetd" \
          "$root/etc/systemd/system"
@@ -445,12 +452,36 @@ grep -q 'cannot remember the last account' <<<"$out" \
   || fail "the missing state dir was not reported:\n$out"
 mkdir -p "$root/var/lib/c7shell-greeter"
 
+# The log the greeter's stderr is redirected into. Missing, the redirect fails
+# before cage runs and nothing is drawn -- the bug a fresh install once had.
+grep -q 'no /var/log/c7greeter.log' <<<"$out" \
+  || fail "the missing greeter log was not reported:\n$out"
+mkdir -p "$root/var/log"; : > "$root/var/log/c7greeter.log"
+out=$(run 2>&1) || fail "a complete greeter should not fail:\n$out"
+grep -q 'ok.*/var/log/c7greeter.log' <<<"$out" || fail "the greeter log was not recognised:\n$out"
+grep -q 'ok.*/var/lib/c7shell-greeter' <<<"$out" || fail "the state dir was not recognised:\n$out"
+
+# Both present but owned by someone else -- root, after a package created them
+# before the greeter user existed -- is the same failure, quieter.
+out=$(greeter_owner=c7shell-no-such-user run 2>&1) || fail "wrong owners should not fail:\n$out"
+grep -q 'c7greeter.log is not owned by c7shell-no-such-user' <<<"$out" \
+  || fail "a log owned by the wrong user was not reported:\n$out"
+grep -q 'c7shell-greeter is not owned by c7shell-no-such-user' <<<"$out" \
+  || fail "a state dir owned by the wrong user was not reported:\n$out"
+
 # A machine on another display manager is told, since the greeter will not run.
 ln -sf /usr/lib/systemd/system/sddm.service \
   "$root/etc/systemd/system/display-manager.service"
 out=$(run 2>&1) || fail "another display manager should not fail:\n$out"
 grep -q 'display manager is sddm, not greetd' <<<"$out" \
   || fail "the other display manager was not reported:\n$out"
+grep -q 'c7shell-upgrade switches it' <<<"$out" \
+  || fail "a machine still on sddm was not pointed at c7shell-upgrade:\n$out"
+ln -sf /usr/lib/systemd/system/gdm.service \
+  "$root/etc/systemd/system/display-manager.service"
+out=$(run 2>&1) || fail "gdm should not fail:\n$out"
+grep -q 'disable gdm.service && sudo systemctl enable greetd.service' <<<"$out" \
+  || fail "another display manager was not given the switch command:\n$out"
 ln -sf /usr/lib/systemd/system/greetd.service \
   "$root/etc/systemd/system/display-manager.service"
 
