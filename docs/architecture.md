@@ -141,6 +141,7 @@ ListView {
 | `MediaBackend` (`Media`) | MPRIS over D-Bus |
 | `BluetoothBackend` (`Bluetooth`) | BlueZ over D-Bus |
 | `NetworkBackend` (`Network`) | NetworkManager over D-Bus |
+| `TailscaleBackend` (`Tailscale`) | tailscaled's local API socket |
 | `RadioBackend` (`Radio`) | `/dev/rfkill` (airplane mode) |
 | `CompositorBackend` (`Compositor`) | Hyprland's request and event sockets |
 | `NotificationsBackend` (`Notifications`) | owns `org.freedesktop.Notifications` |

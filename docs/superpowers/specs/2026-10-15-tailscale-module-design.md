@@ -93,7 +93,10 @@ Section labels are the shipping app's own strings (`myDevicesSectionTitle`,
 
 Hostnames are **not unique** — `C7-LAP-G1157C6M` and `localhost` each appear
 twice on this tailnet — so a row without its IP is ambiguous. Rows key on
-`NodeID`.
+the peer's `ID`, the string one. Not `NodeID`, which is a number no other
+endpoint returns: `ExitNodeStatus.ID` and `/suggest-exit-node` both answer with
+`ID`, so it is the only identity the three sources join on. Not `PublicKey`
+either, which changes under a node that re-keys.
 
 ### State
 
