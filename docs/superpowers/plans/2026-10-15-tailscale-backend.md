@@ -14,6 +14,30 @@
 
 ## Global Constraints
 
+### Build host, and how to run anything
+
+**This machine has no C++ toolchain** — no `cmake`, no Qt6, no `qml6`, no
+`ninja`. Nothing in this plan compiles or runs locally. Every build and every
+test goes through one helper, which mirrors the worktree to the `arch-dev01`
+VM (Arch, Qt 6.12.0) over tar+ssh and runs the command there:
+
+```
+$RR <command…>        # $RR = <workspace>/remote-run, absolute path in your dispatch
+```
+
+The VM has no GPU and that does not matter: the C++ tests are headless QtTest,
+and the QML view tests run offscreen under `qml6` with no compositor — verified
+before Task 1 with `DISPLAY` and `WAYLAND_DISPLAY` both empty.
+
+**One invocation per phase, never one per assertion.** Each `remote-run` call
+costs a full worktree sync and a human approval, so a task makes *one* call to
+see red and *one* to see green, each running every command for that phase
+chained with `&&`. A task that shells out once per test case is a defect.
+Configure only when `CMakeLists.txt` changed; the VM keeps its object cache
+between runs, so a rebuild is incremental.
+
+### Rules
+
 - `plugin/lib/` may not include a QML, Quick or Quickshell header, link a QML or Quick target, or declare a QML module. `tests/test-c7-plugin.sh` check 2 enforces it.
 - Every plugin test's main is `C7_TEST_MAIN`, which isolates it from the host. Check 2b enforces it. No test may open the real `/var/run/tailscale/tailscaled.sock`.
 - Socket path is `qEnvironmentVariable("TS_SOCKET", "/var/run/tailscale/tailscaled.sock")`.
@@ -89,7 +113,7 @@ void rejectsMalformedJson()
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cmake -S plugin -B build && cmake --build build && ctest --test-dir build -R tst_statusparser --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_statusparser --output-on-failure'``
 Expected: build failure — no `StatusParser`.
 
 - [ ] **Step 3: Implement `Types.h` and `StatusParser::parse`**
@@ -98,12 +122,12 @@ Expected: build failure — no `StatusParser`.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `ctest --test-dir build -R tst_statusparser --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_statusparser --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Run the repo's plugin gate**
 
-Run: `tests/test-c7-plugin.sh`
+Run: ``$RR tests/test-c7-plugin.sh``
 Expected: PASS, including check 2 (no QML header under `plugin/lib/`) and check 2b.
 
 - [ ] **Step 6: Commit**
@@ -176,7 +200,7 @@ void stripsTheMaskFromExitNodeAddresses()
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `ctest --test-dir build -R tst_statusparser --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_statusparser --output-on-failure'``
 Expected: FAIL — no `Peer`, `Group`, `stripMask`.
 
 - [ ] **Step 3: Implement grouping, the join and `stripMask`**
@@ -185,7 +209,7 @@ Group by the rule in the spec: a peer is `Tagged` when `User[peer.UserID].LoginN
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `ctest --test-dir build -R tst_statusparser --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_statusparser --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -246,7 +270,7 @@ void insertsAndRemovesRatherThanResetting()
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `ctest --test-dir build -R tst_peermodel --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_peermodel --output-on-failure'``
 Expected: FAIL — no `PeerModel`.
 
 - [ ] **Step 3: Implement `PeerModel`**
@@ -255,7 +279,7 @@ Expected: FAIL — no `PeerModel`.
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `ctest --test-dir build -R tst_peermodel --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_peermodel --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -346,7 +370,7 @@ void neverEmitsAPartialLine()
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `ctest --test-dir build -R tst_localapiclient --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_localapiclient --output-on-failure'``
 Expected: FAIL — no `LocalApiClient`.
 
 - [ ] **Step 3: Implement `LocalApiClient`**
@@ -355,7 +379,7 @@ One `QLocalSocket` per in-flight request; `watch()` holds its own. Buffer incomi
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `ctest --test-dir build -R tst_localapiclient --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_localapiclient --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -407,7 +431,7 @@ void tailscaleSingletonLoadsAndStartsInNoState()
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `ctest --test-dir build -R tst_module --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_module --output-on-failure'``
 Expected: FAIL — no `Tailscale` singleton in module `C7`.
 
 - [ ] **Step 3: Implement the contract and a backend that does not connect yet**
@@ -416,12 +440,12 @@ Expected: FAIL — no `Tailscale` singleton in module `C7`.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `ctest --test-dir build -R tst_module --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_module --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Verify the whole plugin gate, including the install layout**
 
-Run: `tests/test-c7-plugin.sh`
+Run: ``$RR tests/test-c7-plugin.sh``
 Expected: PASS — check 4 confirms `cmake --install` ships the module and nothing else.
 
 - [ ] **Step 6: Commit**
@@ -504,7 +528,7 @@ void publishesOnlyExitNodeCapablePeersAsExitNodes()
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `ctest --test-dir build -R tst_tailscalebackend --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_tailscalebackend --output-on-failure'``
 Expected: FAIL
 
 - [ ] **Step 3: Implement the wiring**
@@ -513,12 +537,12 @@ On construction: `get("/localapi/v0/status")`, `get("/localapi/v0/prefs")`, `get
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `ctest --test-dir build -R tst_tailscalebackend --output-on-failure`
+Run: ``$RR bash -c 'cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build -R tst_tailscalebackend --output-on-failure'``
 Expected: PASS
 
 - [ ] **Step 5: Confirm the boundary tables did not grow**
 
-Run: `tests/test-native-boundary.sh`
+Run: ``$RR tests/test-native-boundary.sh``
 Expected: PASS, and the reported debt counts are unchanged from `main`.
 
 - [ ] **Step 6: Commit**
@@ -557,7 +581,7 @@ The slot goes **before** `netSlot` in the `Row`, is visible whenever `Tailscale.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `tests/test-tailscale.sh`
+Run: ``$RR tests/test-tailscale.sh``
 Expected: FAIL — `StatusPill` has no Tailscale slot.
 
 - [ ] **Step 3: Add `globe.svg` and the slot**
@@ -566,12 +590,12 @@ Expected: FAIL — `StatusPill` has no Tailscale slot.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `tests/test-tailscale.sh`
+Run: ``$RR tests/test-tailscale.sh``
 Expected: PASS
 
 - [ ] **Step 5: Run the QML gates**
 
-Run: `tests/test-qml-hygiene.sh && tests/test-native-boundary.sh`
+Run: ``$RR bash -c 'tests/test-qml-hygiene.sh && tests/test-native-boundary.sh'``
 Expected: PASS — no colour literal in a view, no new import debt.
 
 - [ ] **Step 6: Commit**
@@ -624,7 +648,7 @@ Root panel per `docs/tailscale-mock.html` §3: `GlassPopover { name: "tailscale"
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `tests/test-tailscale.sh`
+Run: ``$RR tests/test-tailscale.sh``
 Expected: FAIL — no `TailscalePopover`.
 
 - [ ] **Step 3: Implement `TailscalePopover.qml` and `PeerRow.qml`**
@@ -633,12 +657,12 @@ Copy goes through `qsTr`. The clipboard write is Quickshell's clipboard API — 
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `tests/test-tailscale.sh`
+Run: ``$RR tests/test-tailscale.sh``
 Expected: PASS
 
 - [ ] **Step 5: Run the full suite**
 
-Run: `for t in tests/test-*.sh; do "$t" || break; done`
+Run: ``$RR bash -c 'for t in tests/test-*.sh; do "$t" || exit 1; done'``
 Expected: every test passes.
 
 - [ ] **Step 6: Commit**
