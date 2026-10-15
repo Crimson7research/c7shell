@@ -22,18 +22,14 @@ public:
     QString selfName() const override { return m_selfName; }
     QString selfIp4() const override { return m_selfIp4; }
     QString selfIp6() const override { return m_selfIp6; }
-    // Normalised on the way out, not on the way in, so whatever fills
-    // m_selfDnsName cannot forget to do it.
-    QString selfDnsName() const override { return withoutRootDot(m_selfDnsName); }
     QString tailnet() const override { return m_tailnet; }
     QDateTime keyExpiry() const override { return m_keyExpiry; }
 
     bool exitNodeActive() const override { return m_exitNodeActive; }
     QString exitNodeName() const override { return m_exitNodeName; }
-    bool exitNodeBlocked() const override { return m_exitNodeActive && !m_exitNodeOnline; }
+    bool exitNodeOnline() const override { return m_exitNodeOnline; }
 
     QStringList issues() const override { return m_issues; }
-    int issueCount() const override { return int(m_issues.size()); }
 
     // Owned by this object and outliving every binding on it, so a view may
     // hold the pointer for as long as the singleton lives.
@@ -41,6 +37,9 @@ public:
     QAbstractItemModel *exitNodes() const override { return &m_exitNodes; }
 
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
+
+protected:
+    QString rawSelfDnsName() const override { return m_selfDnsName; }
 
 private:
     State m_state = State::NoState;
@@ -53,9 +52,8 @@ private:
     QDateTime m_keyExpiry;
 
     bool m_exitNodeActive = false;
-    // Only read through exitNodeBlocked(), and false until an exit node is
-    // known to be reachable: the fail-closed flag must not start out saying
-    // traffic is fine.
+    // False until an exit node is known to be reachable: the fail-closed flag
+    // built on this must not start out saying traffic is fine.
     bool m_exitNodeOnline = false;
     QString m_exitNodeName;
 

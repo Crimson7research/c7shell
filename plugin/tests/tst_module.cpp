@@ -20,6 +20,14 @@ QString importPath()
     return qEnvironmentVariable("C7_QML_IMPORT_PATH", QStringLiteral(C7_QML_IMPORT_PATH));
 }
 
+// The engine stays the caller's, because a singleton belongs to the engine
+// that made it and must not outlive it.
+QObject *singleton(QQmlEngine &engine, const char *name)
+{
+    engine.setImportPathList({importPath()});
+    return engine.singletonInstance<QObject *>("C7", name);
+}
+
 } // namespace
 
 class TestModule : public QObject {
@@ -39,8 +47,7 @@ private slots:
     void buildSingletonReportsTheLibraryVersion()
     {
         QQmlEngine engine;
-        engine.setImportPathList({importPath()});
-        auto *build = engine.singletonInstance<QObject *>("C7", "Build");
+        QObject *build = singleton(engine, "Build");
         QVERIFY2(build, "C7/qmldir exists, but its plugin or Build singleton did not load");
         QCOMPARE(build->property("version").toString(), c7::core::version());
     }
@@ -51,8 +58,7 @@ private slots:
     void tailscaleSingletonLoadsAndStartsInNoState()
     {
         QQmlEngine engine;
-        engine.setImportPathList({importPath()});
-        auto *ts = engine.singletonInstance<QObject *>("C7", "Tailscale");
+        QObject *ts = singleton(engine, "Tailscale");
         QVERIFY2(ts, "module C7 loaded but its Tailscale singleton did not");
         QCOMPARE(ts->property("state").toInt(), 0); // State::NoState
         QCOMPARE(ts->property("exitNodeBlocked").toBool(), false);

@@ -11,7 +11,8 @@
 #   2b. every plugin test uses C7_TEST_MAIN, which cuts it off from the host
 #   3. a clean configure, build and ctest of plugin/ passes, and ctest runs
 #      every test this script names
-#   3b. the test kit's own tests (plugin/lib/testing) pass 50 consecutive runs
+#   3b. every test labelled `testing` -- the kit's own, and each test a change
+#       adds -- passes 50 consecutive runs
 #   4. `cmake --install` puts the whole module, and nothing else, in
 #      usr/lib/qt6/qml/C7, and tst_module loads it from there with the build
 #      tree's copy gone -- what PKGBUILD's package() ships
@@ -152,7 +153,8 @@ run_logged build cmake --build "$build"
 # --no-tests=error only needs one test, so name each one that must run.
 run_logged 'ctest -N' ctest --test-dir "$build" -N
 kit=(tst_privatebus tst_fakeservice tst_fakesocketserver tst_fakeprogram tst_wait tst_isolation)
-for t in tst_version tst_statusparser tst_peermodel tst_localapiclient tst_module "${kit[@]}"; do
+for t in tst_version tst_statusparser tst_peermodel tst_localapiclient \
+         tst_tailscalebackend tst_module "${kit[@]}"; do
   grep -qE "Test +#[0-9]+: $t\$" "$log" || { cat "$log" >&2; fail "ctest does not run $t"; }
 done
 run_logged ctest ctest --test-dir "$build" --output-on-failure --no-tests=error
@@ -162,16 +164,19 @@ C7_QML_IMPORT_PATH=$tmp/no-such-dir run_logged 'ctest with a stray C7_QML_IMPORT
   ctest --test-dir "$build" -R '^tst_module$' --no-tests=error
 echo "PASS: plugin builds and ctest passes"
 
-# 3b. the test kit is deterministic --------------------------------------------
-# Every library's tests stand on these fixtures, so a flaky one makes them all
-# flaky. 50 consecutive runs, each test in a fresh process.
+# 3b. the labelled tests are deterministic -------------------------------------
+# Every library's tests stand on the test kit's fixtures, so a flaky one makes
+# them all flaky; the `testing` label widens that to every test a new or
+# changed PR adds, which docs/architecture.md requires to pass 50 consecutive
+# runs. 50 runs, each test in a fresh process. The kit's own tests are named
+# below because they must never lose the label.
 run_logged 'ctest -N -L testing' ctest --test-dir "$build" -N -L testing
 for t in "${kit[@]}"; do
   grep -qE "Test +#[0-9]+: $t\$" "$log" || { cat "$log" >&2; fail "$t is not labelled testing"; }
 done
 run_logged 'test kit, 50 consecutive runs' \
   ctest --test-dir "$build" -L testing --repeat until-fail:50 --output-on-failure --no-tests=error
-echo "PASS: the test kit passes 50 consecutive runs"
+echo "PASS: the tests labelled testing pass 50 consecutive runs"
 
 # 4. the installed module ------------------------------------------------------
 [[ -f $build/qml/C7/qmldir ]] || fail "the build left no C7 module at qml/C7"

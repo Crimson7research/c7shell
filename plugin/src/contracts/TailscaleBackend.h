@@ -16,12 +16,29 @@ class QQmlEngine;
 // The contract, not an implementation: every member below is state QML binds
 // to or a collection it hands to a view, and a backend supplies all of it.
 // LocalApiTailscaleBackend is the one backend today; it talks to tailscaled's
-// local API socket. A second backend replaces that without the UI noticing,
-// which is the whole reason this class is abstract.
+// local API socket. FakeTailscaleBackend, built into tests only, is the
+// second -- the contract is substitutable or it is nothing.
 //
 // Everything here is read-only to QML. Nothing on this class blocks: a
 // property reads what the backend already knows, never what it would have to
 // go and ask for.
+//
+// A property whose value is derived from other properties is computed here,
+// not in a backend, and its getter is non-virtual: two backends must not be
+// able to disagree about what `blocked` or a count means. How a derived
+// property notifies follows one rule:
+//
+//   * derived from exactly one property -- it shares that property's NOTIFY
+//     signal, so there is only ever one signal to emit and it cannot go stale
+//     against its input (issueCount rides issuesChanged).
+//   * derived from several -- it has its own NOTIFY signal, which this class
+//     emits off each input's signal, wired in the constructor
+//     (exitNodeBlocked). A backend emits only the inputs it owns and need not
+//     know what else is built on them.
+//
+// Normalisation follows the same shape: where one form has to win, the public
+// getter is non-virtual and normalises, and the pure virtual beneath it is
+// what the backend stores (selfDnsName over rawSelfDnsName).
 class TailscaleBackend : public QObject {
     Q_OBJECT
     QML_NAMED_ELEMENT(Tailscale)
@@ -36,10 +53,9 @@ class TailscaleBackend : public QObject {
     Q_PROPERTY(QDateTime keyExpiry READ keyExpiry NOTIFY keyExpiryChanged)
     Q_PROPERTY(bool exitNodeActive READ exitNodeActive NOTIFY exitNodeActiveChanged)
     Q_PROPERTY(QString exitNodeName READ exitNodeName NOTIFY exitNodeNameChanged)
+    Q_PROPERTY(bool exitNodeOnline READ exitNodeOnline NOTIFY exitNodeOnlineChanged)
     Q_PROPERTY(bool exitNodeBlocked READ exitNodeBlocked NOTIFY exitNodeBlockedChanged)
     Q_PROPERTY(QStringList issues READ issues NOTIFY issuesChanged)
-    // Derived from issues, so it rides the same signal: a binding on either
-    // re-evaluates whenever the health list changes.
     Q_PROPERTY(int issueCount READ issueCount NOTIFY issuesChanged)
     Q_PROPERTY(QAbstractItemModel *peers READ peers CONSTANT)
     Q_PROPERTY(QAbstractItemModel *exitNodes READ exitNodes CONSTANT)
@@ -55,35 +71,53 @@ public:
     enum class State { NoState, NeedsMachineAuth, NeedsLogin, Stopped, Starting, Running };
     Q_ENUM(State)
 
-    explicit TailscaleBackend(QObject *parent = nullptr) : QObject(parent) {}
+    // The derived-property wiring lives here, so a backend cannot forget it.
+    // A signal-to-signal connection may announce exitNodeBlocked when its
+    // value has not actually moved; a QML binding re-evaluating is cheap, a
+    // fail-closed flag that fails to announce itself is not.
+    explicit TailscaleBackend(QObject *parent = nullptr) : QObject(parent)
+    {
+        connect(this, &TailscaleBackend::exitNodeActiveChanged, this,
+                &TailscaleBackend::exitNodeBlockedChanged);
+        connect(this, &TailscaleBackend::exitNodeOnlineChanged, this,
+                &TailscaleBackend::exitNodeBlockedChanged);
+    }
 
     virtual State state() const = 0;
 
-    // This machine on the tailnet. selfDnsName is a MagicDNS name with no
-    // trailing root dot -- see withoutRootDot().
+    // This machine on the tailnet.
     virtual QString selfName() const = 0;
     virtual QString selfIp4() const = 0;
     virtual QString selfIp6() const = 0;
-    virtual QString selfDnsName() const = 0;
     virtual QString tailnet() const = 0;
     // Invalid when the node key does not expire, which is what a tagged node
     // and a node with key expiry disabled both report.
     virtual QDateTime keyExpiry() const = 0;
 
+    // The MagicDNS name of this machine, with no trailing root dot. tailscaled
+    // writes Self's DNSName and a peer's the same way, fully qualified
+    // ("host.tailnet.ts.net."), and the status parser strips the dot from
+    // peers only. One form has to win where both first reach QML, and it wins
+    // here: a backend stores what tailscaled sent and cannot opt out of the
+    // normalisation by overriding the wrong member.
+    QString selfDnsName() const { return withoutRootDot(rawSelfDnsName()); }
+
     virtual bool exitNodeActive() const = 0;
     virtual QString exitNodeName() const = 0;
-    // exitNodeActive && !ExitNodeStatus.Online: the selected exit node cannot
-    // be reached, so tailscaled is dropping all egress rather than leaking it
-    // onto the local network. The machine looks connected and nothing works,
-    // and nothing else on this contract says why -- which makes this the most
-    // valuable flag the module publishes. A UI that shows one thing about
-    // Tailscale shows this.
-    virtual bool exitNodeBlocked() const = 0;
+    // ExitNodeStatus.Online: whether the selected exit node can be reached.
+    // Meaningless, and false, when no exit node is selected.
+    virtual bool exitNodeOnline() const = 0;
+    // The selected exit node cannot be reached, so tailscaled is dropping all
+    // egress rather than leaking it onto the local network. The machine looks
+    // connected and nothing works, and nothing else on this contract says why
+    // -- which makes this the most valuable flag the module publishes. A UI
+    // that shows one thing about Tailscale shows this.
+    bool exitNodeBlocked() const { return exitNodeActive() && !exitNodeOnline(); }
 
-    // tailscaled's own health warnings, verbatim, newest-first as it reports
-    // them. Empty when it has nothing to complain about.
+    // tailscaled's own health warnings, verbatim, as it reports them. Empty
+    // when it has nothing to complain about.
     virtual QStringList issues() const = 0;
-    virtual int issueCount() const = 0;
+    int issueCount() const { return int(issues().size()); }
 
     // Stable-row models a view binds to directly; never rebuilt, so a row
     // keeps its delegate across an update. Both are PeerModels, and exitNodes
@@ -112,16 +146,18 @@ signals:
     void keyExpiryChanged();
     void exitNodeActiveChanged();
     void exitNodeNameChanged();
+    void exitNodeOnlineChanged();
+    // Emitted by this class off the two signals above, never by a backend.
     void exitNodeBlockedChanged();
     void issuesChanged();
     void recommendedExitNodeIdChanged();
 
 protected:
-    // tailscaled writes a peer's DNSName and Self's the same way, fully
-    // qualified with the root dot ("host.tailnet.ts.net."), and the status
-    // parser strips it from peers only. One convention has to win where both
-    // first reach QML, and it wins here rather than in each backend, so no
-    // name downstream ever carries a stray dot on the end.
+    // What tailscaled gave for Self's DNSName, root dot and all. A backend
+    // stores it as it arrived; selfDnsName() is what QML sees.
+    virtual QString rawSelfDnsName() const = 0;
+
+private:
     static QString withoutRootDot(const QString &dnsName)
     {
         return dnsName.endsWith(u'.') ? dnsName.chopped(1) : dnsName;

@@ -48,10 +48,13 @@ qt_add_qml_module(c7
         src/backends/tailscale/LocalApiTailscaleBackend.h
         src/backends/tailscale/LocalApiTailscaleBackend.cpp
 )
-# The generated type registration includes each header by its bare name, so
-# every directory holding one is on the path. src itself is too, which is how
-# a backend reaches its contract as "contracts/<Name>.h".
-target_include_directories(c7 PRIVATE src src/contracts src/backends/tailscale)
+# The generated type registration includes each header carrying QML macros by
+# its bare name, so src/contracts is on the path. A backend declares no QML
+# type and is never included that way, so its directory stays off: bare-name
+# lookup across 21 contracts' worth of directories would eventually pick the
+# wrong Types.h. src itself is how a backend reaches its contract, as
+# "contracts/<Name>Backend.h".
+target_include_directories(c7 PRIVATE src src/contracts)
 target_link_libraries(c7 PRIVATE c7_core c7_tailscale)
 
 # Installed where Qt finds every system QML module, /usr/lib/qt6/qml/C7 on Arch.
