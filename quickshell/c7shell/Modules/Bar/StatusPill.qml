@@ -127,10 +127,7 @@ Rectangle {
       // other state allowed to shout, and this is the Tailscale equivalent --
       // traffic is being dropped, not merely routed somewhere unusual.
       slotBorder: Tailscale.exitNodeBlocked ? Theme.accentBorder : "transparent"
-      // No onClicked yet, deliberately: tests/test-qml-hygiene.sh fails a
-      // toggle() naming a popover nothing answers to, because that is a button
-      // that visibly does nothing. The anchor this slot is -- id and active
-      // binding -- is here, and the toggle lands with the panel it opens.
+      onClicked: PopoverManager.toggle("tailscale", tsSlot)
 
       Item {
         width: 15; height: 15
