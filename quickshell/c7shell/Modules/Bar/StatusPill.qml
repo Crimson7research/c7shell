@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
+import C7
 import qs.Theme
 import qs.Common
 import qs.Services
@@ -103,6 +104,77 @@ Rectangle {
       slotColor: Theme.accentFill
       onClicked: AirplaneService.setEnabled(false)
       Icon { name: "plane"; tint: Theme.accentSoft }
+    }
+    // Ahead of the radios: egress outranks which radio carries it. The slot is
+    // permanent rather than conditional, unlike the updates badge above -- an
+    // absent icon cannot tell "the tailnet is fine" from "tailscaled is gone".
+    //
+    // Everything here is gated on state because of the rule in
+    // TailscaleBackend.h: losing tailscaled publishes NoState and deliberately
+    // KEEPS the last snapshot, so exitNodeBlocked does not fall quiet exactly
+    // when the daemon behind it dies. Showing that snapshot would draw a
+    // healthy tailnet served by nothing.
+    QuickSlot {
+      id: tsSlot
+      // The one handle a compositor-less test has on this slot: a QuickSlot in
+      // a row of eight differs from its neighbours only by what it is bound to.
+      objectName: "tailscale"
+      anchors.verticalCenter: parent.verticalCenter
+      visible: Tailscale.state !== Tailscale.NoState
+      active: PopoverManager.current === "tailscale"
+      slotColor: Tailscale.exitNodeActive ? Theme.accentFill : "transparent"
+      // The outline as well, only here: the battery's warn threshold is the
+      // other state allowed to shout, and this is the Tailscale equivalent --
+      // traffic is being dropped, not merely routed somewhere unusual.
+      slotBorder: Tailscale.exitNodeBlocked ? Theme.accentBorder : "transparent"
+      // No onClicked yet, deliberately: tests/test-qml-hygiene.sh fails a
+      // toggle() naming a popover nothing answers to, because that is a button
+      // that visibly does nothing. The anchor this slot is -- id and active
+      // binding -- is here, and the toggle lands with the panel it opens.
+
+      Item {
+        width: 15; height: 15
+        anchors.verticalCenter: parent.verticalCenter
+
+        Icon {
+          anchors.fill: parent
+          name: "globe"
+          // Dimmed rather than hidden whenever the daemon is not actually
+          // carrying traffic; accent-tinted while an exit node is.
+          tint: Tailscale.state !== Tailscale.Running ? Theme.textDisabled
+            : Tailscale.exitNodeActive ? Theme.accentSoft : Theme.text
+        }
+        // tailscaled's own health warnings: amber, not crimson, because
+        // nothing is broken. Both badges own the same corner, so this one
+        // stands down for the blocked one rather than stacking on it.
+        Rectangle {
+          anchors { right: parent.right; bottom: parent.bottom; margins: -1 }
+          visible: Tailscale.issueCount > 0 && !Tailscale.exitNodeBlocked
+          width: 4; height: 4; radius: 2
+          color: Theme.warning
+        }
+        Text {   // ✕ badge, bottom-right, as the wifi slot wears it when offline
+          // The selected exit node cannot be reached, so tailscaled is
+          // dropping all egress rather than leaking it onto the local network.
+          // The machine looks connected and nothing works; this is the only
+          // thing on screen that says why.
+          visible: Tailscale.exitNodeBlocked
+          anchors { right: parent.right; bottom: parent.bottom; rightMargin: -2; bottomMargin: -2 }
+          text: "✕"
+          font { family: Theme.fontMono; pixelSize: 7; weight: 700 }
+          color: Theme.accentSoft
+        }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        // Named, not just tinted: clearing the block means knowing which node
+        // to clear, and the name is the only identity the panel will offer.
+        visible: Tailscale.exitNodeActive
+        text: Tailscale.exitNodeName
+        font { family: Theme.fontMono; pixelSize: 10; weight: 600 }
+        color: Theme.accentSoft
+      }
     }
     QuickSlot {
       id: netSlot

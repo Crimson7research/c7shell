@@ -59,7 +59,9 @@ QtObject {
                                               root.accent.hslSaturation * 0.90,
                                               Math.min(1, root.accent.hslLightness + 0.108), 1)
   readonly property color accentFill: root.alpha(root.accent, 0.14)
+  readonly property color accentFillActive: root.alpha(root.accent, 0.16)
   readonly property color accentBorder: root.alpha(root.accent, 0.30)
+  readonly property color powerHover: root.alpha(root.accent, 0.28)
 
   readonly property color glassBase: root.palette.variants.dark.glassBase
   readonly property color bg: root.palette.variants.dark.bg
@@ -85,6 +87,10 @@ QtObject {
   readonly property int radiusCard: 14
   readonly property int radiusTile: 10
   readonly property int radiusPip: 7
+  readonly property int radiusSlot: 8
+
+  readonly property int pillHeight: 26
+  readonly property int pillRadius: 13
 
   // The real icons, so an icon this design names but nobody drew is a visible
   // warning here rather than a blank tile on someone's screen.
