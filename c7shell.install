@@ -1,4 +1,26 @@
+# The greeter writes its log and its remembered account as user `greeter`,
+# into directories root owns -- so both have to exist, owned by it, before
+# greetd ever starts. Without the log the redirect fails before cage is exec'd
+# and the login screen never draws; without the state directory the greeter
+# runs but never preselects an account.
+#
+# Not tmpfiles: `greeter` comes with greetd, which is an optdepend, and a
+# tmpfiles entry naming a user that does not exist fails the pacman hook on
+# every machine running another display manager. Guarded here instead.
+_greeter_paths() {
+  getent passwd greeter >/dev/null 2>&1 || return 0
+  install -dm755 -o greeter -g greeter /var/lib/c7shell-greeter 2>/dev/null || true
+  [ -e /var/log/c7greeter.log ] \
+    || install -Dm600 -o greeter -g greeter /dev/null /var/log/c7greeter.log 2>/dev/null \
+    || true
+}
+
+post_upgrade() {
+  _greeter_paths
+}
+
 post_install() {
+  _greeter_paths
   cat <<'MSG'
 
 c7shell installed. To put the configs in your home directory, run as your

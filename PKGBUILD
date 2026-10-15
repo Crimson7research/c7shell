@@ -296,19 +296,19 @@ package() {
   install -Dm644 greetd-greeter/Main.qml "$pkgdir/usr/share/c7shell/greeter/Main.qml"
   chmod -R u=rwX,go=rX "$pkgdir/usr/share/c7shell/greeter"
 
-  # Where the greeter remembers the last account. greetd keeps no state of its
-  # own, so the greeter writes it -- as user `greeter`, which makes a
-  # root-owned directory silently useless: the greeter still runs, it just
-  # never preselects anyone and nothing says why. makepkg cannot chown to a
-  # user that may not exist at build time, so the tmpfiles entry below sets the
-  # ownership instead, and c7shell-bootstrap does it too.
+  # Where the greeter remembers the last account, and where it writes its log.
+  # Both are written as user `greeter`, into directories root owns, so both
+  # have to exist and be owned by it before greetd starts: without the log the
+  # greeter's stderr redirect fails before cage is exec'd and the login screen
+  # never draws; without the directory the greeter runs but never preselects an
+  # account.
+  #
+  # The ownership cannot be set here -- makepkg has no such user -- and not by
+  # a tmpfiles entry either: `greeter` comes with greetd, which is an optdepend,
+  # and an entry naming a missing user fails the pacman hook on every machine
+  # running another display manager. c7shell.install does it, guarded on the
+  # user existing, and c7shell-bootstrap does it too.
   install -dm755 "$pkgdir/var/lib/c7shell-greeter"
-
-  # The greeter's log has to exist before greetd starts: the greeter redirects
-  # its stderr there as user `greeter`, and /var/log is root-owned, so the
-  # redirect cannot create it. tmpfiles also restores it after a cleanup.
-  install -Dm644 share/c7shell-greeter.tmpfiles \
-    "$pkgdir/usr/lib/tmpfiles.d/c7shell-greeter.conf"
 
   # What the greeter's network pill reads. The greeter is QML with no D-Bus
   # binding, running as the sddm user before any session exists, so it cannot

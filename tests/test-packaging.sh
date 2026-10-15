@@ -168,22 +168,19 @@ mkdir -p "$tree/quickshell/c7shell/scripts/__pycache__"
 touch "$tree/quickshell/c7shell/scripts/__pycache__/planted.cpython-314.pyc"
 run_fn package "$tree"
 expect_ok 'package()'
-# The greeter's log must be created by the package too, for a machine that
-# installs it without running the bootstrap: the greeter writes there as user
-# `greeter` and cannot create the file itself.
-[[ -f $fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf ]] \
-  || fail 'package() does not ship a tmpfiles entry for /var/log/c7greeter.log'
-grep -q '^f /var/log/c7greeter.log .* greeter greeter' \
-  "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf" \
-  || fail "the tmpfiles entry does not create the log owned by greeter:
-$(cat "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf")"
-# install -d cannot chown to a user that may not exist at build time, so the
-# state directory's ownership comes from tmpfiles too. Root-owned, the greeter
-# still runs -- it just never remembers an account, and nothing says why.
-grep -q '^d /var/lib/c7shell-greeter .* greeter greeter' \
-  "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf" \
-  || fail "the state directory is not made writable by the greeter:
-$(cat "$fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf")"
+# The greeter's log and state directory are created by the install scriptlet,
+# not by the package or by tmpfiles: both are written as user `greeter`, which
+# only exists when greetd -- an optdepend -- is installed. A tmpfiles entry
+# naming a missing user fails the pacman hook on every machine running another
+# display manager, which is a supported configuration.
+grep -q 'getent passwd greeter' "$here/../c7shell.install" \
+  || fail 'c7shell.install does not guard the greeter paths on the user existing'
+for p in /var/lib/c7shell-greeter /var/log/c7greeter.log; do
+  grep -q "$p" "$here/../c7shell.install" \
+    || fail "c7shell.install never creates $p, so the greeter cannot write it"
+done
+[[ -e $fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf ]] \
+  && fail 'package() ships a tmpfiles entry naming greeter; it fails without greetd'
 
 leaked=$(find "$fake/pkg" -name __pycache__)
 [[ -z $leaked ]] || fail "package() ships Python bytecode, which embeds \$srcdir:
