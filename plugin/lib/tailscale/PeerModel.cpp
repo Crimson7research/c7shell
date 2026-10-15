@@ -15,7 +15,8 @@ namespace {
 // have already matched.
 bool sameFields(const Peer &a, const Peer &b)
 {
-    return a.hostName == b.hostName && a.ip4 == b.ip4 && a.ip6 == b.ip6
+    return a.hostName == b.hostName && a.displayName == b.displayName
+        && a.ip4 == b.ip4 && a.ip6 == b.ip6
         && a.dnsName == b.dnsName && a.online == b.online && a.group == b.group
         && a.ownerName == b.ownerName && a.exitNodeOption == b.exitNodeOption;
 }
@@ -38,6 +39,8 @@ QVariant PeerModel::data(const QModelIndex &index, int role) const
     switch (role) {
     case HostNameRole:
         return p.hostName;
+    case DisplayNameRole:
+        return p.displayName;
     case Ip4Role:
         return p.ip4;
     case Ip6Role:
@@ -65,6 +68,7 @@ QHash<int, QByteArray> PeerModel::roleNames() const
 {
     return {
         {HostNameRole, "hostName"},
+        {DisplayNameRole, "displayName"},
         {Ip4Role, "ip4"},
         {Ip6Role, "ip6"},
         {DnsNameRole, "dnsName"},

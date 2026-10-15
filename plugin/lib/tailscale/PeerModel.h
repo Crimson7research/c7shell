@@ -22,6 +22,10 @@ class PeerModel : public QAbstractListModel {
 public:
     enum Role {
         HostNameRole = Qt::UserRole + 1,
+        // The name a row is LABELLED with -- the DNS label Tailscale itself
+        // uses. HostNameRole is the OS hostname under it, and the two differ
+        // on a sizeable fraction of any real tailnet.
+        DisplayNameRole,
         Ip4Role,
         Ip6Role,
         DnsNameRole,

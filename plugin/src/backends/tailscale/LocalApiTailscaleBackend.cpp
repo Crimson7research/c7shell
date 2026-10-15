@@ -338,14 +338,16 @@ int LocalApiTailscaleBackend::retryDelayMs(int attempt, int baseMs)
     return std::min(kRetryCapMs, baseMs * (1 << std::clamp(attempt, 0, 6)));
 }
 
-// The hostname of the peer with this id, or the id itself when no peer has it
-// -- the same fallback StatusParser uses for a node that has left the tailnet,
-// so the panel names a machine where it can and never goes blank.
+// The name of the peer with this id, or the id itself when no peer has it --
+// the same fallback StatusParser uses for a node that has left the tailnet,
+// so the panel names a machine where it can and never goes blank. The DISPLAY
+// name, as everywhere else: an alert that says which exit node to clear has
+// to name it the way the admin console does.
 static QString nameOfPeer(const QList<Peer> &peers, const QString &nodeId)
 {
     for (const Peer &peer : peers) {
         if (peer.nodeId == nodeId)
-            return peer.hostName;
+            return peer.displayName;
     }
     return nodeId;
 }

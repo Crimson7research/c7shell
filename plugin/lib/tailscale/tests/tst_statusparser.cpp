@@ -42,6 +42,15 @@ Peer find(const QList<Peer> &peers, Group group)
     return it == peers.cend() ? Peer{} : *it;
 }
 
+// By the OS hostname on purpose: these tests are about the gap between that
+// and the DNS label, so the lookup has to use the half that is NOT under test.
+Peer byHostName(const QList<Peer> &peers, const QString &hostName)
+{
+    const auto it = std::find_if(peers.cbegin(), peers.cend(),
+                                 [&hostName](const Peer &p) { return p.hostName == hostName; });
+    return it == peers.cend() ? Peer{} : *it;
+}
+
 // Produces the one status tailscaled can genuinely emit but no capture holds:
 // an ExitNodeStatus whose ID names a node that is no longer in the peer list.
 QByteArray withoutPeer(const QByteArray &json, const QString &hostName)
@@ -144,6 +153,31 @@ private slots:
         const Peer other = find(s->peers, Group::Others);
         QVERIFY(!other.ownerName.isEmpty());
         QCOMPARE(find(s->peers, Group::Mine).ownerName, QString());
+    }
+
+    // The naming bug this module shipped with: the panel bound hostName, and
+    // Tailscale names a device by its DNS label everywhere else. The capture's
+    // `ip-172-31-0-10` is the shape that proves it -- a cloud instance whose OS
+    // hostname is its private address and whose label is a word.
+    void prefersTheDnsLabelOverTheHostName()
+    {
+        const auto s = StatusParser::parse(readFixture("status-idle.json"));
+        const Peer p = byHostName(s->peers, QStringLiteral("ip-172-31-0-10"));
+        QCOMPARE(p.displayName, QStringLiteral("host-5"));
+        // The label, not the FQDN: the panel shows what the console shows.
+        QCOMPARE(p.dnsName, QStringLiteral("host-5.example-tailnet.ts.net"));
+        // Still the OS name, for whatever wants the OS name.
+        QCOMPARE(p.hostName, QStringLiteral("ip-172-31-0-10"));
+    }
+
+    // MagicDNS off, or a node that never got a name: DNSName is "" and the
+    // row has to fall back rather than draw blank.
+    void fallsBackToTheHostNameWithoutMagicDns()
+    {
+        const auto s = StatusParser::parse(readFixture("status-idle.json"));
+        const Peer p = byHostName(s->peers, QStringLiteral("xi"));
+        QVERIFY2(p.dnsName.isEmpty(), "the fixture's MagicDNS-less peer grew a DNSName");
+        QCOMPARE(p.displayName, QStringLiteral("xi"));
     }
 
     void joinsExitNodeNameFromItsPeer()

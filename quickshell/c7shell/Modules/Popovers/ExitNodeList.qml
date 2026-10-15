@@ -61,7 +61,7 @@ Column {
     Column {
       id: recommended
 
-      required property string hostName
+      required property string displayName
       required property string nodeId
 
       width: root.width
@@ -77,7 +77,7 @@ Column {
       ExitRow {
         objectName: "ts-exit-recommended"
         width: recommended.width
-        hostName: recommended.hostName
+        displayName: recommended.displayName
         nodeId: recommended.nodeId
       }
     }
@@ -100,7 +100,9 @@ Column {
   component ExitRow: ListRow {
     id: exitRow
 
-    required property string hostName
+    // The DNS label, as on a device row: a cloud instance's OS hostname is
+    // its own private address, and the console names it by the label.
+    required property string displayName
     required property string nodeId
 
     implicitHeight: 30
@@ -113,7 +115,7 @@ Column {
     // a hover tint on a row that cannot be chosen is a promise.
     hoverable: false
     titleColor: Theme.textDisabled
-    title: exitRow.hostName
+    title: exitRow.displayName
 
     // Joined on the ID, never the name. TailscaleBackend.h says why: nothing
     // stops two machines enrolling under one hostname, and a check mark
