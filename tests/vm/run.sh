@@ -22,7 +22,7 @@ usage() {
   cat <<USAGE
 usage: tests/vm/run.sh --branch <name> [--keep] [--rebuild-base]
 
-Installs <name> onto a fresh archinstall VM, logs in through SDDM, and
+Installs <name> onto a fresh archinstall VM, logs in through the greetd greeter, and
 checks the session. <name> must be pushed to $repo_url: makepkg
 builds from there, whatever the VM cloned. Results: \$C7VT_CACHE/results/<timestamp>-<branch>/.
 USAGE
@@ -116,7 +116,9 @@ _boot_id() { vm_ssh "$run" cat /proc/sys/kernel/random/boot_id 2>/dev/null; }
 _rebooted() { local id; id=$(_boot_id) && [[ -n $id && $id != "$1" ]]; }
 
 _greeter_up() {
-  vm_ssh "$run" systemctl is-active --quiet sddm \
+  # greetd stays active between restarts of a greeter that keeps dying, so
+  # the greeter process itself is what says a login screen is up.
+  vm_ssh "$run" 'systemctl is-active --quiet greetd && pgrep -u greeter -x c7shell-greeter' >/dev/null \
     && qmp_screendump "$run/qmp.sock" "$results/screens/greeter.png" >/dev/null \
     && screen_not_uniform "$results/screens/greeter.png"
 }
