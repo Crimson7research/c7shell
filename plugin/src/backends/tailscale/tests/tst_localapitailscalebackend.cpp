@@ -672,7 +672,21 @@ private slots:
         // One millisecond of base: five attempts are 1+2+4+8+16 ms of curve.
         LocalApiTailscaleBackend b(socketPath(), 1);
         QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
-        QTRY_COMPARE(armed.count(), 5);
+        // At least five, deliberately not exactly five. Nothing in this test
+        // stops the backend retrying, so armed.count() is a free-running
+        // counter climbing 1, 2, 4, 8, 16, 32, then flat at 64ms -- and an
+        // equality can only hold in the window between the fifth arm and the
+        // sixth. QTRY polls on a 50ms step and its loop counts ITERATIONS
+        // rather than wall clock, so one late poll steps over that window and
+        // then keeps polling, for far longer than its nominal timeout, on a
+        // count that can never equal five again. Measured: a 150ms stall here
+        // fails the equality at 222, which is the shape the 50-run loop caught
+        // at 219 -- the curve advancing correctly all along, not collapsing.
+        //
+        // `>=` is monotone and cannot be stepped over. What the curve actually
+        // DID is then read off the recorded delays, which is the subject of
+        // this test and does not depend on when it looked.
+        QTRY_VERIFY(armed.count() >= 5);
         for (int attempt = 0; attempt < 5; ++attempt) {
             QCOMPARE(armed.at(attempt).first().toInt(),
                      LocalApiTailscaleBackend::retryDelayMs(attempt, 1));
