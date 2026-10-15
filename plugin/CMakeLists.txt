@@ -33,6 +33,7 @@ endfunction()
 add_subdirectory(lib/testing)
 # Plain C++ libraries: Qt Core, Network and DBus only, never QML.
 add_subdirectory(lib/core)
+add_subdirectory(lib/tailscale)
 
 # The C7 QML module: contracts in src/contracts/, backends in src/backends/.
 # The backing target is the plugin, so one library in qml/C7/ is the whole
