@@ -18,3 +18,19 @@ c7_add_test(tst_tailscalebackend
     LIBS c7_tailscale Qt6::Qml
     LABELS testing)
 target_include_directories(tst_tailscalebackend PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+# The one real backend, against a fake tailscaled. Registered from here rather
+# than from a CMakeLists next to its source, because src/ carries none: the QML
+# module is one target declared in plugin/CMakeLists.txt, and a second
+# CMakeLists under src/ would be a second place a backend could be added to it.
+c7_add_test(tst_localapitailscalebackend
+    SOURCES ${PROJECT_SOURCE_DIR}/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp
+            ${PROJECT_SOURCE_DIR}/src/contracts/TailscaleBackend.h
+            ${PROJECT_SOURCE_DIR}/src/backends/tailscale/LocalApiTailscaleBackend.h
+            ${PROJECT_SOURCE_DIR}/src/backends/tailscale/LocalApiTailscaleBackend.cpp
+    LIBS c7_tailscale Qt6::Qml
+    LABELS testing)
+target_include_directories(tst_localapitailscalebackend PRIVATE ${PROJECT_SOURCE_DIR}/src)
+# The same captures the library's own tests read.
+target_compile_definitions(tst_localapitailscalebackend PRIVATE
+    C7_FIXTURE_DIR="${PROJECT_SOURCE_DIR}/lib/tailscale/tests/fixtures")
