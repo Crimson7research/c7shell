@@ -58,6 +58,12 @@ struct Status {
     QString tailnet;
     std::optional<ExitNode> exitNode;
     QList<Peer> peers;
+    // Whether the reply carried a `Peer` object at all. `peers` is empty for
+    // a tailnet with no other devices AND for a reply that never described
+    // the tailnet, and a caller replacing its rows from the second renders
+    // "network devices 0" for what was actually no answer. An empty Peer
+    // object sets this; an absent or null one does not.
+    bool hasPeerSection = false;
 };
 
 } // namespace c7::tailscale

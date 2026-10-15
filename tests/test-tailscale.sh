@@ -164,6 +164,9 @@ QtObject {
   property int state: Tailscale.State.NoState
   property bool exitNodeActive: false
   property bool exitNodeOnline: false
+  // The exit node's string ID. The check mark in the exit-node list joins on
+  // this and not on the name, because hostnames repeat on a tailnet.
+  property string exitNodeId: ""
   property string exitNodeName: ""
   readonly property bool exitNodeBlocked: root.exitNodeActive && !root.exitNodeOnline
   property var issues: []
@@ -208,6 +211,30 @@ QtObject {
 }
 QML
 printf 'module C7\nsingleton Tailscale 1.0 Tailscale.qml\n' > "$tmp/C7/qmldir"
+
+# The stub above is hand-written, and nothing in the QML suites would notice it
+# drifting from the contract: rename a Q_PROPERTY in TailscaleBackend.h and
+# every check in tailscale-qml-test.qml still passes against the old spelling
+# while the real shell reads `undefined` off the real singleton. So both sides
+# are read mechanically and compared as sets -- the header's Q_PROPERTY names
+# against the stub's declared properties. plugin/tests/tst_module.cpp asserts
+# the other end, that the BUILT module exposes the same set.
+contract_properties() {
+  # The name is the token before READ; `QAbstractItemModel *peers` puts a star
+  # on it, and recommendedExitNodeId wraps its NOTIFY onto the next line, which
+  # is why this matches on READ rather than on the closing bracket.
+  sed -n 's/.*Q_PROPERTY(.*[ *]\([A-Za-z0-9_]\{1,\}\) READ .*/\1/p' \
+    "$repo/plugin/src/contracts/TailscaleBackend.h" | sort
+}
+stub_properties() {
+  sed -n 's/^[[:space:]]*\(readonly \)\{0,1\}property [A-Za-z0-9_]\{1,\} \([A-Za-z0-9_]\{1,\}\):.*/\2/p' \
+    "$tmp/C7/Tailscale.qml" | sort
+}
+[ "$(contract_properties | wc -l)" -ge 15 ] \
+  || fail "the contract scan found $(contract_properties | wc -l) properties in TailscaleBackend.h, so it is not reading the header"
+if ! diff -u <(contract_properties) <(stub_properties) > "$tmp/props.diff"; then
+  fail "the C7.Tailscale stub in this script no longer matches\nplugin/src/contracts/TailscaleBackend.h -- every QML check here would pass\nagainst a property the shell does not have:\n$(cat "$tmp/props.diff")"
+fi
 
 # -- the Quickshell types StatusPill names -----------------------------------
 # All three radios read as absent, which hides their slots: the wifi, bluetooth

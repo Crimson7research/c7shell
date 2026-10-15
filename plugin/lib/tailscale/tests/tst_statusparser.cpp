@@ -2,9 +2,13 @@
 
 #include "testing/testmain.h"
 
+#include <QtCore/QDate>
+#include <QtCore/QDateTime>
 #include <QtCore/QFile>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QTime>
+#include <QtCore/QTimeZone>
 #include <QtTest/QTest>
 
 #include <algorithm>
@@ -67,6 +71,57 @@ private slots:
         QVERIFY(s->health.first().contains(QStringLiteral("--accept-routes")));
         QCOMPARE(s->selfIp4, QStringLiteral("100.115.228.122"));
         QCOMPARE(s->tailnet, QStringLiteral("example.com"));
+    }
+
+    // Self's other two fields, which nothing else in this tree reads back.
+    // Both are parsed off a key name and a date format that can be wrong
+    // without anything failing: selfIp6 falls out of the same TailscaleIPs
+    // array as selfIp4 but is told apart by the colon, and keyExpiry is a
+    // string run through Qt::ISODate -- read the wrong key, or a format Qt
+    // does not accept, and keyExpiry is simply invalid, the panel's
+    // `keyExpires` is false and the expiry line silently never draws.
+    void parsesSelfIp6AndKeyExpiry()
+    {
+        const auto s = StatusParser::parse(readFixture("status-idle.json"));
+        QVERIFY(s.has_value());
+        QCOMPARE(s->selfIp6, QStringLiteral("fd7a:115c:a1e0::fd27:82d8"));
+        QVERIFY2(s->keyExpiry.isValid(), "the capture's Self.KeyExpiry did not parse at all");
+        QCOMPARE(s->keyExpiry,
+                 QDateTime(QDate(2027, 4, 11), QTime(9, 6, 8), QTimeZone::UTC));
+    }
+
+    // Absent, not merely empty: a node whose key never expires -- a tagged
+    // node, or one with expiry disabled -- reports no KeyExpiry at all, and
+    // the invalid QDateTime is what the panel reads as "no expiry line".
+    void leavesKeyExpiryInvalidWhenTheNodeKeyNeverExpires()
+    {
+        const auto s = StatusParser::parse(
+                QByteArrayLiteral("{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"x\"}}"));
+        QVERIFY(s.has_value());
+        QVERIFY(!s->keyExpiry.isValid());
+    }
+
+    // "no devices" and "this reply never described the tailnet" leave the same
+    // empty peer list, and a caller that replaces its rows from the second
+    // renders "network devices 0" for what was actually no answer. Only the
+    // key's presence tells them apart.
+    void saysWhetherTheReplyCarriedAPeerSectionAtAll()
+    {
+        QVERIFY(StatusParser::parse(readFixture("status-idle.json"))->hasPeerSection);
+        const auto none = StatusParser::parse(QByteArrayLiteral("{\"BackendState\":\"Running\"}"));
+        QVERIFY(none.has_value());
+        QVERIFY(!none->hasPeerSection);
+        QVERIFY(none->peers.isEmpty());
+        // null is how tailscaled writes a map with nothing in it, and is no
+        // more a description of the tailnet than an absent key is.
+        const auto null = StatusParser::parse(
+                QByteArrayLiteral("{\"BackendState\":\"Running\",\"Peer\":null}"));
+        QVERIFY(!null->hasPeerSection);
+        // An empty OBJECT is a description: a tailnet with no other devices.
+        const auto empty = StatusParser::parse(
+                QByteArrayLiteral("{\"BackendState\":\"Running\",\"Peer\":{}}"));
+        QVERIFY(empty->hasPeerSection);
+        QVERIFY(empty->peers.isEmpty());
     }
 
     void rejectsMalformedJson()

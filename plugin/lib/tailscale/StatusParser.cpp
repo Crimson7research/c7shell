@@ -94,7 +94,12 @@ std::optional<Status> StatusParser::parse(const QByteArray &json)
 
     const QJsonObject users = root.value(QLatin1String("User")).toObject();
     const qint64 selfUserId = self.value(QLatin1String("UserID")).toInteger();
-    const QJsonObject peers = root.value(QLatin1String("Peer")).toObject();
+    // isObject(), not "empty": a tailnet with no other devices and a reply
+    // that is not a status both leave `peers` empty, and only the key's
+    // presence tells them apart.
+    const QJsonValue peerSection = root.value(QLatin1String("Peer"));
+    s.hasPeerSection = peerSection.isObject();
+    const QJsonObject peers = peerSection.toObject();
     s.peers.reserve(peers.size());
     for (const QJsonValue &value : peers) {
         const QJsonObject peer = value.toObject();

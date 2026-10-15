@@ -105,22 +105,42 @@ Rectangle {
       onClicked: AirplaneService.setEnabled(false)
       Icon { name: "plane"; tint: Theme.accentSoft }
     }
-    // Ahead of the radios: egress outranks which radio carries it. The slot is
-    // permanent rather than conditional, unlike the updates badge above -- an
-    // absent icon cannot tell "the tailnet is fine" from "tailscaled is gone".
+    // Ahead of the radios: egress outranks which radio carries it.
     //
-    // Everything here is gated on state because of the rule in
-    // TailscaleBackend.h: losing tailscaled publishes NoState and deliberately
-    // KEEPS the last snapshot, so exitNodeBlocked does not fall quiet exactly
-    // when the daemon behind it dies. Showing that snapshot would draw a
-    // healthy tailnet served by nothing.
+    // NoState means two different things and the slot answers them
+    // differently. On a machine with no tailscaled there is no tailnet to
+    // report on and never was, so there is no slot -- a globe on a machine
+    // that does not run Tailscale is chrome. Once tailscaled HAS answered,
+    // NoState means it stopped answering, and then the slot stays: the whole
+    // reason TailscaleBackend.h keeps the last snapshot when the daemon dies
+    // is that exitNodeBlocked must not fall quiet exactly when the thing
+    // dropping the traffic goes unreachable, and hiding the slot would drop
+    // it just as thoroughly as blanking the snapshot would. An absent icon
+    // cannot tell "the tailnet is fine" from "tailscaled is gone"; a dimmed
+    // one can, and the icon below dims on anything short of Running.
+    //
+    // What IS gated on state is the panel behind the slot: a last-known
+    // device list and a last-known identity would read as live (see
+    // TailscalePopover). The badges here are the exception the contract asks
+    // for, not a hole in that rule.
     QuickSlot {
       id: tsSlot
       // The one handle a compositor-less test has on this slot: a QuickSlot in
       // a row of eight differs from its neighbours only by what it is bound to.
       objectName: "tailscale"
       anchors.verticalCenter: parent.verticalCenter
-      visible: Tailscale.state !== Tailscale.NoState
+
+      // "Has tailscaled ever answered since the bar started?" -- latched, not
+      // a binding, because its whole job is to outlive the state that set it.
+      property bool everAnswered: false
+      readonly property bool answering: Tailscale.state !== Tailscale.NoState
+      onAnsweringChanged: if (tsSlot.answering) tsSlot.everAnswered = true
+      // The binding above does not fire for a value that was already true
+      // when this was built, which is the ordinary case for a bar restarted
+      // under a running tailscaled.
+      Component.onCompleted: if (tsSlot.answering) tsSlot.everAnswered = true
+
+      visible: tsSlot.everAnswered
       active: PopoverManager.current === "tailscale"
       slotColor: Tailscale.exitNodeActive ? Theme.accentFill : "transparent"
       // The outline as well, only here: the battery's warn threshold is the

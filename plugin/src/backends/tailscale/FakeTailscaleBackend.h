@@ -34,6 +34,7 @@ public:
     QString tailnet() const override { return m_tailnet; }
     QDateTime keyExpiry() const override { return m_keyExpiry; }
     bool exitNodeActive() const override { return m_exitNodeActive; }
+    QString exitNodeId() const override { return m_exitNodeId; }
     QString exitNodeName() const override { return m_exitNodeName; }
     bool exitNodeOnline() const override { return m_exitNodeOnline; }
     QStringList issues() const override { return m_issues; }
@@ -60,6 +61,10 @@ public:
     void setExitNodeActive(bool v)
     {
         set(m_exitNodeActive, v, &TailscaleBackend::exitNodeActiveChanged);
+    }
+    void setExitNodeId(const QString &v)
+    {
+        set(m_exitNodeId, v, &TailscaleBackend::exitNodeIdChanged);
     }
     void setExitNodeName(const QString &v)
     {
@@ -102,6 +107,7 @@ private:
     QDateTime m_keyExpiry;
     bool m_exitNodeActive = false;
     bool m_exitNodeOnline = false;
+    QString m_exitNodeId;
     QString m_exitNodeName;
     QStringList m_issues;
     mutable c7::tailscale::PeerModel m_peers;

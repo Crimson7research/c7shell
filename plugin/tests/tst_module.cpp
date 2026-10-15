@@ -2,6 +2,9 @@
 
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QFileInfo>
+#include <QtCore/QMetaObject>
+#include <QtCore/QMetaProperty>
+#include <QtCore/QStringList>
 #include <QtQml/QQmlEngine>
 #include "testing/testmain.h"
 
@@ -28,6 +31,18 @@ QObject *singleton(QQmlEngine &engine, const char *name)
     return engine.singletonInstance<QObject *>("C7", name);
 }
 
+// Every property `obj` declares beyond QObject's own, sorted. QObject
+// contributes objectName to every class, and it is not part of any contract.
+QStringList declaredProperties(const QObject *obj)
+{
+    const QMetaObject *meta = obj->metaObject();
+    QStringList names;
+    for (int i = QObject::staticMetaObject.propertyCount(); i < meta->propertyCount(); ++i)
+        names << QString::fromUtf8(meta->property(i).name());
+    names.sort();
+    return names;
+}
+
 } // namespace
 
 class TestModule : public QObject {
@@ -52,18 +67,57 @@ private slots:
         QCOMPARE(build->property("version").toString(), c7::core::version());
     }
 
-    // The starting state, pinned: the singleton loads without the backend
-    // having opened tailscaled's socket, and reads as a machine that has not
-    // reported in yet rather than as one that is connected and unblocked.
-    void tailscaleSingletonLoadsAndStartsInNoState()
+    // The starting state, pinned: the singleton loads, opens the socket
+    // TS_SOCKET names -- which isolation points at a path in a private
+    // directory that nothing listens on -- and reads as a machine that has
+    // not reported in rather than as one that is connected and unblocked.
+    //
+    // Read after a bounded wait, not synchronously. The constructor's requests
+    // go out through the event loop, so a `state` read in the same block is
+    // read before any reply could have arrived and would pass just as well
+    // against a backend that published Running a millisecond later. The wait
+    // is how a negative is proved; it is the shape every other test in this
+    // tree uses for one, and a passing run never waits longer than this.
+    void tailscaleSingletonLoadsAndStaysInNoState()
     {
+        QVERIFY2(qEnvironmentVariable("TS_SOCKET")
+                         .startsWith(c7::testing::hostIsolationRoot() + QLatin1Char('/')),
+                 "TS_SOCKET does not point into the isolation root: this test would open the "
+                 "host's own tailscaled socket");
         QQmlEngine engine;
         QObject *ts = singleton(engine, "Tailscale");
         QVERIFY2(ts, "module C7 loaded but its Tailscale singleton did not");
         QCOMPARE(ts->property("state").toInt(), 0); // State::NoState
-        QCOMPARE(ts->property("exitNodeBlocked").toBool(), false);
         QVERIFY(ts->property("peers").value<QAbstractItemModel *>() != nullptr);
         QVERIFY(ts->property("exitNodes").value<QAbstractItemModel *>() != nullptr);
+        QTest::qWait(250);
+        QCOMPARE(ts->property("state").toInt(), 0);
+        QCOMPARE(ts->property("exitNodeBlocked").toBool(), false);
+        QCOMPARE(ts->property("peers").value<QAbstractItemModel *>()->rowCount(), 0);
+    }
+
+    // The whole contract, not a sample of it. tests/test-tailscale.sh writes a
+    // QML stand-in for this singleton and checks it against the same header;
+    // this is the other end of that -- what the header declares and what the
+    // built module exposes are the same set, so a Q_PROPERTY renamed, dropped
+    // or added cannot pass unremarked at either end.
+    void tailscaleSingletonExposesExactlyTheContract()
+    {
+        QQmlEngine engine;
+        QObject *ts = singleton(engine, "Tailscale");
+        QVERIFY2(ts, "module C7 loaded but its Tailscale singleton did not");
+        QStringList expected{
+            QStringLiteral("state"),           QStringLiteral("selfName"),
+            QStringLiteral("selfIp4"),         QStringLiteral("selfIp6"),
+            QStringLiteral("selfDnsName"),     QStringLiteral("tailnet"),
+            QStringLiteral("keyExpiry"),       QStringLiteral("exitNodeActive"),
+            QStringLiteral("exitNodeId"),      QStringLiteral("exitNodeName"),
+            QStringLiteral("exitNodeOnline"),  QStringLiteral("exitNodeBlocked"),
+            QStringLiteral("issues"),          QStringLiteral("issueCount"),
+            QStringLiteral("peers"),           QStringLiteral("exitNodes"),
+            QStringLiteral("recommendedExitNodeId")};
+        expected.sort();
+        QCOMPARE(declaredProperties(ts), expected);
     }
 };
 

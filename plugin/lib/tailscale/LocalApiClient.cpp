@@ -8,13 +8,23 @@ namespace c7::tailscale {
 
 namespace {
 
-// mask=2 asks for one notification carrying the current state at subscribe,
-// and nothing else. Measured against a live tailscaled 1.104.1, which
-// corrected what this comment used to claim:
+// mask=18 is NotifyInitialState (2) with NotifyNoPrivateKeys (16): one
+// notification carrying the current state at subscribe, and nothing else, with
+// tailscaled told to strip private key material out of anything it sends.
+//
+// NotifyNoPrivateKeys is free and is set for that reason. Measured against a
+// live tailscaled 1.104.1: the subscribe-time notification for mask=18 is
+// BYTE-IDENTICAL to the one for mask=2, and mask=16 on its own is silent --
+// so the bit costs this module nothing and omitting it would be a choice to
+// let key material transit our buffers, our logs and our crash dumps.
+//
+// The rest was measured against the same daemon, and corrected what this
+// comment used to claim:
 //
 //   mask=1  a notification every 2.0s, forever, carrying nothing but Engine
 //           byte counters. It is the watch-engine-updates bit, not a floor.
 //   mask=2  one notification at subscribe (SessionID, State), then silence.
+//   mask=18 the same notification, byte for byte, then the same silence.
 //
 // The mask governs the initial snapshot and whether the engine poller runs.
 // It does not gate ongoing change notifications: tailscaled broadcasts those
@@ -28,7 +38,7 @@ namespace {
 // assumed: any other process on the machine watching with mask=1 puts that
 // 2s drumbeat on this stream as well, so a caller has to judge a notification
 // by what it carries before acting on it.
-const QString kWatchPath = QStringLiteral("/localapi/v0/watch-ipn-bus?mask=2");
+const QString kWatchPath = QStringLiteral("/localapi/v0/watch-ipn-bus?mask=18");
 
 constexpr auto kHeaderEnd = "\r\n\r\n";
 constexpr qsizetype kHeaderEndSize = 4;
@@ -78,8 +88,8 @@ qsizetype contentLength(const QByteArray &head)
 
 } // namespace
 
-LocalApiClient::LocalApiClient(QString socketPath, QObject *parent)
-    : QObject(parent), m_socketPath(std::move(socketPath))
+LocalApiClient::LocalApiClient(QString socketPath, int timeoutMs, QObject *parent)
+    : QObject(parent), m_socketPath(std::move(socketPath)), m_timeoutMs(timeoutMs)
 {
 }
 
@@ -112,6 +122,23 @@ void LocalApiClient::start(const QString &path, bool streaming)
     exchange.path = path;
     exchange.streaming = streaming;
     m_exchanges.insert(socket, exchange);
+
+    // Armed before the connect, so a socket that never connects is bounded
+    // too: connectToServer() on a path nothing listens on usually reports
+    // errorOccurred, but a path that IS listening and never answers reports
+    // nothing at all, and that is the case this exists for.
+    if (m_timeoutMs > 0) {
+        auto *deadline = new QTimer(socket);
+        deadline->setSingleShot(true);
+        connect(deadline, &QTimer::timeout, this, [this, socket, streaming] {
+            fail(socket, streaming
+                             ? QStringLiteral("the watch stream did not start within %1 ms")
+                                       .arg(m_timeoutMs)
+                             : QStringLiteral("no answer within %1 ms").arg(m_timeoutMs));
+        });
+        m_exchanges[socket].deadline = deadline;
+        deadline->start(m_timeoutMs);
+    }
 
     const QByteArray request =
         "GET " + path.toUtf8() + " HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n";
@@ -185,6 +212,11 @@ bool LocalApiClient::readHeaders(QLocalSocket *socket)
     it->chunked = headerValue(head, "transfer-encoding").toLower().contains("chunked");
     // A chunked response carries no Content-Length, and must not be cut to one.
     it->contentLength = it->chunked ? -1 : contentLength(head);
+    // The stream is established, so its deadline has done its job: a watch is
+    // bounded to its establishment and is allowed to be quiet for hours after
+    // it. A get keeps its deadline to the end of the body.
+    if (it->streaming)
+        disarm(*it);
     // Last, because a slot of watchStarted() may stop the watch and take this
     // exchange away: nothing may touch `it` after the emit. The callers below
     // look the exchange up again and do nothing when it has gone.
@@ -348,12 +380,27 @@ void LocalApiClient::fail(QLocalSocket *socket, const QString &reason)
         emit watchEnded();
 }
 
+void LocalApiClient::disarm(Exchange &exchange)
+{
+    if (!exchange.deadline)
+        return;
+    exchange.deadline->stop();
+    // deleteLater, not delete: disarm() runs from the timeout slot when the
+    // deadline is what ended the exchange, and a timer may not be destroyed
+    // from inside its own signal.
+    exchange.deadline->deleteLater();
+    exchange.deadline = nullptr;
+}
+
 std::optional<LocalApiClient::Exchange> LocalApiClient::take(QLocalSocket *socket)
 {
     const auto it = m_exchanges.find(socket);
     if (it == m_exchanges.end())
         return std::nullopt;
-    const Exchange exchange = *it;
+    Exchange exchange = *it;
+    // Before the erase: a deadline left running would report an ending for an
+    // exchange whose ending has already been reported.
+    disarm(exchange);
     m_exchanges.erase(it);
     // No late signal from a socket whose ending has already been reported.
     socket->disconnect(this);

@@ -8,6 +8,7 @@
 #include <optional>
 
 class QLocalSocket;
+class QTimer;
 
 namespace c7::tailscale {
 
@@ -30,6 +31,23 @@ namespace c7::tailscale {
 // watchStarted. A watch the caller stops itself is silent, so a caller that
 // reconnects on watchEnded does not fight its own stop().
 //
+// Every exchange carries a deadline, because a socket that is open and silent
+// emits nothing at all: no readyRead, no disconnected, no errorOccurred. A
+// tailscaled that wedges, or a TS_SOCKET naming some other listening socket
+// that never answers, would otherwise leave a get with no terminal signal for
+// as long as the process lives -- and a caller that tracks a request in flight
+// latched forever on a reply that is never coming. The deadline ends such an
+// exchange in failed(), which is a terminal signal like any other, so the
+// one-signal-per-path contract above holds whatever tailscaled does.
+//
+// What the deadline measures differs by shape, because the two shapes idle
+// differently. A get is bounded end to end: tailscaled answers /status,
+// /prefs and /suggest-exit-node immediately or not at all. A watch is bounded
+// only to its ESTABLISHMENT -- its response headers -- and is unbounded after
+// that: a quiet bus is the normal state of a tailnet and was measured sending
+// nothing for 20s and potentially hours, so a watch timed out on silence
+// would be a reconnect loop on a healthy machine.
+//
 // tailscaled answers /status and watch-ipn-bus with Transfer-Encoding:
 // chunked, and /prefs and /suggest-exit-node with a Content-Length, so both
 // framings are read here. Chunk framing comes off before anything looks for a
@@ -39,7 +57,16 @@ class LocalApiClient : public QObject {
     Q_OBJECT
 
 public:
-    explicit LocalApiClient(QString socketPath, QObject *parent = nullptr);
+    // How long an exchange has, when a caller does not say. Long enough that
+    // no working tailscaled reaches it -- only a wedged one does.
+    static constexpr int kTimeoutMs = 10000;
+
+    // `timeoutMs` is a parameter so a test can prove the deadline without
+    // sleeping out the shipped one, which docs/architecture.md:204 forbids it
+    // to do. Zero or less means no deadline at all, which is not a thing the
+    // shell asks for: it exists so a test can stage a hung exchange.
+    explicit LocalApiClient(QString socketPath, int timeoutMs = kTimeoutMs,
+                            QObject *parent = nullptr);
     ~LocalApiClient() override;
 
     // GET `path`, answered by replied() or failed().
@@ -85,6 +112,10 @@ private:
         // -1 awaiting a chunk-size line, 0 the CRLF that closes a chunk's
         // data, above that the bytes of this chunk still to come.
         qsizetype chunkLeft = -1;
+        // Ends this exchange in fail() if it gets there. Disarmed by take(),
+        // and for a watch by its headers being accepted -- after that the
+        // stream is established and is allowed to be quiet.
+        QTimer *deadline = nullptr;
     };
 
     void start(const QString &path, bool streaming);
@@ -99,11 +130,16 @@ private:
     void errored(QLocalSocket *socket);
     void finish(QLocalSocket *socket);
     void fail(QLocalSocket *socket, const QString &reason);
+    // Stop and drop `exchange`'s deadline, if it still has one. Called with
+    // the exchange already out of the table, so a timeout cannot race the
+    // ending that disarmed it.
+    static void disarm(Exchange &exchange);
     // Forget `socket` and hand back what it was doing, once: whoever takes an
     // exchange owns the ending, so no response is reported twice.
     std::optional<Exchange> take(QLocalSocket *socket);
 
     QString m_socketPath;
+    int m_timeoutMs;
     QHash<QLocalSocket *, Exchange> m_exchanges;
 };
 

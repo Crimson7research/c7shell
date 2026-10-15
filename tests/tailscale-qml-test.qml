@@ -160,16 +160,23 @@ Window {
     root.check(root.slot() !== null,
       "the bar has no Tailscale slot: nothing in StatusPill answers to objectName \"tailscale\"")
 
-    // 1 -- no daemon. The snapshot underneath is deliberately still a healthy
-    // tailnet with a live exit node, which is exactly what must NOT show.
+    // 1 -- NO TAILSCALE ON THIS MACHINE. Nothing has answered since this bar
+    // started, which is what a machine without tailscaled looks like forever,
+    // and a globe there is chrome for a thing that is not installed.
+    //
+    // This runs FIRST deliberately: it is the only point in the file at which
+    // the slot has never seen a daemon, and 5b below is the other reading of
+    // the same NoState -- one that HAS, and must keep its badges. The values
+    // set underneath are a healthy tailnet with a live exit node, so a slot
+    // that showed anything here would be showing it from nowhere.
     Tailscale.state = Tailscale.NoState
     Tailscale.exitNodeActive = true
     Tailscale.exitNodeOnline = true
     Tailscale.exitNodeName = "pentest-exit-node"
     root.check(root.slot().visible === false,
-      "the slot stayed up at NoState, showing the last snapshot of a tailnet whose daemon is gone")
+      "the bar drew a Tailscale slot on a machine whose tailscaled has never answered")
     root.check(!root.visibleText("pentest-exit-node"),
-      "the exit-node label survived the daemon it was read from")
+      "an exit-node label was drawn before any daemon had reported one")
 
     // 2 -- connected, healthy: present, plain, undimmed, no label.
     root.connected()
@@ -227,6 +234,25 @@ Window {
     Tailscale.issues = ["is-using-unstable-version"]
     root.check(root.visibleOfColour(Theme.warning).length === 0,
       "the amber badge drew on top of the crimson one")
+
+    // 5b -- the daemon dies while that is true. NoState now means something
+    // else than it did in 1: tailscaled HAS answered on this machine, so the
+    // slot is the stale reading of a tailnet whose daemon is gone, not the
+    // absence of Tailscale. Hiding it here would drop exitNodeBlocked exactly
+    // when the thing dropping the traffic went unreachable -- which is the
+    // whole reason TailscaleBackend.h keeps the last snapshot rather than
+    // blanking it.
+    Tailscale.state = Tailscale.NoState
+    root.check(root.slot().visible === true,
+      "the slot vanished when tailscaled died, taking the only thing on screen that says"
+      + " egress is being dropped with it")
+    root.check(Qt.colorEqual(root.iconTint(), Theme.textDisabled),
+      "a tailnet with no daemon behind it is drawn as brightly as a live one")
+    root.check(root.visibleOfColour(Theme.accentSoft).some(o => o.text === "\u2715"),
+      `the blocked badge went quiet when the daemon did: ${root.dump()}`)
+    root.check(root.visibleText("pentest-exit-node"),
+      "the slot stopped naming the node to clear once the daemon went")
+    Tailscale.state = Tailscale.Running
 
     // 6 -- the label is bounded. A MagicDNS hostname is arbitrary text off the
     // network, QuickSlot grows with its content and the pill grows with the
@@ -597,6 +623,38 @@ Window {
 
     const all = root.panelShown("ts-exit-row")
     root.check(all.length === 2, `the tailnet exit nodes list drew ${all.length} of 2`)
+
+    // Which row is the one carrying the traffic, joined on the ID. Nothing
+    // stops two machines enrolling under one hostname, so the list is given a
+    // second row with the SAME hostName as the selected node and a different
+    // nodeId: a check mark joined on exitNodeName lights both, which reads as
+    // egress leaving by two doors at once.
+    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", nodeId: "nFFF1CNTRL" })
+    Tailscale.exitNodeActive = true
+    Tailscale.exitNodeOnline = true
+    Tailscale.exitNodeName = "pentest-exit-node"
+    Tailscale.exitNodeId = "nCCC1CNTRL"
+    root.layout()
+    const checkedRows = root.panelShown("ts-exit-row").filter(o => {
+      const glyph = root.descendants(o).find(c => c.tint !== undefined)
+      return glyph !== undefined && glyph.visible
+    })
+    root.check(checkedRows.length === 1,
+      `${checkedRows.length} of the exit-node rows are checked; one node carries the traffic`)
+    root.check(checkedRows[0].nodeId === "nCCC1CNTRL",
+      `the check mark is on ${checkedRows[0].nodeId}, not on the node exitNodeId names`)
+
+    // And it goes when egress does, rather than staying on the last node used.
+    Tailscale.exitNodeActive = false
+    Tailscale.exitNodeId = ""
+    Tailscale.exitNodeName = ""
+    root.layout()
+    root.check(root.panelShown("ts-exit-row").every(o => {
+      const glyph = root.descendants(o).find(c => c.tint !== undefined)
+      return glyph === undefined || !glyph.visible
+    }), "an exit-node row stayed checked with no exit node selected")
+    Tailscale.exitNodes.remove(2)
+    root.layout()
     // v1 cannot write prefs, so a row that looked choosable would be a lie.
     root.check(all.every(o => `${o.titleColor}` === `${Theme.textDisabled}`),
       "an exit node row is drawn as selectable, and selecting it is a write v1 does not have")

@@ -115,13 +115,18 @@ Column {
     titleColor: Theme.textDisabled
     title: exitRow.hostName
 
-    // ExitNodeStatus carries no hostname, so the backend joins the name back
-    // off the peer list; the name is the only identity both ends share here.
+    // Joined on the ID, never the name. TailscaleBackend.h says why: nothing
+    // stops two machines enrolling under one hostname, and a check mark
+    // joined on the name lands on every row that shares it with the node
+    // actually carrying the traffic -- which reads as egress going two places
+    // at once. The ID is the identity the status, exit-node and suggestion
+    // endpoints all share, and is what the RECOMMENDED row joins on above.
     leading: Icon {
       name: "check"
       size: 12
       tint: Theme.accentSoft
-      visible: Tailscale.exitNodeActive && Tailscale.exitNodeName === exitRow.hostName
+      visible: Tailscale.exitNodeActive && exitRow.nodeId !== ""
+        && Tailscale.exitNodeId === exitRow.nodeId
     }
   }
 }

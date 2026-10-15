@@ -8,6 +8,8 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QFile>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QSignalSpy>
@@ -102,6 +104,41 @@ void serveEndableWatch(FakeSocketServer &server, const char *statusFixture)
             FakeSocketServer::KeepOpen, "\r\n\r\n");
 }
 
+// The capture's /prefs with ExitNodeID set to `id` -- a selection tailscaled
+// has taken but whose ExitNodeStatus the status does not yet carry, which is
+// the window this module exists to be honest about and cannot be captured
+// because it lasts moments.
+QByteArray prefsSelecting(const QString &id)
+{
+    QJsonObject prefs = QJsonDocument::fromJson(fixture("prefs.json")).object();
+    prefs.insert(QLatin1String("ExitNodeID"), id);
+    return QJsonDocument(prefs).toJson(QJsonDocument::Compact);
+}
+
+// The capture with its BackendState replaced: tailscaled up and reporting
+// something other than Running, which is a state the panel has words for and
+// is perfectly usable.
+QByteArray statusInState(const QByteArray &json, const QString &backendState)
+{
+    QJsonObject root = QJsonDocument::fromJson(json).object();
+    root.insert(QLatin1String("BackendState"), backendState);
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
+}
+
+// The capture with its whole Peer section taken out: a 200 that parses, says
+// Running, and does not describe the tailnet at all.
+QByteArray withoutThePeerSection(const QByteArray &json)
+{
+    QJsonObject root = QJsonDocument::fromJson(json).object();
+    root.remove(QLatin1String("Peer"));
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
+}
+
+// A tailnet that really has no other devices: an empty Peer OBJECT, which is
+// a description of the tailnet, unlike an absent or null one.
+const QByteArray kEmptyTailnet =
+        QByteArrayLiteral("{\"BackendState\":\"Running\",\"Peer\":{}}");
+
 // The node id of the peer with this hostname, read out of the same capture the
 // test serves. Never written out as a literal: the redaction randomises every
 // node id, so a literal is stale the moment a fixture is regenerated.
@@ -171,6 +208,257 @@ private slots:
         QTRY_VERIFY(b.exitNodeActive());
         QVERIFY(b.exitNodeOnline());
         QVERIFY(!b.exitNodeBlocked());
+        // The id as well as the name: a view joins the check mark on the id,
+        // because hostnames repeat on a tailnet.
+        QCOMPARE(b.exitNodeId(),
+                 nodeIdOf("status-exitnode.json", QStringLiteral("pentest-exit-node")));
+    }
+
+    // The window this module exists to be honest about. /prefs already names
+    // the exit node, /status has not resolved an ExitNodeStatus for it yet --
+    // absent on some builds, null on others -- and during exactly that window
+    // egress is most likely to be on the floor. Read from the status alone it
+    // is "no exit node selected": a plain healthy globe.
+    void failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved()
+    {
+        const QString id = nodeIdOf("status-idle.json", QStringLiteral("pentest-exit-node"));
+        QVERIFY(!id.isEmpty());
+        FakeSocketServer server(socketPath());
+        server.onRequest(
+                [id](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(prefsSelecting(id));
+                    // status-idle.json carries no ExitNodeStatus at all.
+                    return chunked(fixture("status-idle.json"));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiTailscaleBackend b(socketPath());
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QVERIFY2(b.exitNodeActive(),
+                 "an exit node tailscaled has selected read as no exit node at all");
+        QVERIFY2(!b.exitNodeOnline(), "an unresolved exit node read as one that answers");
+        QVERIFY2(b.exitNodeBlocked(),
+                 "a selected exit node with no resolvable status drew the healthy globe");
+        QCOMPARE(b.exitNodeId(), id);
+        // Named off the peer list, as the resolved case is: the panel says
+        // which machine to clear, not which node id.
+        QCOMPARE(b.exitNodeName(), QStringLiteral("pentest-exit-node"));
+    }
+
+    // And the selection being CLEARED is published from the same pair. /prefs
+    // is re-read on every pass for this reason: an ExitNodeID read once on
+    // connect would keep the block up long after egress was unrouted again.
+    void clearsTheBlockWhenPrefsStopsSelectingAnExitNode()
+    {
+        const QString id = nodeIdOf("status-idle.json", QStringLiteral("pentest-exit-node"));
+        FakeSocketServer server(socketPath());
+        auto selecting = std::make_shared<bool>(true);
+        server.onRequest(
+                [id, selecting](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(*selecting ? prefsSelecting(id) : fixture("prefs.json"));
+                    return chunked(fixture("status-idle.json"));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        LocalApiTailscaleBackend b(socketPath());
+        QTRY_VERIFY(b.exitNodeBlocked());
+        QTRY_COMPARE(server.clientCount(), 1);
+        *selecting = false;
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_VERIFY(!b.exitNodeActive());
+        QVERIFY(!b.exitNodeBlocked());
+        QVERIFY(b.exitNodeId().isEmpty());
+        QVERIFY(b.exitNodeName().isEmpty());
+    }
+
+    // /suggest-exit-node is an optional feature endpoint, not a health probe,
+    // and counting it as one left a machine never finishing a connection at
+    // all: nothing established, the settle timer never armed, Running/NoState
+    // flapping at the retry cap forever -- with the slot and the panel both
+    // gated on state, so blank or absent nearly all the time.
+    //
+    // The rows are the two ways it is measured to fail on a daemon that is
+    // perfectly healthy. Neither is an unusual tailnet.
+    void connectsThroughASuggestionThatFails_data()
+    {
+        QTest::addColumn<QByteArray>("suggestReply");
+        QTest::addColumn<QByteArray>("backendState");
+        QTest::addColumn<int>("expected");
+
+        // A tailnet with no exit node to suggest has nothing to answer with.
+        QTest::newRow("404, no exit nodes on the tailnet")
+                << QByteArrayLiteral("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+                << QByteArrayLiteral("Running") << int(TailscaleBackend::State::Running);
+        // Measured on a live daemon: "no preferred DERP, try again later" is
+        // what it answers before DERP is resolved, which is every cold boot
+        // and every network change -- a transient the daemon explicitly asks
+        // to be retried, on a machine where nothing at all is wrong.
+        QTest::newRow("500, DERP not resolved yet")
+                << (QByteArrayLiteral("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 46"
+                                      "\r\n\r\n")
+                    + QByteArrayLiteral("{\"error\":\"no preferred DERP, try again later\"}"))
+                << QByteArrayLiteral("Running") << int(TailscaleBackend::State::Running);
+        // The same 500, on a daemon that is up and logged out. /status and
+        // /prefs both answer, NeedsLogin is a state the panel has words for,
+        // and the whole slot used to be absent from the bar for it.
+        QTest::newRow("500, tailscaled up and logged out")
+                << (QByteArrayLiteral("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 46"
+                                      "\r\n\r\n")
+                    + QByteArrayLiteral("{\"error\":\"no preferred DERP, try again later\"}"))
+                << QByteArrayLiteral("NeedsLogin") << int(TailscaleBackend::State::NeedsLogin);
+    }
+
+    void connectsThroughASuggestionThatFails()
+    {
+        QFETCH(QByteArray, suggestReply);
+        QFETCH(QByteArray, backendState);
+        QFETCH(int, expected);
+        FakeSocketServer server(socketPath());
+        server.onRequest(
+                [suggestReply, backendState](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return suggestReply;
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(fixture("prefs.json"));
+                    return chunked(statusInState(fixture("status-idle.json"),
+                                                 QString::fromUtf8(backendState)));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // One millisecond of base, so a backend that treats the failure as a
+        // lost connection reconnects many times inside the bounded wait below.
+        LocalApiTailscaleBackend b(socketPath(), 1);
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        QTRY_COMPARE(int(b.state()), expected);
+        QVERIFY2(b.recommendedExitNodeId().isEmpty(),
+                 "a suggestion that failed was published as a recommendation");
+        // And it STAYS connected. Proving a negative needs a bounded wait.
+        QTest::qWait(100);
+        QCOMPARE(int(b.state()), expected);
+        QCOMPARE(armed.count(), 0);
+        QCOMPARE(requestsFor(server, "/localapi/v0/status "), 1);
+    }
+
+    // A suggestion that stops being offered is withdrawn, not kept: the
+    // RECOMMENDED heading names a row, and a row nothing stands behind any
+    // more is worse than no heading.
+    void forgetsTheSuggestionWhenTheEndpointStopsOfferingOne()
+    {
+        FakeSocketServer server(socketPath());
+        serveFixture(server, "status-idle.json");
+        LocalApiTailscaleBackend b(socketPath(), 1);
+        QTRY_VERIFY(!b.recommendedExitNodeId().isEmpty());
+        QTRY_COMPARE(server.clientCount(), 1);
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        server.onRequest(
+                [](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return QByteArrayLiteral(
+                                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n");
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(fixture("prefs.json"));
+                    return chunked(fixture("status-idle.json"));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_VERIFY(b.recommendedExitNodeId().isEmpty());
+        QCOMPARE(b.state(), TailscaleBackend::State::Running);
+        QCOMPARE(armed.count(), 0);
+    }
+
+    // "network devices 0" and "that reply never described the tailnet" look
+    // the same on the panel, and setPeers() cannot tell them apart. The rows
+    // stay as the last status that DID describe it left them.
+    void keepsTheDeviceListWhenAStatusDoesNotDescribeTheTailnet()
+    {
+        FakeSocketServer server(socketPath());
+        serveFixture(server, "status-idle.json");
+        LocalApiTailscaleBackend b(socketPath());
+        QTRY_COMPARE(b.peers()->rowCount(), 20);
+        QTRY_COMPARE(server.clientCount(), 1);
+
+        server.onRequest(
+                [](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(fixture("prefs.json"));
+                    return chunked(withoutThePeerSection(fixture("status-idle.json")));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_COMPARE(requestsFor(server, "/localapi/v0/status "), 2);
+        // Proving a negative needs a bounded wait.
+        QTest::qWait(50);
+        QCOMPARE(b.peers()->rowCount(), 20);
+        QCOMPARE(b.state(), TailscaleBackend::State::Running);
+
+        // An empty Peer OBJECT is a description -- a tailnet that really has
+        // no other devices -- and does clear them, or the guard above would
+        // be a list that can never shrink to nothing.
+        server.onRequest(
+                [](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(fixture("prefs.json"));
+                    return chunked(kEmptyTailnet);
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_COMPARE(b.peers()->rowCount(), 0);
+    }
+
+    // tailscaled wedged: the socket is accepted and then answers nothing at
+    // all. No readyRead, no disconnected, no errorOccurred -- so without a
+    // deadline in LocalApiClient there is no terminal signal, the refresh
+    // stays in flight, every later notification takes the stale branch and
+    // returns, and the bar shows a snapshot that is no longer being refreshed
+    // for as long as the process lives, with no retry ever armed.
+    void retriesWhenTailscaledAcceptsARequestAndNeverAnswersIt()
+    {
+        FakeSocketServer server(socketPath());
+        auto statusReads = std::make_shared<int>(0);
+        server.onRequest(
+                [statusReads](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(fixture("prefs.json"));
+                    // From the second one on: accepted, never answered.
+                    if (++*statusReads >= 2)
+                        return QByteArray();
+                    return chunked(fixture("status-idle.json"));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // A 150ms deadline rather than the shipped ten seconds, and a retry
+        // base no test will wait out: the question is whether a hung exchange
+        // ends at all, not when the reconnect after it fires.
+        LocalApiTailscaleBackend b(socketPath(), 20000, LocalApiTailscaleBackend::kRetryCapMs, 150);
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QTRY_COMPARE(server.clientCount(), 1);
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_COMPARE(*statusReads, 2);
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::NoState);
+        QVERIFY(armed.count() >= 1);
     }
 
     void doesNotCountTheSuppressedRouteWarning()
@@ -316,7 +604,7 @@ private slots:
         QTRY_COMPARE(server.requests().size(), 4);
         for (const char *path : {"/localapi/v0/status ", "/localapi/v0/prefs ",
                                  "/localapi/v0/suggest-exit-node ",
-                                 "/localapi/v0/watch-ipn-bus?mask=2 "})
+                                 "/localapi/v0/watch-ipn-bus?mask=18 "})
             QCOMPARE(requestsFor(server, path), 1);
         // Nothing polls: with no notification on the bus, nothing is re-read.
         QTest::qWait(100);
@@ -362,10 +650,10 @@ private slots:
     }
 
     // The backoff has to advance on a local API that answers /status and
-    // refuses something else -- a tailnet with no exit node to suggest is the
-    // live case. Clearing the curve on the status reply alone makes every pass
-    // attempt zero, so the reconnect runs flat at the base delay forever:
-    // four sockets a pass, state flapping Running to NoState and back.
+    // refuses one of the other health probes. Clearing the curve on the status
+    // reply alone makes every pass attempt zero, so the reconnect runs flat at
+    // the base delay forever: four sockets a pass, state flapping Running to
+    // NoState and back.
     void theBackoffAdvancesWhenOnlyPartOfTheLocalApiAnswers()
     {
         FakeSocketServer server(socketPath());
@@ -374,10 +662,10 @@ private slots:
                     if (request.contains("/localapi/v0/watch-ipn-bus"))
                         return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
                     if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
                         return QByteArrayLiteral(
                                 "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
-                    if (request.contains("/localapi/v0/prefs"))
-                        return measured(fixture("prefs.json"));
                     return chunked(fixture("status-idle.json"));
                 },
                 FakeSocketServer::KeepOpen, "\r\n\r\n");
@@ -450,44 +738,47 @@ private slots:
 
     // tailscaled emits several notifications for one change. While a refresh
     // is out, further notifications are remembered rather than each opening
-    // its own pair of sockets.
-    void coalescesNotificationsArrivingWhileARefreshIsOut()
+    // its own set of sockets -- and the one that was remembered is replayed
+    // when the refresh lands, because the replies in flight were asked for
+    // before the change and cannot be the answer to it.
+    void coalescesNotificationsArrivingWhileARefreshIsOutAndThenReplaysThem()
     {
         FakeSocketServer server(socketPath());
-        auto statusReads = std::make_shared<int>(0);
-        server.onRequest(
-                [statusReads](const QByteArray &request) -> QByteArray {
-                    if (request.contains("/localapi/v0/watch-ipn-bus"))
-                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
-                    if (request.contains("/localapi/v0/prefs"))
-                        return measured(fixture("prefs.json"));
-                    if (request.contains("/localapi/v0/suggest-exit-node"))
-                        return measured(fixture("suggest-exit-node.json"));
-                    // The second status read gets its headers and nothing
-                    // else, so it stays in flight for the rest of the test --
-                    // which is what "while a refresh is out" has to mean if
-                    // the case is to be pinned rather than raced for.
-                    if (++*statusReads == 2) {
-                        return QByteArrayLiteral(
-                                "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-                    }
-                    return chunked(fixture("status-idle.json"));
-                },
-                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        serveFixture(server, "status-idle.json");
         LocalApiTailscaleBackend b(socketPath(), 20000);
         QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
         QTRY_COMPARE(server.clientCount(), 1);
+
+        // The next status read is recorded and left unanswered, which is what
+        // "while a refresh is out" has to mean if the case is to be pinned
+        // rather than raced for. A held client is skipped by pushLine, so the
+        // notifications below reach the watch and not this half-answered read.
+        server.holdNext("/localapi/v0/status ");
         server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
-        QTRY_COMPARE(*statusReads, 2);
+        QTRY_COMPARE(server.heldCount(), 1);
+        const int statusReads = requestsFor(server, "/localapi/v0/status ");
         const int suggestReads = requestsFor(server, "/localapi/v0/suggest-exit-node ");
+        QCOMPARE(statusReads, 2);
 
         for (int i = 0; i < 5; ++i)
             server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
         // Proving a negative needs a bounded wait; this is the shape
         // tst_localapiclient.cpp already uses for it.
         QTest::qWait(50);
-        QCOMPARE(*statusReads, 2);
+        QCOMPARE(requestsFor(server, "/localapi/v0/status "), statusReads);
         QCOMPARE(requestsFor(server, "/localapi/v0/suggest-exit-node "), suggestReads);
+        QCOMPARE(b.state(), TailscaleBackend::State::Running);
+
+        // Remembered, not dropped. Answering the held read has to send one
+        // more pass, because the five notifications above were answered by
+        // nothing -- and without the replay the change that provoked them is
+        // lost until something else happens on the bus, which on a quiet
+        // tailnet is hours. Deleting the replay leaves every assertion above
+        // still passing, which is why the completion is part of this test.
+        QCOMPARE(server.completeHeld(chunked(fixture("status-idle.json"))), 1);
+        QTRY_COMPARE(requestsFor(server, "/localapi/v0/status "), statusReads + 1);
+        QTRY_COMPARE(requestsFor(server, "/localapi/v0/suggest-exit-node "), suggestReads + 1);
+        QCOMPARE(b.state(), TailscaleBackend::State::Running);
     }
 
     // Dropping the engine bit from our own mask is necessary and not
