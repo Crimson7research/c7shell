@@ -621,15 +621,15 @@ git commit -m "feat(bar): a tailscale slot carrying six states"
 **Interfaces:**
 - Consumes: everything from Task 5, plus `Tailscale.peers` as a `ListView` model.
 
-`ExitNodeList.qml` is §5 of the mock: a checked `none` row, the `recommendedExitNodeId`
+`ExitNodeList.qml` is the exit-node panel of the visual mock (attached to the pull request; a copy lives in this plan's SDD workspace as `tailscale-mock.html`): a checked `none` row, the `recommendedExitNodeId`
 peer promoted under a `RECOMMENDED` heading, then every `exitNodes` row under
 `TAILNET EXIT NODES`. In v1 the rows are not selectable — selection is a write — so
 they render at `Theme.textDisabled` and the heading carries `(read-only)`.
 
-`CopyMenu.qml` is the right-click menu of §4: `Copy IPv4`, `Copy IPv6`,
+`CopyMenu.qml` is the right-click menu of the mock's device list: `Copy IPv4`, `Copy IPv6`,
 `Copy MagicDNS hostname`, with an entry disabled when the peer has no such value.
 
-Root panel per the visual mock attached to the pull request §3: `GlassPopover { name: "tailscale"; panelWidth: 320 }`, header row (title, state subtitle, a disabled `TogglePill` with a v1 tooltip), this-device rows, `network devices ›`, `exit nodes ›`. The blocked alert from §6 appears above everything when `Tailscale.exitNodeBlocked`. Device list sections per `GroupRole`, with the labels `my devices`, `tagged devices`, `other users`.
+Root panel per the visual mock's root view: `GlassPopover { name: "tailscale"; panelWidth: 320 }`, header row (title, state subtitle, a disabled `TogglePill` with a v1 tooltip), this-device rows, `network devices ›`, `exit nodes ›`. The blocked alert from the interrupting states appears above everything when `Tailscale.exitNodeBlocked`. Device list sections per `GroupRole`, with the labels `my devices`, `tagged devices`, `other users`.
 
 - [ ] **Step 1: Write the failing tests**
 
