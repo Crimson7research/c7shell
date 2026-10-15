@@ -25,6 +25,12 @@ namespace c7::tailscale {
 // each other. Every path ends in exactly one signal: replied or failed for a
 // get, watchEnded for a watch -- save a watch the caller stops itself, which
 // is silent so a caller that reconnects on watchEnded does not fight stop().
+//
+// tailscaled answers /status and watch-ipn-bus with Transfer-Encoding:
+// chunked, and /prefs and /suggest-exit-node with a Content-Length, so both
+// framings are read here. Chunk framing comes off before anything looks for a
+// newline: a chunk boundary falls wherever tailscaled flushed, which on the
+// watch stream is as readily mid-notification as between two of them.
 class LocalApiClient : public QObject {
     Q_OBJECT
 
@@ -54,14 +60,25 @@ signals:
 private:
     struct Exchange {
         QString path;
-        QByteArray buffer;
+        QByteArray buffer; // read, not yet unframed
+        QByteArray body;   // unframed payload
         bool streaming = false;
         bool headersDone = false;
+        bool chunked = false;
+        bool ended = false; // the zero-length chunk closed the body
         qsizetype contentLength = -1;
+        // -1 awaiting a chunk-size line, 0 the CRLF that closes a chunk's
+        // data, above that the bytes of this chunk still to come.
+        qsizetype chunkLeft = -1;
     };
 
     void start(const QString &path, bool streaming);
     void read(QLocalSocket *socket);
+    // Headers, framing, delivery -- each step able to end the exchange, after
+    // which the ones behind it do nothing.
+    void deliver(QLocalSocket *socket);
+    bool readHeaders(QLocalSocket *socket);
+    bool unframe(QLocalSocket *socket);
     void emitLines(QLocalSocket *socket);
     void closed(QLocalSocket *socket);
     void errored(QLocalSocket *socket);

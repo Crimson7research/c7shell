@@ -34,20 +34,27 @@ int statusCode(const QByteArray &head)
     return ok ? code : 0;
 }
 
-// Content-Length, or -1 when the response does not say -- which is how
-// watch-ipn-bus answers, and which leaves the body ending at the close.
-qsizetype contentLength(const QByteArray &head)
+// A header's value, empty when the block does not carry it. `name` is lower
+// case; the status line, having no colon, is skipped like any other mismatch.
+QByteArray headerValue(const QByteArray &head, const QByteArray &name)
 {
     const QList<QByteArray> lines = head.split('\n');
     for (const QByteArray &line : lines) {
         const qsizetype colon = line.indexOf(':');
-        if (colon < 0 || line.left(colon).trimmed().toLower() != "content-length")
-            continue;
-        bool ok = false;
-        const qsizetype length = line.mid(colon + 1).trimmed().toLongLong(&ok);
-        return ok ? length : -1;
+        if (colon >= 0 && line.left(colon).trimmed().toLower() == name)
+            return line.mid(colon + 1).trimmed();
     }
-    return -1;
+    return {};
+}
+
+// Content-Length, or -1 when the response does not give one -- which is how a
+// chunked response answers, and which otherwise leaves the body ending at the
+// close.
+qsizetype contentLength(const QByteArray &head)
+{
+    bool ok = false;
+    const qsizetype length = headerValue(head, "content-length").toLongLong(&ok);
+    return ok ? length : -1;
 }
 
 } // namespace
@@ -112,32 +119,116 @@ void LocalApiClient::read(QLocalSocket *socket)
     if (it == m_exchanges.end())
         return;
     it->buffer += socket->readAll();
+    deliver(socket);
+}
 
-    if (!it->headersDone) {
-        const qsizetype at = it->buffer.indexOf(kHeaderEnd);
-        // Headers split across reads: nothing to decide until they are whole.
-        if (at < 0)
-            return;
-        const QByteArray head = it->buffer.left(at);
-        it->buffer.remove(0, at + kHeaderEndSize);
-        const int code = statusCode(head);
-        if (code < 200 || code >= 300) {
-            fail(socket, QStringLiteral("%1 answered %2")
-                             .arg(it->path, QString::fromUtf8(statusLine(head))));
-            return; // fail() took the exchange; `it` is gone with it
-        }
-        it->headersDone = true;
-        it->contentLength = contentLength(head);
-    }
-
+void LocalApiClient::deliver(QLocalSocket *socket)
+{
+    if (!readHeaders(socket) || !unframe(socket))
+        return;
+    auto it = m_exchanges.find(socket);
+    if (it == m_exchanges.end())
+        return;
     if (it->streaming) {
         emitLines(socket);
+        // A slot of event() may have stopped the watch: look again.
+        it = m_exchanges.find(socket);
+        if (it != m_exchanges.end() && it->ended)
+            finish(socket);
         return;
     }
-    // Without a Content-Length the body ends when the server closes, which
-    // closed() handles.
-    if (it->contentLength >= 0 && it->buffer.size() >= it->contentLength)
+    // Without either framing the body ends at the close, which closed() takes.
+    if (it->ended || (it->contentLength >= 0 && it->body.size() >= it->contentLength))
         finish(socket);
+}
+
+// False when the headers are not whole yet, or were refused.
+bool LocalApiClient::readHeaders(QLocalSocket *socket)
+{
+    const auto it = m_exchanges.find(socket);
+    if (it == m_exchanges.end())
+        return false;
+    if (it->headersDone)
+        return true;
+    const qsizetype at = it->buffer.indexOf(kHeaderEnd);
+    // Headers split across reads: nothing to decide until they are whole.
+    if (at < 0)
+        return false;
+    const QByteArray head = it->buffer.left(at);
+    it->buffer.remove(0, at + kHeaderEndSize);
+    const int code = statusCode(head);
+    if (code < 200 || code >= 300) {
+        fail(socket, QStringLiteral("%1 answered %2")
+                         .arg(it->path, QString::fromUtf8(statusLine(head))));
+        return false;
+    }
+    it->headersDone = true;
+    it->chunked = headerValue(head, "transfer-encoding").toLower().contains("chunked");
+    // A chunked response carries no Content-Length, and must not be cut to one.
+    it->contentLength = it->chunked ? -1 : contentLength(head);
+    return true;
+}
+
+// Move what has arrived from the raw buffer into the body, taking off chunk
+// framing when there is any. False when the framing was refused.
+bool LocalApiClient::unframe(QLocalSocket *socket)
+{
+    const auto it = m_exchanges.find(socket);
+    if (it == m_exchanges.end())
+        return false;
+    if (!it->chunked) {
+        it->body += it->buffer;
+        it->buffer.clear();
+        return true;
+    }
+    // A hex length, an optional ";extension", CRLF, that many bytes, CRLF,
+    // until a zero length closes the body. Every piece of that can arrive
+    // split -- the size line as readily as the data -- so each step either
+    // completes or leaves the bytes where they are for the next read.
+    while (!it->ended) {
+        if (it->chunkLeft < 0) {
+            const qsizetype eol = it->buffer.indexOf("\r\n");
+            if (eol < 0)
+                return true;
+            QByteArray size = it->buffer.left(eol);
+            const qsizetype extension = size.indexOf(';');
+            if (extension >= 0)
+                size = size.left(extension);
+            bool ok = false;
+            const qsizetype length = size.trimmed().toLongLong(&ok, 16);
+            if (!ok || length < 0) {
+                fail(socket, QStringLiteral("%1 sent \"%2\" where a chunk length belongs")
+                                 .arg(it->path, QString::fromUtf8(size.trimmed())));
+                return false;
+            }
+            it->buffer.remove(0, eol + 2);
+            if (length == 0) {
+                it->ended = true; // trailers, if any, are of no interest here
+                break;
+            }
+            it->chunkLeft = length;
+            continue;
+        }
+        if (it->chunkLeft > 0) {
+            const qsizetype take = qMin(it->chunkLeft, it->buffer.size());
+            if (take == 0)
+                return true;
+            it->body += it->buffer.left(take);
+            it->buffer.remove(0, take);
+            it->chunkLeft -= take;
+            continue;
+        }
+        if (it->buffer.size() < 2)
+            return true;
+        if (!it->buffer.startsWith("\r\n")) {
+            fail(socket, QStringLiteral("%1 sent a chunk that does not end where it said")
+                             .arg(it->path));
+            return false;
+        }
+        it->buffer.remove(0, 2);
+        it->chunkLeft = -1;
+    }
+    return true;
 }
 
 void LocalApiClient::emitLines(QLocalSocket *socket)
@@ -151,11 +242,11 @@ void LocalApiClient::emitLines(QLocalSocket *socket)
         const auto it = m_exchanges.find(socket);
         if (it == m_exchanges.end())
             return;
-        const qsizetype at = it->buffer.indexOf('\n');
+        const qsizetype at = it->body.indexOf('\n');
         if (at < 0)
             return;
-        QByteArray line = it->buffer.left(at);
-        it->buffer.remove(0, at + 1);
+        QByteArray line = it->body.left(at);
+        it->body.remove(0, at + 1);
         if (line.endsWith('\r'))
             line.chop(1);
         if (!line.isEmpty())
@@ -174,8 +265,20 @@ void LocalApiClient::closed(QLocalSocket *socket)
         fail(socket, QStringLiteral("the connection closed before the response headers"));
         return;
     }
-    if (it->streaming)
-        emitLines(socket);
+    deliver(socket);
+    const auto rest = m_exchanges.find(socket);
+    if (rest == m_exchanges.end())
+        return; // deliver() reported the ending already
+    if (rest->streaming) {
+        finish(socket); // tailscaled went: the watch is over, not broken
+        return;
+    }
+    // A body cut short is not a body: a chunked response without its final
+    // chunk, or fewer bytes than Content-Length promised, is a failure.
+    if (rest->chunked || rest->contentLength > rest->body.size()) {
+        fail(socket, QStringLiteral("the connection closed before the response ended"));
+        return;
+    }
     finish(socket);
 }
 
@@ -203,8 +306,8 @@ void LocalApiClient::finish(QLocalSocket *socket)
         return;
     }
     emit replied(exchange->path, exchange->contentLength >= 0
-                                     ? exchange->buffer.left(exchange->contentLength)
-                                     : exchange->buffer);
+                                     ? exchange->body.left(exchange->contentLength)
+                                     : exchange->body);
 }
 
 void LocalApiClient::fail(QLocalSocket *socket, const QString &reason)
