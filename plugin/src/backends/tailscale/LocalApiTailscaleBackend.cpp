@@ -51,13 +51,14 @@ TailscaleBackend::State stateOf(const QString &backendState)
 } // namespace
 
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QObject *parent)
-    : LocalApiTailscaleBackend(defaultSocketPath(), kRetryBaseMs, parent)
+    : LocalApiTailscaleBackend(defaultSocketPath(), kRetryBaseMs, kRetryCapMs, parent)
 {
 }
 
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retryBaseMs,
-                                                   QObject *parent)
-    : TailscaleBackend(parent), m_client(std::move(socketPath), this), m_retryBaseMs(retryBaseMs)
+                                                   int settleMs, QObject *parent)
+    : TailscaleBackend(parent), m_client(std::move(socketPath), this), m_retryBaseMs(retryBaseMs),
+      m_settleMs(settleMs)
 {
     connect(&m_client, &LocalApiClient::replied, this, &LocalApiTailscaleBackend::onReplied);
     connect(&m_client, &LocalApiClient::failed, this, &LocalApiTailscaleBackend::onFailed);
@@ -65,6 +66,11 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     // changed, not what, and /status is the authority on what it now is.
     connect(&m_client, &LocalApiClient::event, this,
             [this](const QByteArray &) { onEvent(); });
+    // The stream is up: the fourth and last thing a whole connection needs.
+    connect(&m_client, &LocalApiClient::watchStarted, this, [this] {
+        m_openingReads |= WatchStarted;
+        noteEstablished();
+    });
     // A failing watch reports failed and then watchEnded, in that order, so
     // both arrive for one lost connection; scheduleRetry() is what makes that
     // one reconnect rather than two.
@@ -73,6 +79,11 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
 
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &LocalApiTailscaleBackend::open);
+    m_settle.setSingleShot(true);
+    // The connection outlived the longest wait this would have accepted before
+    // retrying it, so it is one that works, and the next loss starts the curve
+    // over rather than resuming it.
+    connect(&m_settle, &QTimer::timeout, this, [this] { m_attempts = 0; });
     open();
 }
 
@@ -108,18 +119,17 @@ void LocalApiTailscaleBackend::open()
     // connection this object has. stop() is silent by contract, so dropping
     // the old watch here cannot trigger the very reconnect it is part of.
     m_client.stop();
+    m_settle.stop();
     m_refreshInFlight = false;
     m_refreshStale = false;
     m_openingReads = 0;
     m_attemptFailed = false;
     m_established = false;
-    // The watch goes out before the reads, for two reasons. A change between
-    // reading the state and subscribing to changes would otherwise be missed
-    // entirely. And a watch that cannot start reports failed and watchEnded
-    // ahead of the reads it was queued before, so this attempt is already
-    // marked failed when they land -- which is what stops a local API that
-    // serves /status but refuses the stream from resetting the backoff on
-    // every pass.
+    // The watch goes out before the reads so that a change between reading the
+    // state and subscribing to changes is not missed entirely. Nothing about
+    // the backoff rests on that ordering: the stream is one of the things a
+    // whole connection is counted from, so a watch that never starts holds
+    // WatchStarted back however the replies interleave.
     m_client.watch();
     refresh();
     // Read for the same reason the status is: all three answer 200
@@ -157,7 +167,9 @@ void LocalApiTailscaleBackend::noteEstablished()
     if (m_established || m_attemptFailed || m_openingReads != EveryRead)
         return;
     m_established = true;
-    m_attempts = 0;
+    // Not a reset: only holding for m_settleMs clears the curve. A connection
+    // that is whole and then gone is not one that worked.
+    m_settle.start(m_settleMs);
 }
 
 void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &body)
@@ -210,8 +222,10 @@ void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &)
 void LocalApiTailscaleBackend::lostTailscaled()
 {
     // Whatever else this attempt managed, it did not wholly work, so it must
-    // not clear the backoff.
+    // not clear the backoff -- including through a settle timer armed before
+    // the loss and still pending.
     m_attemptFailed = true;
+    m_settle.stop();
     // State alone, because state is the only thing that is certainly wrong
     // when tailscaled stops answering. The rest of the snapshot is the last
     // thing it said, and blanking it would set exitNodeActive to false -- the

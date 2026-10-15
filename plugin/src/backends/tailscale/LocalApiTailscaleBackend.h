@@ -38,12 +38,13 @@ public:
     static constexpr int kRetryCapMs = 30000;
 
     explicit LocalApiTailscaleBackend(QObject *parent = nullptr);
-    // The socket to read, and the first retry delay in milliseconds. Both are
-    // parameters so a test can point the backend at a fake tailscaled and
-    // step the reconnect curve without sleeping out the shipped one, which
+    // The socket to read, the first retry delay, and how long a connection
+    // must hold before it counts as one that worked. All three are parameters
+    // so a test can point the backend at a fake tailscaled and step the
+    // reconnect curve without sleeping out the shipped one, which
     // docs/architecture.md:204 forbids it to do.
     explicit LocalApiTailscaleBackend(QString socketPath, int retryBaseMs = kRetryBaseMs,
-                                      QObject *parent = nullptr);
+                                      int settleMs = kRetryCapMs, QObject *parent = nullptr);
 
     // Health messages this module never counts as an issue, matched as
     // substrings of what tailscaled reports.
@@ -96,10 +97,18 @@ protected:
     QString rawSelfDnsName() const override { return m_selfDnsName; }
 
 private:
-    // Which of the opening reads has answered. The connection counts as
-    // established only when all of them have and nothing has failed, which is
-    // what makes the backoff advance -- see noteEstablished().
-    enum OpeningRead { StatusRead = 1, PrefsRead = 2, SuggestRead = 4, EveryRead = 7 };
+    // What a whole connection consists of: the three reads answered *and* the
+    // stream up. The watch is one of these and not an afterthought -- a local
+    // API that serves the reads and refuses the stream is as broken as one
+    // that refuses a read, and leaving the watch out left the backoff resting
+    // on the order open() happens to issue its requests in.
+    enum OpeningRead {
+        StatusRead = 1,
+        PrefsRead = 2,
+        SuggestRead = 4,
+        WatchStarted = 8,
+        EveryRead = 15,
+    };
 
     // Drop whatever is in flight, start the watch, read the three endpoints.
     // Also the retry timer's slot.
@@ -114,10 +123,11 @@ private:
     // Re-read what a notification can have changed: the status, and the
     // suggestion that is keyed on a row of it.
     void refresh();
-    // Clear the backoff, but only once this connection has wholly proved
-    // itself. A status reply alone is not proof: a local API that answers
-    // /status and refuses anything else would otherwise reset the curve on
-    // every pass and retry flat at the base delay forever.
+    // Note that the connection is whole, and start the clock on it holding.
+    // Being whole is not yet proof that it works: a stream that is accepted
+    // and dropped a moment later has established and achieved nothing, and
+    // clearing the curve for it makes every pass attempt zero -- a reconnect
+    // running flat at the base delay forever. Only m_settle firing clears it.
     void noteEstablished();
 
     void applyStatus(const c7::tailscale::Status &status);
@@ -150,7 +160,11 @@ private:
 
     c7::tailscale::LocalApiClient m_client;
     QTimer m_retry;
+    // Armed when the connection is whole, and the only thing that clears the
+    // backoff. A connection that does not outlive it did not work.
+    QTimer m_settle;
     int m_retryBaseMs;
+    int m_settleMs;
     int m_attempts = 0;
     // One refresh at a time: tailscaled emits several notifications for one
     // change, and a pair of sockets per notification would be a storm. A
