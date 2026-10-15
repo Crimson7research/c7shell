@@ -24,16 +24,16 @@ reference tailnet they differ for six of twenty peers:
 
 | `HostName` | DNS label |
 |---|---|
-| `ip-10-20-9-170` | `keystone` |
-| `localhost` | `iphone183` |
-| `localhost` | `adriaan-iphone` |
-| `DESKTOP-3RHVVOK` | `adriaan-desktop` |
-| `C7PI` | `c7-pi` |
-| `C7-LAP-G1157C6M` | `c7-lap-g1157c6m` |
+| `ip-172-31-0-10` | `delta` |
+| `localhost` | `phone-a` |
+| `localhost` | `phone-b` |
+| `WIN-7K2Q4X` | `gamma` |
+| `EPSILON` | `epsilon` |
+| `LAP-4F2A91` | `lap-4f2a91` |
 
 This also retires a "finding" recorded during v1: the claim that two machines
 saw different exit-node sets, logged as probable ACL filtering. They did not.
-One node, `HostName ip-10-20-9-170` and DNS label `keystone`, was being read
+One node, `HostName ip-172-31-0-10` and DNS label `delta`, was being read
 under two names by two different readers.
 
 It also softens the duplicate-hostname problem that shaped `PeerModel`: both
