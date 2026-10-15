@@ -126,7 +126,15 @@ void PeerModel::setPeers(const QList<Peer> &peers)
                 endInsertRows();
                 continue;
             }
-            beginMoveRows({}, from, from, {}, row);
+            const bool accepted = beginMoveRows({}, from, from, {}, row);
+            // Qt refuses a move whose destination falls inside the range being
+            // moved. The walk makes that impossible -- row < from always, so
+            // the destination is outside the single row -- which means a
+            // refusal is the invariant breaking. Stopping leaves the model and
+            // m_peers describing the same list; moving anyway would not.
+            Q_ASSERT(accepted);
+            if (!accepted)
+                return;
             m_peers.move(from, row);
             endMoveRows();
         }
@@ -134,6 +142,17 @@ void PeerModel::setPeers(const QList<Peer> &peers)
             continue;
         m_peers[row] = want;
         emit dataChanged(index(row), index(row));
+    }
+
+    // A nodeId is unique on a real tailnet, but a peer object with no "ID" key
+    // parses to an empty one, so a degraded payload can carry two rows under a
+    // single key: the removal pass asks a set and keeps both, while the walk
+    // settles only next.size() rows. Anything past that is a row no peer in
+    // the new list claims, and leaving it would quietly over-report rowCount().
+    if (m_peers.size() > next.size()) {
+        beginRemoveRows({}, int(next.size()), int(m_peers.size()) - 1);
+        m_peers.remove(next.size(), m_peers.size() - next.size());
+        endRemoveRows();
     }
 }
 

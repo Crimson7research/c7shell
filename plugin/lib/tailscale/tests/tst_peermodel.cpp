@@ -225,6 +225,26 @@ private slots:
         QCOMPARE(m.rowCount(m.index(0, 0)), 0);
     }
 
+    // A peer object with no "ID" key parses to an empty nodeId, so a truncated
+    // or degraded status really can hand the model two rows under one key.
+    // The removal pass asks a set and keeps both; nothing must be left behind
+    // once the shorter list has been settled.
+    void dropsRowsLeftOverWhenPeersShareANodeId()
+    {
+        PeerModel m;
+        m.setPeers({peer("", "alpha"), peer("", "bravo")});
+        QCOMPARE(m.rowCount(), 2);
+        QSignalSpy removed(&m, &QAbstractItemModel::rowsRemoved);
+        m.setPeers({peer("", "alpha")});
+        QCOMPARE(m.rowCount(), 1);
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(m.index(0, 0).data(PeerModel::HostNameRole).toString(),
+                 QStringLiteral("alpha"));
+        // And the row that is left is the one the new list named, not whatever
+        // happened to sit at row 0.
+        QVERIFY(!rowOfHostName(m, QStringLiteral("bravo")).isValid());
+    }
+
     void emptiesWithoutResetting()
     {
         PeerModel m;
