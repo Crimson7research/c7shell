@@ -44,7 +44,7 @@ can be reviewed independently.
 
 All three endpoints answer **HTTP 200 unprivileged** over
 `/var/run/tailscale/tailscaled.sock` (mode `srw-rw-rw-`), verified on
-`c7-test-2`. No process is spawned and nothing polls.
+`the test laptop`. No process is spawned and nothing polls.
 
 | Endpoint | Carries |
 |---|---|
@@ -59,7 +59,7 @@ NetworkManager's `PropertiesChanged`, so the backend is event-driven exactly as
 
 ### `ExitNodeStatus`, captured live
 
-Captured on `c7-test-2` with `pentest-exit-node` actually selected, because
+Captured on `the test laptop` with `pentest-exit-node` actually selected, because
 every earlier reading was `null` and the shape could not be guessed:
 
 ```json
@@ -89,9 +89,9 @@ otherwise                                        → Other Users (owner = Displa
 ```
 
 Section labels are the shipping app's own strings (`myDevicesSectionTitle`,
-`td_taggedDevicesHeader`, `td_OtherUsers`). On `c7-test-2` this is 10 / 8 / 2.
+`td_taggedDevicesHeader`, `td_OtherUsers`). On `the test laptop` this is 10 / 8 / 2.
 
-Hostnames are **not unique** — `C7-LAP-G1157C6M` and `localhost` each appear
+Hostnames are **not unique** — `a hostname that repeats` and `localhost` each appear
 twice on this tailnet — so a row without its IP is ambiguous. Rows key on
 the peer's `ID`, the string one. Not `NodeID`, which is a number no other
 endpoint returns: `ExitNodeStatus.ID` and `/suggest-exit-node` both answer with
@@ -118,7 +118,7 @@ orthogonal modifier rather than a state of its own. The slot is therefore
 
 ## Health, and the one warning this machine always has
 
-`c7-test-2` reports, permanently:
+`the test laptop` reports, permanently:
 
 ```
 "Some peers are advertising routes but --accept-routes is false"
