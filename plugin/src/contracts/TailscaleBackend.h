@@ -78,6 +78,17 @@ public:
     // Approval", "Waiting for Admin Signing") are read from tailnet-lock data,
     // not from this field. NoState is first and is the default: a backend that
     // has not heard from tailscaled yet reads as unknown, never as Stopped.
+    //
+    // NoState is also what a backend publishes when it loses tailscaled, and
+    // it is then the only thing it changes. The rest of the snapshot stays as
+    // tailscaled last described it, because blanking it would set
+    // exitNodeActive to false and so drop exitNodeBlocked -- the fail-closed
+    // flag going quiet exactly when the daemon behind it died.
+    //
+    // **A UI must therefore gate on state.** Peers, exit nodes, the exit-node
+    // banner and the self identity are last-known values, not live ones, and
+    // showing them while state is NoState renders a healthy tailnet served by
+    // a daemon that is gone. Bind their visibility to `state !== NoState`.
     enum class State { NoState, NeedsMachineAuth, NeedsLogin, Stopped, Starting, Running };
     Q_ENUM(State)
 
@@ -132,6 +143,9 @@ public:
     // Stable-row models a view binds to directly; never rebuilt, so a row
     // keeps its delegate across an update. Both are PeerModels, and exitNodes
     // holds only the peers offering themselves as one.
+    //
+    // Both outlive the connection that filled them -- see State -- so a view
+    // shows them only while state !== NoState.
     virtual QAbstractItemModel *peers() const = 0;
     virtual QAbstractItemModel *exitNodes() const = 0;
 

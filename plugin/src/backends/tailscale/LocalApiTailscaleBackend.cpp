@@ -108,52 +108,80 @@ void LocalApiTailscaleBackend::open()
     // connection this object has. stop() is silent by contract, so dropping
     // the old watch here cannot trigger the very reconnect it is part of.
     m_client.stop();
-    m_statusInFlight = false;
-    m_statusStale = false;
-    requestStatus();
+    m_refreshInFlight = false;
+    m_refreshStale = false;
+    m_openingReads = 0;
+    m_attemptFailed = false;
+    m_established = false;
+    // The watch goes out before the reads, for two reasons. A change between
+    // reading the state and subscribing to changes would otherwise be missed
+    // entirely. And a watch that cannot start reports failed and watchEnded
+    // ahead of the reads it was queued before, so this attempt is already
+    // marked failed when they land -- which is what stops a local API that
+    // serves /status but refuses the stream from resetting the backoff on
+    // every pass.
+    m_client.watch();
+    refresh();
     // Read for the same reason the status is: all three answer 200
     // unprivileged on a working tailscaled, so one of them refusing means this
     // socket is not a local API this backend can publish from. /prefs carries
     // no property of its own today -- every field in it is either already in
     // the status or belongs to the writes v1 does not do.
     m_client.get(kPrefsPath);
-    m_client.get(kSuggestPath);
-    m_client.watch();
 }
 
-void LocalApiTailscaleBackend::requestStatus()
+void LocalApiTailscaleBackend::refresh()
 {
-    m_statusInFlight = true;
-    m_statusStale = false;
+    m_refreshInFlight = true;
+    m_refreshStale = false;
     m_client.get(kStatusPath);
+    // Re-read alongside the status, not only on connect: the suggestion names
+    // a row of exitNodes, so a published id outlives the row it points at
+    // whenever the set of exit nodes changes under it.
+    m_client.get(kSuggestPath);
 }
 
 void LocalApiTailscaleBackend::onEvent()
 {
-    if (m_statusInFlight) {
+    if (m_refreshInFlight) {
         // The reply on its way was asked for before this change, so it cannot
         // be the answer to it.
-        m_statusStale = true;
+        m_refreshStale = true;
         return;
     }
-    requestStatus();
+    refresh();
+}
+
+void LocalApiTailscaleBackend::noteEstablished()
+{
+    if (m_established || m_attemptFailed || m_openingReads != EveryRead)
+        return;
+    m_established = true;
+    m_attempts = 0;
 }
 
 void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &body)
 {
     if (path == kSuggestPath) {
         applySuggestion(body);
+        m_openingReads |= SuggestRead;
+        noteEstablished();
         return;
     }
     if (path == kPrefsPath) {
-        if (!QJsonDocument::fromJson(body).isObject())
-            lostTailscaled();
+        // Nothing is published from the body. A 2xx is the whole point: it is
+        // what says this socket is a local API that answers unprivileged, and
+        // LocalApiClient has already turned anything else into failed(). A
+        // further check on the shape of a 2xx body would only buy a NoState
+        // flap for a reply no tailscaled sends.
+        m_openingReads |= PrefsRead;
+        noteEstablished();
         return;
     }
     if (path != kStatusPath)
         return;
 
-    m_statusInFlight = false;
+    m_refreshInFlight = false;
     const std::optional<Status> status = StatusParser::parse(body);
     // `{}` parses, so a reply is only a status if it carries a BackendState:
     // without one there is nothing to publish but the parser's defaults, which
@@ -162,21 +190,28 @@ void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &
         lostTailscaled();
         return;
     }
-    m_attempts = 0;
     applyStatus(*status);
-    if (m_statusStale)
-        requestStatus();
+    // Deliberately after applyStatus and deliberately not a reset of its own:
+    // a good status is one of three reads this attempt needs, never the whole
+    // of it.
+    m_openingReads |= StatusRead;
+    noteEstablished();
+    if (m_refreshStale)
+        refresh();
 }
 
 void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &)
 {
     if (path == kStatusPath)
-        m_statusInFlight = false;
+        m_refreshInFlight = false;
     lostTailscaled();
 }
 
 void LocalApiTailscaleBackend::lostTailscaled()
 {
+    // Whatever else this attempt managed, it did not wholly work, so it must
+    // not clear the backoff.
+    m_attemptFailed = true;
     // State alone, because state is the only thing that is certainly wrong
     // when tailscaled stops answering. The rest of the snapshot is the last
     // thing it said, and blanking it would set exitNodeActive to false -- the
@@ -196,12 +231,18 @@ void LocalApiTailscaleBackend::scheduleRetry()
     // attempt would run the backoff to its cap on the first failure.
     if (m_retry.isActive())
         return;
+    const int delay = retryDelayMs(m_attempts, m_retryBaseMs);
+    ++m_attempts;
+    m_retry.start(delay);
+    emit retryScheduled(delay);
+}
+
+int LocalApiTailscaleBackend::retryDelayMs(int attempt, int baseMs)
+{
     // The curve of Services/AuthService.qml:202 -- doubling from the base, six
     // doublings, then flat -- so a tailscaled that will not start is retried
     // forever without being spun on.
-    const int delay = std::min(kRetryCapMs, m_retryBaseMs * (1 << std::min(m_attempts, 6)));
-    ++m_attempts;
-    m_retry.start(delay);
+    return std::min(kRetryCapMs, baseMs * (1 << std::clamp(attempt, 0, 6)));
 }
 
 void LocalApiTailscaleBackend::applyStatus(const Status &status)
