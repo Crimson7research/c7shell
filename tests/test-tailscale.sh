@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # Self-check for the bar's Tailscale slot. Run it directly: tests/test-tailscale.sh
 #
-# Same trick as tests/test-wifi.sh: the slot is plain QtQuick bindings over one
-# singleton's properties, so the Quickshell types StatusPill reaches for are
-# shimmed, C7.Tailscale is stood in by a QML singleton the test writes to, and
-# the rule under test -- what the slot wears in each of the six states the
-# design names -- is real. No compositor, no tailscaled.
+# Self-check for the bar's Tailscale slot AND the popover behind it.
+#
+# Same trick as tests/test-wifi.sh: both are plain QtQuick bindings over one
+# singleton's properties, so the Quickshell types they reach for are shimmed,
+# C7.Tailscale is stood in by a QML singleton the test writes to, and the rules
+# under test -- what the slot wears in each of the six states the design names,
+# and what the panel draws over each shape of tailnet -- are real. No
+# compositor, no tailscaled.
 #
 # What it defends: the slot is the only surface that says egress is being
 # dropped, and it says it with a tint and a badge. Every way of getting that
-# wrong leaves a slot that renders perfectly and lies.
+# wrong leaves a slot that renders perfectly and lies. The panel adds a second
+# class of that: a list view that silently rebuilds its rows throws away
+# whatever local state a row was holding (#124), and nothing about a rebuilt
+# row looks different in a screenshot.
 set -euo pipefail
 
 # shellcheck source=fixtures/harness.sh
@@ -18,7 +24,8 @@ mktmp
 
 need_qml6
 
-mkdir -p "$tmp/qs/Modules/Bar" "$tmp/qs/Common" "$tmp/qs/Services" "$tmp/qs/Theme" \
+mkdir -p "$tmp/qs/Modules/Bar" "$tmp/qs/Modules/Popovers" "$tmp/qs/Common" \
+  "$tmp/qs/Services" "$tmp/qs/Theme" \
   "$tmp/C7" "$tmp/Quickshell/Networking" "$tmp/Quickshell/Bluetooth" \
   "$tmp/Quickshell/Services/Pipewire"
 
@@ -45,8 +52,91 @@ cp "$src/Common/Icon.qml" "$tmp/qs/Common/"
 # The update slot's progress ring is QtQuick.Shapes and is not under test.
 printf 'import QtQuick\nItem { property real fraction: 0 }\n' \
   > "$tmp/qs/Common/ProgressRing.qml"
-printf 'module qs.Common\nIcon 1.0 Icon.qml\nProgressRing 1.0 ProgressRing.qml\n' \
+# The panel is built out of these three, and all three carry rules the panel
+# depends on -- ListRow's underlay stacking above its own MouseArea is how a
+# peer row gets a right-click at all.
+cp "$src/Common/ListRow.qml" "$src/Common/SectionLabel.qml" "$src/Common/TogglePill.qml" \
+  "$src/Common/GlassPanel.qml" "$tmp/qs/Common/"
+
+# GlassPopover stands in: the real one is a PopupSurface, which is a
+# PopupWindow with a Hyprland focus grab on it, and none of that is the
+# subject. What IS the subject is the shape it hands a popover -- `name`,
+# `panelWidth`, a content Column with the panel's gap, `open` off
+# PopoverManager, and the `panel` the overlay menu parents itself to -- so the
+# stub keeps exactly those and nothing else.
+cat > "$tmp/qs/Common/GlassPopover.qml" <<'QML'
+import QtQuick
+import qs.Services
+Item {
+  id: root
+  required property string name
+  property int padding: 14
+  property int gap: 11
+  property int panelWidth: 320
+  property bool pinRight: false
+  default property alias content: column.data
+  readonly property alias panel: panel
+
+  property bool open: PopoverManager.current === root.name
+  width: panel.width
+  height: panel.height
+
+  Item {
+    id: panel
+    width: root.panelWidth
+    height: column.implicitHeight + root.padding * 2
+
+    Column {
+      id: column
+      anchors {
+        top: parent.top; left: parent.left; right: parent.right
+        margins: root.padding
+      }
+      spacing: root.gap
+    }
+  }
+}
+QML
+
+# The tooltip on the disabled connect toggle. A PopupWindow in the shell, and
+# hover chrome here -- the panel never reads it back.
+cat > "$tmp/qs/Common/Tooltip.qml" <<'QML'
+import QtQuick
+Item {
+  id: root
+  property bool open: false
+  property Item anchorItem: null
+  property int panelWidth: 200
+  property real panelHeight: 0
+  property int panelRadius: 9
+  default property alias content: card.data
+  visible: false
+  Item { id: card; width: root.panelWidth; height: root.panelHeight }
+}
+QML
+
+printf 'module qs.Common\nIcon 1.0 Icon.qml\nProgressRing 1.0 ProgressRing.qml\nListRow 1.0 ListRow.qml\nSectionLabel 1.0 SectionLabel.qml\nTogglePill 1.0 TogglePill.qml\nGlassPanel 1.0 GlassPanel.qml\nGlassPopover 1.0 GlassPopover.qml\nTooltip 1.0 Tooltip.qml\n' \
   > "$tmp/qs/Common/qmldir"
+
+# -- the popover, all of it real ---------------------------------------------
+cp "$src/Modules/Popovers/TailscalePopover.qml" "$src/Modules/Popovers/PeerRow.qml" \
+  "$src/Modules/Popovers/ExitNodeList.qml" "$src/Modules/Popovers/CopyMenu.qml" \
+  "$tmp/qs/Modules/Popovers/"
+printf 'module qs.Modules.Popovers\nTailscalePopover 1.0 TailscalePopover.qml\nPeerRow 1.0 PeerRow.qml\nExitNodeList 1.0 ExitNodeList.qml\nCopyMenu 1.0 CopyMenu.qml\n' \
+  > "$tmp/qs/Modules/Popovers/qmldir"
+
+# Quickshell's own singleton, for the one thing the panel asks of it: the
+# clipboard. Writing it is the whole copy action, and the test reads it back --
+# which is also what proves the panel is not shelling out to wl-copy, because
+# a Process here would have nothing to write to.
+cat > "$tmp/Quickshell/Quickshell.qml" <<'QML'
+pragma Singleton
+import QtQuick
+QtObject {
+  property string clipboardText: ""
+}
+QML
+printf 'module Quickshell\nsingleton Quickshell 1.0 Quickshell.qml\n' > "$tmp/Quickshell/qmldir"
 
 # The Theme stand-in, from tests/fixtures/theme-stub.sh -- one copy, with its
 # colours read from the same palette.json the real Theme reads.
@@ -78,6 +168,34 @@ QtObject {
   readonly property bool exitNodeBlocked: root.exitNodeActive && !root.exitNodeOnline
   property var issues: []
   readonly property int issueCount: root.issues.length
+
+  // This machine on the tailnet. All last-known values -- see State -- which
+  // is why the panel gates every one of them on state.
+  property string selfName: ""
+  property string selfIp4: ""
+  property string selfIp6: ""
+  // Already normalised: the header's getter is non-virtual and strips the root
+  // dot, so QML never sees the trailing one.
+  property string selfDnsName: ""
+  property string tailnet: ""
+  // An invalid QDateTime reaches QML as an Invalid Date; null is the same
+  // absence written the way a QML test can write it.
+  property var keyExpiry: null
+  property string recommendedExitNodeId: ""
+
+  // PeerModel stands in as a ListModel, and that is the point rather than a
+  // shortcut: both are QAbstractListModels, so a ListView sees the same
+  // dataChanged / rowsMoved / rowsInserted that PeerModel is proven to emit
+  // (plugin/lib/tailscale/tests/tst_peermodel.cpp pins that it emits those and
+  // never a reset). What a ListModel adds is that a TEST can drive those
+  // signals by hand -- setProperty is a dataChanged, move is a rowsMoved,
+  // clear+append is the reset PeerModel exists to avoid -- which is what lets
+  // the delegate-identity check below run a real ListView over them.
+  //
+  // Rows are appended already sorted Mine / Tagged / Others, as PeerModel
+  // sorts them.
+  readonly property ListModel peers: ListModel {}
+  readonly property ListModel exitNodes: ListModel {}
 }
 QML
 printf 'module C7\nsingleton Tailscale 1.0 Tailscale.qml\n' > "$tmp/C7/qmldir"
