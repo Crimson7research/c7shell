@@ -321,6 +321,23 @@ Window {
     for (const p of list) Tailscale.peers.append(p)
   }
 
+  // Every Text in a row, not just the ones the panel declares itself. The
+  // panel's own bindings carry textFormat where it matters, but a row's TITLE
+  // and SUBTITLE are ListRow's Texts, and a check written against the
+  // panel's files alone sails straight past them -- which is exactly how
+  // daemon-supplied hostnames and other people's display names reached a
+  // Text.AutoText that renders <b> and fetches a remote <img src>.
+  function everyTextIsPlain(item, what) {
+    const texts = root.descendants(item)
+      .filter(o => o.text !== undefined && o.textFormat !== undefined)
+    root.check(texts.length > 0, `${what} has no Text in it at all`)
+    const bad = texts.filter(o => o.textFormat !== Text.PlainText)
+    root.check(bad.length === 0,
+      `${what} renders ${bad.length} of its ${texts.length} strings through a markup-parsing`
+      + ` element: ${bad.map(o => `"${o.text}"`).join(", ")}`)
+    return texts.length
+  }
+
   function peerRow(hostName) {
     const hit = root.panelAll("ts-peer").find(o => o.hostName === hostName)
     root.check(hit !== undefined, `no peer row for ${hostName}: the panel has `
@@ -498,6 +515,18 @@ Window {
     root.check(arch.copied === true,
       "the row gave no feedback for the copy, and a popover has nowhere else to put it")
 
+    // The markup route the panel does not own. A peer row puts tailscaled's
+    // hostname into ListRow's title and another user's free-form display name
+    // into its subtitle, and ListRow is shared -- WifiPopover feeds the same
+    // two Texts scanned SSIDs, which are whatever the access point next door
+    // says they are.
+    root.check(root.everyTextIsPlain(arch, "a peer row") >= 3,
+      "a peer row draws fewer than three strings, so this check is not reaching ListRow's own")
+    root.check(root.peerRow("workstation").subtitle === "Atilla Balin",
+      "the owner line is not where this check thinks it is")
+    root.everyTextIsPlain(root.peerRow("workstation"), "a peer row with an owner line")
+    root.everyTextIsPlain(root.panelOne("ts-self-name"), "the this-device row")
+
     // The half of the right-click this test cannot press: a RightButton-only
     // MouseArea stacked over the row's own, which is what leaves the left
     // click to the copy above.
@@ -573,6 +602,26 @@ Window {
       "an exit node row is drawn as selectable, and selecting it is a write v1 does not have")
     root.check(root.panelOne("ts-exit-all-label").text.indexOf("(read-only)") >= 0,
       `the heading does not say the list is read-only: "${root.panelOne("ts-exit-all-label").text}"`)
+    root.everyTextIsPlain(all[0], "an exit node row")
+
+    // `none` is the reading of current state, not an offer, so it is the one
+    // row here deliberately NOT drawn at Theme.textDisabled.
+    root.check(`${none.titleColor}` !== `${Theme.textDisabled}`,
+      "the `none` row is dimmed like the unselectable ones, so the panel does not say where egress goes")
+
+    // A recommendation naming a node that is not in the list -- a peer
+    // dropped between the status and the suggestion -- must take the heading
+    // with it rather than leave a bare one.
+    Tailscale.recommendedExitNodeId = "nZZZ1CNTRL"
+    root.layout()
+    root.check(root.panelShown("ts-exit-recommended").length === 0,
+      "a recommendation naming a node outside exitNodes still drew a row")
+    root.check(root.panelShown("ts-exit-recommended-label").length === 0,
+      "the RECOMMENDED heading stayed up with nothing under it")
+    Tailscale.recommendedExitNodeId = "nCCC1CNTRL"
+    root.layout()
+    root.check(root.panelShown("ts-exit-recommended-label").length === 1,
+      "the RECOMMENDED heading did not come back when the recommendation did")
   }
 
   // ==========================================================================
@@ -660,6 +709,29 @@ Window {
       "the rows did not reorder, so nothing was asked of the view")
     root.check(root.rowOfNodeId(list, "nCCC1CNTRL").ip4 === "100.64.0.9" && after.ip4 === "100.64.0.2",
       "a row that was NOT the one under test did not take its own update")
+
+    // The other two verbs PeerModel has. peermodel.cpp inserts and removes
+    // rows rather than resetting (tst_peermodel's insertsANewPeerInPlace and
+    // insertsAndRemovesRatherThanResetting), and a peer joining or leaving the
+    // tailnet while someone is reading a row is the ordinary case, not a
+    // corner: a device waking up is one rowsInserted on a list the panel is
+    // already showing.
+    Tailscale.peers.insert(0, { hostName: "delta", ip4: "100.64.0.4",
+      ip6: "fd7a:115c:a1e0::4", dnsName: "delta.cama-major.ts.net", online: true,
+      group: 0, ownerName: "adriaan@crimson7.io", nodeId: "nDDD1CNTRL",
+      exitNodeOption: false })
+    root.layout()
+    root.check(list.count === 4, `the insert left ${list.count} rows`)
+    root.check(root.rowOfNodeId(list, "nBBB1CNTRL") === target,
+      "a peer joining the tailnet rebuilt the row someone was already reading")
+    root.check(target.copied === true, "the inserted sibling took the neighbouring row's local state")
+
+    Tailscale.peers.remove(0)
+    root.layout()
+    root.check(list.count === 3, `the remove left ${list.count} rows`)
+    root.check(root.rowOfNodeId(list, "nBBB1CNTRL") === target,
+      "a peer leaving the tailnet rebuilt the row someone was already reading")
+    root.check(target.copied === true, "the removed sibling took the neighbouring row's local state")
 
     // The control. Everything above is the same ListView, the same delegate
     // and the same local state; the only difference here is that the model

@@ -33,6 +33,10 @@ Column {
     active: !Tailscale.exitNodeActive
     title: qsTr("none")
 
+    // Deliberately NOT drawn at Theme.textDisabled like the rows below it.
+    // Those are dimmed because they offer a choice v1 cannot make; this one
+    // is not an offer, it is the reading -- egress is unrouted right now --
+    // and a reading of current state has to stay legible.
     leading: Icon {
       name: "check"
       size: 12
@@ -41,25 +45,41 @@ Column {
     }
   }
 
-  // Shown off recommendedExitNodeId alone: the contract says it matches a row
-  // in exitNodes, and the model has no random access from QML to confirm it
-  // against -- the Repeater below is what actually finds the row.
-  SectionLabel {
-    objectName: "ts-exit-recommended-label"
-    visible: Tailscale.recommendedExitNodeId !== ""
-    text: qsTr("recommended")
-  }
-
-  // One Repeater over the whole model with a single visible row, because a
-  // QAbstractItemModel offers QML no way to look a row up by id. A Column
-  // lays out only its visible children, so the hidden ones cost nothing here.
+  // The heading and the row are ONE delegate, so the heading cannot outlive
+  // the row it introduces: an id naming a peer that is not in exitNodes -- a
+  // node dropped from the list between the status and the suggestion --
+  // leaves no bare heading because there is nothing for a bare heading to be.
+  //
+  // It is a Repeater over the whole model rather than a lookup because a
+  // QAbstractItemModel offers QML no way to find a row by id, and it is this
+  // shape rather than a count of visible children because Item.visibleChildren
+  // does not re-announce itself when a child's own `visible` flips -- measured,
+  // not assumed: the heading stayed up.
   Repeater {
     model: Tailscale.exitNodes
 
-    ExitRow {
-      objectName: "ts-exit-recommended"
+    Column {
+      id: recommended
+
+      required property string hostName
+      required property string nodeId
+
       width: root.width
-      visible: nodeId !== "" && nodeId === Tailscale.recommendedExitNodeId
+      spacing: 6
+      visible: recommended.nodeId !== ""
+        && recommended.nodeId === Tailscale.recommendedExitNodeId
+
+      SectionLabel {
+        objectName: "ts-exit-recommended-label"
+        text: qsTr("recommended")
+      }
+
+      ExitRow {
+        objectName: "ts-exit-recommended"
+        width: recommended.width
+        hostName: recommended.hostName
+        nodeId: recommended.nodeId
+      }
     }
   }
 

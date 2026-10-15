@@ -68,6 +68,9 @@ GlassPopover {
     if (months > 1) return qsTr("expires in %1 months").arg(months)
     if (months === 1) return qsTr("expires in 1 month")
     if (days > 1) return qsTr("expires in %1 days").arg(days)
+    // `days` is floored, so one whole day left is anything from 24 to 48
+    // hours out -- which is a day, not "under a day".
+    if (days === 1) return qsTr("expires in 1 day")
     return qsTr("expires in under a day")
   }
 
