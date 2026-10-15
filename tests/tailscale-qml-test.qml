@@ -80,6 +80,24 @@ Window {
       + `${o.tint !== undefined ? ` tint ${o.tint}` : ""}]`).join(" ")
   }
 
+  // A Row lays out on polish, not on the binding change that provoked it, so
+  // implicitWidth read in the same block is the previous frame's. The shell
+  // gets a frame along in a millisecond and never notices; this has none.
+  function slotWidth() {
+    for (const o of root.slotParts())
+      if (o.forceLayout !== undefined) o.forceLayout()
+    return root.slot().implicitWidth
+  }
+
+  // The exit-node label. Both Texts in the slot carry `truncated`, so it is
+  // told apart from the badge by the one thing that never varies about the
+  // badge: its glyph.
+  function label() {
+    const labels = root.slotParts().filter(o => o.truncated !== undefined && o.text !== "\u2715")
+    root.check(labels.length === 1, `expected one label in the slot, found ${labels.length}`)
+    return labels[0]
+  }
+
   // The icon's tint is the dimming, and Icon is the only thing in the slot
   // that has one.
   function iconTint() {
@@ -180,5 +198,30 @@ Window {
     Tailscale.issues = ["is-using-unstable-version"]
     root.check(root.visibleOfColour(Theme.warning).length === 0,
       "the amber badge drew on top of the crimson one")
+
+    // 6 -- the label is bounded. A MagicDNS hostname is arbitrary text off the
+    // network, QuickSlot grows with its content and the pill grows with the
+    // slot: an uncapped name moves every slot to its right, and the clock with
+    // them, every time an exit node comes or goes. Nothing about that is
+    // visible in a screenshot of one state, which is why it is pinned here.
+    const house = "c7-lap-g1157c6m.cama-major.ts.net"
+    Tailscale.exitNodeName = "pve1"
+    const narrow = root.slotWidth()
+    Tailscale.exitNodeName = house
+    const capped = root.slotWidth()
+    root.check(capped > narrow,
+      `the label contributes no width at all: "pve1" and "${house}" both give ${capped}`)
+    root.check(root.label().truncated,
+      `a ${house.length}-character node name was drawn in full rather than elided`)
+    Tailscale.exitNodeName = house + house
+    root.check(root.slotWidth() === capped,
+      `doubling the node name widened the slot from ${capped} to ${root.slotWidth()}`)
+
+    // The cap is a ceiling, not a fixed width: a short name must still shrink
+    // the slot back, or the bar simply carries a 90px hole instead.
+    Tailscale.exitNodeName = "pve1"
+    root.check(root.slotWidth() === narrow,
+      "the slot kept the width of the long name after a short one replaced it")
+    root.check(!root.label().truncated, "a short node name was elided")
   }
 }
