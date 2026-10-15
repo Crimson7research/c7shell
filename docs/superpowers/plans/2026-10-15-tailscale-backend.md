@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-tailscale-module-design.md`
 
-**Visual reference:** `docs/tailscale-mock.html`
+**Visual reference:** the visual mock attached to the pull request
 
 ## Global Constraints
 
@@ -629,7 +629,7 @@ they render at `Theme.textDisabled` and the heading carries `(read-only)`.
 `CopyMenu.qml` is the right-click menu of §4: `Copy IPv4`, `Copy IPv6`,
 `Copy MagicDNS hostname`, with an entry disabled when the peer has no such value.
 
-Root panel per `docs/tailscale-mock.html` §3: `GlassPopover { name: "tailscale"; panelWidth: 320 }`, header row (title, state subtitle, a disabled `TogglePill` with a v1 tooltip), this-device rows, `network devices ›`, `exit nodes ›`. The blocked alert from §6 appears above everything when `Tailscale.exitNodeBlocked`. Device list sections per `GroupRole`, with the labels `my devices`, `tagged devices`, `other users`.
+Root panel per the visual mock attached to the pull request §3: `GlassPopover { name: "tailscale"; panelWidth: 320 }`, header row (title, state subtitle, a disabled `TogglePill` with a v1 tooltip), this-device rows, `network devices ›`, `exit nodes ›`. The blocked alert from §6 appears above everything when `Tailscale.exitNodeBlocked`. Device list sections per `GroupRole`, with the labels `my devices`, `tagged devices`, `other users`.
 
 - [ ] **Step 1: Write the failing tests**
 
