@@ -4,8 +4,8 @@ import qs.Theme
 import qs.Common
 
 // One device of the tailnet, as the mock's device list draws it: a reachability
-// dot, the hostname, the owner where the section heading does not already imply
-// it, and the device's IPv4 on the right.
+// dot, the device's name, the owner where the section heading does not already
+// imply it, and the device's IPv4 on the right.
 //
 // Click copies the IPv4; right-click asks the owner for the full copy menu.
 // Feedback for the copy stays inside this row -- a popover has nowhere else to
@@ -21,7 +21,11 @@ ListRow {
 
   // Injected from the model's roles. Declared required so this row cannot be
   // instantiated anywhere it would silently read empty.
-  required property string hostName
+  // The DNS label, which is what Tailscale calls a device everywhere else --
+  // the admin console, the macOS app, MagicDNS. NOT the OS hostname: those
+  // differ on a sizeable fraction of a real tailnet, and the hostname side of
+  // the pair is where two phones both read `localhost`.
+  required property string displayName
   required property string ip4
   required property string ip6
   required property string dnsName
@@ -50,7 +54,7 @@ ListRow {
   titleColor: root.online ? Theme.alpha(Theme.text, 0.85) : Theme.textDisabled
   subtitleSize: 10
   subtitleColor: Theme.text3
-  title: root.hostName
+  title: root.displayName
   // Only Other Users needs an owner line; in the other two sections the owner
   // is the heading.
   subtitle: root.group === 2 ? root.ownerName : ""

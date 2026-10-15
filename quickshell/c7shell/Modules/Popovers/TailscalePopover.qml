@@ -88,8 +88,8 @@ GlassPopover {
   // overlay over the whole panel, not a row in it.
   Component.onCompleted: copyMenu.parent = root.panel
 
-  function openCopyMenu(hostName, ip4, ip6, dnsName, sceneX, sceneY) {
-    copyMenu.hostName = hostName
+  function openCopyMenu(displayName, ip4, ip6, dnsName, sceneX, sceneY) {
+    copyMenu.displayName = displayName
     copyMenu.ip4 = ip4
     copyMenu.ip6 = ip6
     copyMenu.dnsName = dnsName
@@ -495,7 +495,7 @@ GlassPopover {
 
       width: peerList.width
       onMenuRequested: (sceneX, sceneY) =>
-        root.openCopyMenu(peerDelegate.hostName, peerDelegate.ip4, peerDelegate.ip6,
+        root.openCopyMenu(peerDelegate.displayName, peerDelegate.ip4, peerDelegate.ip6,
                           peerDelegate.dnsName, sceneX, sceneY)
     }
   }

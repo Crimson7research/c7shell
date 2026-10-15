@@ -811,7 +811,7 @@
       "NodeID": 63505201234400,
       "PublicKey": "nodekey:8869473d3e294b7fef57d6651fb782f9d6e207296d0853b89d276a45659f5956",
       "HostName": "xi",
-      "DNSName": "xi.example-tailnet.ts.net.",
+      "DNSName": "",
       "OS": "linux",
       "UserID": 3170093802889737,
       "TailscaleIPs": [

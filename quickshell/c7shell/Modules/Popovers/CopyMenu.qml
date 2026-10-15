@@ -21,9 +21,10 @@ Item {
 
   objectName: "ts-copy-menu"
 
-  // Whose values are on offer. The head of the menu names it, so a tailnet
-  // with two devices called `localhost` still says which one is being copied.
-  property string hostName: ""
+  // Whose values are on offer. The head of the menu names it by its DNS
+  // label, so a tailnet with two devices whose OS hostname is `localhost`
+  // still says which one is being copied.
+  property string displayName: ""
   property string ip4: ""
   property string ip6: ""
   property string dnsName: ""
@@ -77,9 +78,9 @@ Item {
         width: parent.width
         leftPadding: 4
         bottomPadding: 5
-        text: root.hostName
+        text: root.displayName
         // Daemon-supplied text. PlainText for the same reason the issue list
-        // is: a hostname is the device owner's own string, not ours.
+        // is: a device's name is its owner's own string, not ours.
         textFormat: Text.PlainText
         elide: Text.ElideRight
         font { family: Theme.fontMono; pixelSize: 10; weight: 700 }

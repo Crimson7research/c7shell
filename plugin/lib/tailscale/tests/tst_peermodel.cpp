@@ -174,6 +174,8 @@ private slots:
         QCOMPARE(gamma.data(PeerModel::HostNameRole).toString(), QStringLiteral("gamma"));
         QCOMPARE(gamma.data(PeerModel::DnsNameRole).toString(),
                  QStringLiteral("host-1.example-tailnet.ts.net"));
+        // And the row is labelled by the LABEL, not by either of those two.
+        QCOMPARE(gamma.data(PeerModel::DisplayNameRole).toString(), QStringLiteral("host-1"));
         QCOMPARE(gamma.data(PeerModel::NodeIdRole).toString(),
                  QStringLiteral("nPFCxlUqVJ11CNTRL"));
         QCOMPARE(gamma.data(PeerModel::Ip4Role).toString(), QStringLiteral("100.67.243.58"));
@@ -202,6 +204,7 @@ private slots:
         PeerModel m;
         const QHash<int, QByteArray> names = m.roleNames();
         QCOMPARE(names.value(PeerModel::HostNameRole), QByteArrayLiteral("hostName"));
+        QCOMPARE(names.value(PeerModel::DisplayNameRole), QByteArrayLiteral("displayName"));
         QCOMPARE(names.value(PeerModel::Ip4Role), QByteArrayLiteral("ip4"));
         QCOMPARE(names.value(PeerModel::Ip6Role), QByteArrayLiteral("ip6"));
         QCOMPARE(names.value(PeerModel::DnsNameRole), QByteArrayLiteral("dnsName"));
@@ -212,7 +215,7 @@ private slots:
         QCOMPARE(names.value(PeerModel::ExitNodeOptionRole),
                  QByteArrayLiteral("exitNodeOption"));
         // Qt's default roles must not leak in alongside them.
-        QCOMPARE(names.size(), 9);
+        QCOMPARE(names.size(), 10);
     }
 
     void answersNothingOffTheEndOrBeneathARow()

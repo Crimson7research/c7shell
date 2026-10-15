@@ -322,18 +322,28 @@ Window {
   // A tailnet trimmed to four devices -- one per group, plus an offline one
   // that carries no IPv6. Already in the order PeerModel sorts them: Mine,
   // Tagged, Others.
+  //
+  // `workstation` carries the gap this module shipped with: its OS hostname is
+  // `localhost` and its DNS label is `workstation`, which is the shape of six
+  // of the twenty devices on the tailnet this was measured against. A row
+  // bound to hostName names it `localhost` -- a name every second phone on a
+  // tailnet also answers to.
   readonly property var tailnetPeers: [
-    { hostName: "tango", ip4: "100.119.215.89", ip6: "fd7a:115c:a1e0::3016:83db",
+    { hostName: "tango", displayName: "tango",
+      ip4: "100.119.215.89", ip6: "fd7a:115c:a1e0::3016:83db",
       dnsName: "tango.example-tailnet.ts.net", online: true, group: 0,
       ownerName: "owner@example.com", nodeId: "nAAA1CNTRL", exitNodeOption: false },
     // No IPv6 at all: the copy menu has to draw that entry dead.
-    { hostName: "yankee", ip4: "100.81.62.41", ip6: "",
+    { hostName: "yankee", displayName: "yankee",
+      ip4: "100.81.62.41", ip6: "",
       dnsName: "yankee-with-a-long-magicdns-name.example-tailnet.ts.net", online: false, group: 0,
       ownerName: "owner@example.com", nodeId: "nBBB1CNTRL", exitNodeOption: false },
-    { hostName: "pentest-exit-node", ip4: "100.124.183.145", ip6: "fd7a:115c:a1e0::bff4:b239",
+    { hostName: "pentest-exit-node", displayName: "pentest-exit-node",
+      ip4: "100.124.183.145", ip6: "fd7a:115c:a1e0::bff4:b239",
       dnsName: "pentest-exit-node.example-tailnet.ts.net", online: true, group: 1,
       ownerName: "Tagged Devices", nodeId: "nCCC1CNTRL", exitNodeOption: true },
-    { hostName: "workstation", ip4: "100.70.33.83", ip6: "fd7a:115c:a1e0::9ca4:f8a4",
+    { hostName: "localhost", displayName: "workstation",
+      ip4: "100.70.33.83", ip6: "fd7a:115c:a1e0::9ca4:f8a4",
       dnsName: "workstation.example-tailnet.ts.net", online: true, group: 2,
       ownerName: "Third Example", nodeId: "nDDD1CNTRL", exitNodeOption: false }
   ]
@@ -364,10 +374,13 @@ Window {
     return texts.length
   }
 
-  function peerRow(hostName) {
-    const hit = root.panelAll("ts-peer").find(o => o.hostName === hostName)
-    root.check(hit !== undefined, `no peer row for ${hostName}: the panel has `
-      + root.panelAll("ts-peer").map(o => o.hostName).join(", "))
+  // By displayName, which is what the row is for: a lookup on the OS hostname
+  // would find `workstation` under `localhost` and so would pass against a
+  // panel that names every device wrong.
+  function peerRow(displayName) {
+    const hit = root.panelAll("ts-peer").find(o => o.displayName === displayName)
+    root.check(hit !== undefined, `no peer row for ${displayName}: the panel has `
+      + root.panelAll("ts-peer").map(o => o.displayName).join(", "))
     return hit
   }
 
@@ -503,6 +516,15 @@ Window {
     const rows = root.panelShown("ts-peer")
     root.check(rows.length === 4, `the device list drew ${rows.length} of 4 peers`)
 
+    // The name on a row is the DNS label -- what the admin console, the macOS
+    // app and MagicDNS all call the device -- and never the OS hostname under
+    // it. `workstation` answers to `localhost`, so a panel bound to hostName
+    // draws a row naming no device in particular.
+    root.check(rows.every(o => o.title !== "localhost"),
+      `a device row is titled by its OS hostname: ${rows.map(o => o.title).join(", ")}`)
+    root.check(root.peerRow("workstation").title === "workstation",
+      "the device whose DNS label and OS hostname differ is not titled by its label")
+
     // Sorted by where they actually land, not by the order the view happened
     // to build them in: Mine, Tagged, Others is a visual claim.
     const headings = root.panelShown("ts-section")
@@ -568,8 +590,8 @@ Window {
       root.rightClick(arch)
       const menu = root.panelOne("ts-copy-menu")
       root.check(menu.visible, "a right-click on a peer row raised no copy menu")
-      root.check(menu.hostName === "tango",
-        `the menu is headed "${menu.hostName}", which is not the row that was right-clicked`)
+      root.check(menu.displayName === "tango",
+        `the menu is headed "${menu.displayName}", which is not the row that was right-clicked`)
       Quickshell.clipboardText = ""
       const entry = root.panelOne(entryName)
       root.check(entry.entryEnabled, `${entryName} is dead on a peer that has that value`)
@@ -579,6 +601,15 @@ Window {
       root.check(!root.panelOne("ts-copy-menu").visible,
         "the menu stayed up after an entry was taken")
     }
+
+    // The head of the menu names the row too, and it is the DNS label for the
+    // same reason the row is: it is what tells two devices sharing an OS
+    // hostname apart, which is the whole reason the head is there.
+    root.rightClick(root.peerRow("workstation"))
+    root.check(root.panelOne("ts-copy-menu").displayName === "workstation",
+      `the copy menu is headed "${root.panelOne("ts-copy-menu").displayName}" over a device`
+      + ` whose OS hostname is localhost`)
+    root.panelOne("ts-copy-menu").close()
 
     // A peer with no IPv6 -- the offline laptop. The entry stays in place so
     // the other two do not move under the pointer, and it does nothing.
@@ -602,8 +633,14 @@ Window {
     pop.view = "root"
     root.layout()
     Tailscale.exitNodes.clear()
-    Tailscale.exitNodes.append({ hostName: "ip-172-31-0-10", nodeId: "nEEE1CNTRL" })
-    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", nodeId: "nCCC1CNTRL" })
+    // The first one is the cloud instance whose OS hostname is its private
+    // address: the exit-node list is named by the DNS label too, and an exit
+    // node is the row where naming the wrong machine routes every packet
+    // somewhere the person did not pick.
+    Tailscale.exitNodes.append({ hostName: "ip-172-31-0-10", displayName: "host-5",
+                                 nodeId: "nEEE1CNTRL" })
+    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", displayName: "pentest-exit-node",
+                                 nodeId: "nCCC1CNTRL" })
     Tailscale.recommendedExitNodeId = "nCCC1CNTRL"
     root.panelOne("ts-exit-row-entry").clicked()
     root.layout()
@@ -623,13 +660,16 @@ Window {
 
     const all = root.panelShown("ts-exit-row")
     root.check(all.length === 2, `the tailnet exit nodes list drew ${all.length} of 2`)
+    root.check(all.some(o => o.title === "host-5") && all.every(o => o.title !== "ip-172-31-0-10"),
+      `the exit-node list is titled by OS hostname: ${all.map(o => o.title).join(", ")}`)
 
     // Which row is the one carrying the traffic, joined on the ID. Nothing
     // stops two machines enrolling under one hostname, so the list is given a
     // second row with the SAME hostName as the selected node and a different
     // nodeId: a check mark joined on exitNodeName lights both, which reads as
     // egress leaving by two doors at once.
-    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", nodeId: "nFFF1CNTRL" })
+    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", displayName: "pentest-exit-node",
+                                 nodeId: "nFFF1CNTRL" })
     Tailscale.exitNodeActive = true
     Tailscale.exitNodeOnline = true
     Tailscale.exitNodeName = "pentest-exit-node"
@@ -705,13 +745,13 @@ Window {
     // the assertions, nothing scrolled out and freed for reasons unrelated to
     // the model.
     const three = [
-      { hostName: "alpha", ip4: "100.64.0.1", ip6: "fd7a:115c:a1e0::1",
+      { hostName: "alpha", displayName: "alpha", ip4: "100.64.0.1", ip6: "fd7a:115c:a1e0::1",
         dnsName: "alpha.example-tailnet.ts.net", online: true, group: 0,
         ownerName: "owner@example.com", nodeId: "nAAA1CNTRL", exitNodeOption: false },
-      { hostName: "bravo", ip4: "100.64.0.2", ip6: "fd7a:115c:a1e0::2",
+      { hostName: "bravo", displayName: "bravo", ip4: "100.64.0.2", ip6: "fd7a:115c:a1e0::2",
         dnsName: "bravo.example-tailnet.ts.net", online: true, group: 0,
         ownerName: "owner@example.com", nodeId: "nBBB1CNTRL", exitNodeOption: false },
-      { hostName: "gamma", ip4: "100.64.0.3", ip6: "fd7a:115c:a1e0::3",
+      { hostName: "gamma", displayName: "gamma", ip4: "100.64.0.3", ip6: "fd7a:115c:a1e0::3",
         dnsName: "gamma.example-tailnet.ts.net", online: true, group: 0,
         ownerName: "owner@example.com", nodeId: "nCCC1CNTRL", exitNodeOption: false }
     ]
@@ -774,7 +814,7 @@ Window {
     // tailnet while someone is reading a row is the ordinary case, not a
     // corner: a device waking up is one rowsInserted on a list the panel is
     // already showing.
-    Tailscale.peers.insert(0, { hostName: "delta", ip4: "100.64.0.4",
+    Tailscale.peers.insert(0, { hostName: "delta", displayName: "delta", ip4: "100.64.0.4",
       ip6: "fd7a:115c:a1e0::4", dnsName: "delta.example-tailnet.ts.net", online: true,
       group: 0, ownerName: "owner@example.com", nodeId: "nDDD1CNTRL",
       exitNodeOption: false })
