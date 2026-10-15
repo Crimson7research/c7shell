@@ -194,8 +194,17 @@ QtObject {
   //
   // Rows are appended already sorted Mine / Tagged / Others, as PeerModel
   // sorts them.
-  readonly property ListModel peers: ListModel {}
-  readonly property ListModel exitNodes: ListModel {}
+  //
+  // dynamicRoles stays FALSE, and that is the load-bearing half: a static
+  // ListModel is driven through QQmlAdaptorModel's
+  // VDMAbstractItemModelDataType accessor -- the same path a C++
+  // QAbstractItemModel takes -- so the delegate lifecycle under test is the
+  // same code and not a lookalike. Turning dynamic roles on would quietly
+  // move it onto VDMListModelInterface and invalidate the comparison without
+  // failing anything. Written out rather than left to the default for that
+  // reason.
+  readonly property ListModel peers: ListModel { dynamicRoles: false }
+  readonly property ListModel exitNodes: ListModel { dynamicRoles: false }
 }
 QML
 printf 'module C7\nsingleton Tailscale 1.0 Tailscale.qml\n' > "$tmp/C7/qmldir"
