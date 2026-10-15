@@ -18,7 +18,7 @@
 
 **This machine has no C++ toolchain** — no `cmake`, no Qt6, no `qml6`, no
 `ninja`. Nothing in this plan compiles or runs locally. Every build and every
-test goes through one helper, which mirrors the worktree to the `arch-dev01`
+test goes through one helper, which mirrors the worktree to the `the build VM`
 VM (Arch, Qt 6.12.0) over tar+ssh and runs the command there:
 
 ```
@@ -54,7 +54,7 @@ between runs, so a rebuild is incremental.
 - **`ExitNodeStatus.TailscaleIPs` carry `/32` and `/128`; peer `TailscaleIPs` are bare.** A direct comparison never matches. Task 2 tests the stripping.
 - **tailscaled not running — socket absent or refusing.** The backend must settle on `NoState` and keep retrying, never block the QML engine or crash. Task 4 tests connect-failure and Task 6 tests the resulting state.
 - **A `watch-ipn-bus` line split across two reads.** A stream keeps no write boundaries, so a half-line must not reach the parser. Task 4 tests a line delivered in two chunks.
-- **Two peers with the same hostname** (`C7-LAP-G1157C6M` appears twice on this tailnet). Model rows key on `NodeID`; keying on hostname collapses them. Task 3 tests it.
+- **Two peers with the same hostname** (`a hostname that repeats` appears twice on this tailnet). Model rows key on `NodeID`; keying on hostname collapses them. Task 3 tests it.
 - **Health containing only the suppressed `--accept-routes` warning.** `issueCount` must be 0, or the module warns forever on the only machine it runs on. Task 6 tests it.
 
 ---
@@ -79,13 +79,13 @@ between runs, so a rebuild is incremental.
 
 | Real | Fixture |
 |---|---|
-| `adriaan@crimson7.io` | `owner@example.com` |
-| `bryan@crimson7.io`, `atilla.balin@crimson7.io` | `second@example.com`, `third@example.com` |
-| `cama-major.ts.net` | `example-tailnet.ts.net` |
-| `crimson7.io` (tailnet name) | `example.com` |
+| the capturing user's login | `owner@example.com` |
+| other users' logins | `second@example.com`, `third@example.com` |
+| the real MagicDNS suffix | `example-tailnet.ts.net` |
+| the real tailnet name | `example.com` |
 | `nodekey:…`, node IDs | same length, hex re-randomised |
 | `10.0.0.0/18` and the other three | `172.31.0.0/18` etc. |
-| `ip-10-20-9-170` | `ip-172-31-0-10` |
+| an AWS-style hostname | `ip-172-31-0-10` |
 | Hostnames | keep `pentest-exit-node`; others → `alpha`, `beta`, … **keeping the duplicate pair duplicated** |
 
 `status-idle.json` is the no-exit-node capture; `status-exitnode.json` is the captured-live one, so it keeps `ExitNodeStatus` populated and one peer with `"ExitNode": true`.
@@ -100,7 +100,7 @@ void parsesBackendStateAndHealth()
     QCOMPARE(s->backendState, QStringLiteral("Running"));
     QCOMPARE(s->health.size(), 1);
     QVERIFY(s->health.first().contains(QStringLiteral("--accept-routes")));
-    QCOMPARE(s->selfIp4, QStringLiteral("100.73.10.20"));
+    QCOMPARE(s->selfIp4, QStringLiteral("100.64.0.1"));
     QCOMPARE(s->tailnet, QStringLiteral("example.com"));
 }
 
