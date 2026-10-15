@@ -48,6 +48,21 @@ TailscaleBackend::State stateOf(const QString &backendState)
     return byName.value(backendState, State::NoState);
 }
 
+// Fields of a notification this module never reads. Anything else -- State,
+// Prefs, NetMap, ErrMessage, a login URL -- is grounds to re-read the status.
+const QStringList &ignoredNotifyFields()
+{
+    static const QStringList ignored = {
+        QStringLiteral("Version"),   // the daemon's version, on every message
+        QStringLiteral("SessionID"), // this watcher's own id, echoed at subscribe
+        // Byte counters and live-peer stats, refreshed every two seconds for
+        // as long as anything on the machine watches with the engine bit.
+        // Nothing here displays them.
+        QStringLiteral("Engine"),
+    };
+    return ignored;
+}
+
 } // namespace
 
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QObject *parent)
@@ -62,10 +77,7 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
 {
     connect(&m_client, &LocalApiClient::replied, this, &LocalApiTailscaleBackend::onReplied);
     connect(&m_client, &LocalApiClient::failed, this, &LocalApiTailscaleBackend::onFailed);
-    // The notification's body is deliberately not read: it says that something
-    // changed, not what, and /status is the authority on what it now is.
-    connect(&m_client, &LocalApiClient::event, this,
-            [this](const QByteArray &) { onEvent(); });
+    connect(&m_client, &LocalApiClient::event, this, &LocalApiTailscaleBackend::onEvent);
     // The stream is up: the fourth and last thing a whole connection needs.
     connect(&m_client, &LocalApiClient::watchStarted, this, [this] {
         m_openingReads |= WatchStarted;
@@ -151,8 +163,26 @@ void LocalApiTailscaleBackend::refresh()
     m_client.get(kSuggestPath);
 }
 
-void LocalApiTailscaleBackend::onEvent()
+bool LocalApiTailscaleBackend::worthRefreshing(const QByteArray &notification)
 {
+    const QJsonObject fields = QJsonDocument::fromJson(notification).object();
+    // Not an object, or one with nothing in it: no grounds to skip it.
+    if (fields.isEmpty())
+        return true;
+    for (auto it = fields.constBegin(); it != fields.constEnd(); ++it) {
+        if (!it.value().isNull() && !ignoredNotifyFields().contains(it.key()))
+            return true;
+    }
+    return false;
+}
+
+void LocalApiTailscaleBackend::onEvent(const QByteArray &notification)
+{
+    // The body is read for one decision only -- whether to ask at all. What
+    // changed still comes from the status reply, which stays the authority:
+    // nothing here is reconstructed from a notification.
+    if (!worthRefreshing(notification))
+        return;
     if (m_refreshInFlight) {
         // The reply on its way was asked for before this change, so it cannot
         // be the answer to it.

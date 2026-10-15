@@ -115,7 +115,18 @@ private:
     void open();
     void onReplied(const QString &path, const QByteArray &body);
     void onFailed(const QString &path, const QString &reason);
-    void onEvent();
+    void onEvent(const QByteArray &notification);
+    // Whether this notification is worth a re-read. The body is read for that
+    // one decision and nothing else: what changed still comes from /status.
+    //
+    // tailscaled broadcasts every notification to every watcher whatever mask
+    // it asked for, so a stream this module keeps narrow still carries the
+    // 2s engine drumbeat whenever anything else on the machine asks for it.
+    // Re-reading a 28KB status for byte counters nothing displays is the
+    // polling docs/architecture.md keeps backends away from.
+    //
+    // Fails safe: anything not known to be ignorable is a reason to re-read.
+    static bool worthRefreshing(const QByteArray &notification);
     // tailscaled is not answering: publish what that means and arrange to try
     // again.
     void lostTailscaled();
