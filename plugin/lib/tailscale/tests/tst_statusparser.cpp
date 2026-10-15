@@ -65,7 +65,7 @@ private slots:
         QCOMPARE(s->backendState, QStringLiteral("Running"));
         QCOMPARE(s->health.size(), 1);
         QVERIFY(s->health.first().contains(QStringLiteral("--accept-routes")));
-        QCOMPARE(s->selfIp4, QStringLiteral("100.73.10.20"));
+        QCOMPARE(s->selfIp4, QStringLiteral("100.115.228.122"));
         QCOMPARE(s->tailnet, QStringLiteral("example.com"));
     }
 
@@ -111,10 +111,10 @@ private slots:
 
     void stripsTheMaskFromExitNodeAddresses()
     {
-        QCOMPARE(stripMask(QStringLiteral("100.111.18.72/32")), QStringLiteral("100.111.18.72"));
-        QCOMPARE(stripMask(QStringLiteral("fd7a:115c:a1e0::5101:1248/128")),
-                 QStringLiteral("fd7a:115c:a1e0::5101:1248"));
-        QCOMPARE(stripMask(QStringLiteral("100.111.18.72")), QStringLiteral("100.111.18.72"));
+        QCOMPARE(stripMask(QStringLiteral("100.101.102.103/32")), QStringLiteral("100.101.102.103"));
+        QCOMPARE(stripMask(QStringLiteral("fd7a:115c:a1e0::aaaa:bbbb/128")),
+                 QStringLiteral("fd7a:115c:a1e0::aaaa:bbbb"));
+        QCOMPARE(stripMask(QStringLiteral("100.101.102.103")), QStringLiteral("100.101.102.103"));
     }
 };
 
