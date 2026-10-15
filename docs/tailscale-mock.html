@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tailscale Module</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ── tokens: quickshell/c7shell/palette.json + Theme/Theme.qml ──────────── */
+:root{
+  --bg:#0a0a0c; --canvas:#0f0e10; --glass-base:#0f0f13;
+  --glass-a-panel:.80; --glass-a-bar:.78;
+  --text:#f0eff1;
+  --text2:rgba(240,239,241,.55); --text3:rgba(240,239,241,.40);
+  --text-disabled:rgba(240,239,241,.28);
+  --s04:rgba(255,255,255,.04); --s05:rgba(255,255,255,.05);
+  --s07:rgba(255,255,255,.07); --s10:rgba(255,255,255,.10);
+  --hairline:rgba(255,255,255,.08);
+  --hover-pill:rgba(255,255,255,.09);
+  --accent:#e53a44;
+  --accent-soft:hsl(356.5 69% 67%);
+  --accent-fill:rgba(229,58,68,.14);
+  --accent-fill-active:rgba(229,58,68,.16);
+  --accent-fill-soft:rgba(229,58,68,.11);
+  --accent-border:rgba(229,58,68,.30);
+  --accent-border-soft:rgba(229,58,68,.22);
+  --success:#4ade80; --warning:#e0b341;
+  --r-panel:18px; --r-row:12px; --r-chip:9px; --r-slot:8px; --r-menu-row:8px;
+  --pill-h:26px; --pill-r:13px; --bar-h:38px; --r-bar:19px;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --display:"Space Grotesk",var(--mono);
+  --shadow-panel:0 24px 80px rgba(0,0,0,.65);
+  --shadow-bar:0 12px 40px rgba(0,0,0,.5);
+  --pad:14px; --gap:11px; --panel-w:320px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--canvas); color:var(--text);
+  font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:40px 16px 80px;
+  background-image:
+    radial-gradient(900px 500px at 15% -5%, rgba(229,58,68,.10), transparent 60%),
+    radial-gradient(700px 400px at 95% 10%, rgba(229,58,68,.06), transparent 60%);
+  background-attachment:fixed;
+}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-family:var(--display);font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0 0 6px}
+.sub{color:var(--text2);font-size:12px;margin:0 0 8px;max-width:72ch}
+.sub code,.note code,.open-q code{background:var(--s07);padding:1px 5px;border-radius:4px;
+  font-size:10.5px;color:var(--accent-soft)}
+.src{color:var(--text3);font-size:10.5px;margin:0 0 36px}
+h2{font-family:var(--display);font-size:13px;font-weight:600;margin:0;
+   text-transform:lowercase;letter-spacing:.06em}
+.sec{margin:0 0 46px}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  padding-bottom:9px;margin-bottom:20px;border-bottom:1px solid var(--hairline)}
+.sec-head p{margin:0;color:var(--text2);font-size:11px;flex:1;min-width:240px}
+.n{display:inline-grid;place-items:center;width:17px;height:17px;flex:none;
+   border-radius:5px;background:var(--accent-fill);border:1px solid var(--accent-border);
+   color:var(--accent-soft);font-size:9.5px;font-weight:700}
+
+/* ── bar ────────────────────────────────────────────────────────────────── */
+.stage{background:var(--bg);border:1px solid var(--hairline);border-radius:14px;
+  padding:22px 18px;overflow-x:auto}
+.bar{height:var(--bar-h);border-radius:var(--r-bar);
+  background:rgba(15,15,19,var(--glass-a-bar));
+  border:1px solid var(--hairline);box-shadow:var(--shadow-bar);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 7px;gap:10px;min-width:720px}
+.pill{height:var(--pill-h);border-radius:var(--pill-r);background:var(--s05);
+  display:flex;align-items:center;gap:2px;padding:0 6px}
+.slot{height:22px;min-width:24px;border-radius:var(--r-slot);padding:0 5px;
+  display:flex;align-items:center;gap:5px}
+.slot.tinted{background:var(--accent-fill)}
+.slot .lbl{font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--accent-soft)}
+.clock{font-size:11px;font-weight:500;color:var(--text2);padding:0 8px}
+
+/* ── glyph ──────────────────────────────────────────────────────────────── */
+.ts{display:grid;grid-template-columns:repeat(3,3px);gap:2px;flex:none}
+.ts i{width:3px;height:3px;border-radius:50%;background:currentColor;opacity:.22}
+.ts i.on{opacity:1}
+.badge{position:relative}
+.badge::after{content:"";position:absolute;right:-2px;bottom:-2px;
+  width:5px;height:5px;border-radius:50%;border:1.5px solid var(--bg)}
+.badge.err::after{background:var(--accent-soft)}
+.badge.warn::after{background:var(--warning)}
+
+/* ── state matrix ───────────────────────────────────────────────────────── */
+.matrix{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(216px,1fr))}
+.state{background:var(--s04);border:1px solid var(--hairline);
+  border-radius:var(--r-row);padding:12px 13px}
+.state.crit{border-color:var(--accent-border);background:var(--accent-fill-soft)}
+.state .top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.state .nm{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--text2)}
+.state .d{font-size:10.5px;color:var(--text3);line-height:1.45}
+.state.crit .d{color:var(--accent-soft)}
+.asset{display:block;margin-top:7px;font-size:9px;color:var(--text-disabled);word-break:break-all}
+
+/* ── panels ─────────────────────────────────────────────────────────────── */
+.row-of{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.panel{width:var(--panel-w);flex:none;border-radius:var(--r-panel);
+  background:rgba(15,15,19,var(--glass-a-panel));
+  border:1px solid var(--hairline);box-shadow:var(--shadow-panel);
+  padding:var(--pad);display:flex;flex-direction:column;gap:var(--gap)}
+.phead{display:flex;align-items:center;gap:10px}
+.phead .t{font-size:12px;font-weight:600}
+.phead .st{font-size:10px;color:var(--text3);margin-top:1px}
+.phead .grow{flex:1;min-width:0}
+.back{color:var(--text3);font-size:12px}
+.toggle{width:34px;height:19px;border-radius:10px;background:var(--accent);
+  position:relative;flex:none}
+.toggle::after{content:"";position:absolute;right:2px;top:2px;width:15px;height:15px;
+  border-radius:50%;background:#fff}
+.toggle.sm{width:28px;height:16px}
+.toggle.sm::after{width:12px;height:12px}
+.toggle.off{background:var(--s10)}
+.toggle.off::after{right:auto;left:2px;background:var(--text3)}
+.rule{height:1px;background:var(--hairline);margin:1px 0}
+.row{display:flex;align-items:center;gap:10px;padding:7px 8px;
+  border-radius:var(--r-menu-row);min-height:30px}
+.row.hover{background:var(--hover-pill)}
+.row.sel{background:var(--accent-fill-soft);border:1px solid var(--accent-border-soft);padding:6px 7px}
+.row .k{font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .v{font-size:10.5px;color:var(--text3);flex:none}
+.row .chev{color:var(--text3);font-size:11px;flex:none}
+.row.dis .k{color:var(--text-disabled)}
+.lead{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text3);padding:2px 8px 0}
+.mono-ip{font-family:var(--mono);font-size:11px;color:var(--text2)}
+.search{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;
+  background:var(--s05);border:1px solid var(--hairline);border-radius:var(--r-chip);
+  color:var(--text3);font-size:11px}
+.check{width:12px;flex:none;color:var(--accent-soft);font-size:11px;font-weight:700}
+.av{width:26px;height:26px;border-radius:50%;background:var(--accent-fill);
+  border:1px solid var(--accent-border);color:var(--accent-soft);flex:none;
+  display:grid;place-items:center;font-size:11px;font-weight:700}
+.two{flex:1;min-width:0}
+.two .a{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.two .b{font-size:10px;color:var(--text3)}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--success);flex:none}
+.dot.off{background:var(--text-disabled)}
+.alert{display:flex;gap:9px;padding:10px 11px;border-radius:var(--r-chip);
+  background:var(--accent-fill);border:1px solid var(--accent-border)}
+.alert .ic{color:var(--accent-soft);font-size:12px;line-height:1.2;flex:none}
+.alert .m{font-size:10.5px;color:var(--accent-soft);line-height:1.5}
+.alert.amber{background:rgba(224,179,65,.12);border-color:rgba(224,179,65,.28)}
+.alert.amber .ic,.alert.amber .m{color:var(--warning)}
+.scroll{max-height:196px;overflow:auto}
+.copyable{cursor:pointer;position:relative}
+.copyable:hover .mono-ip{color:var(--text)}
+.copyable:active{background:var(--accent-fill-soft)}
+.copyable.copied .mono-ip,.copyable.copied .hint{color:var(--accent-soft);font-weight:600}
+.copyable.copied{background:var(--accent-fill)}
+.copyable .hint{opacity:0;transition:opacity .1s}
+.ctx{position:fixed;z-index:50;min-width:188px;padding:5px;border-radius:var(--r-chip);
+  background:rgba(15,15,19,.96);border:1px solid var(--hairline);
+  box-shadow:var(--shadow-panel);display:none}
+.ctx.up{display:block}
+.ctx .ctxhead{font-size:9.5px;font-weight:700;letter-spacing:.07em;color:var(--text3);
+  padding:5px 9px 6px;border-bottom:1px solid var(--hairline);margin-bottom:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctx button{display:block;width:100%;text-align:left;border:0;background:none;
+  color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px;
+  border-radius:var(--r-menu-row);cursor:pointer}
+.ctx button:hover{background:var(--hover-pill)}
+.ctx button:disabled{color:var(--text-disabled);cursor:default}
+.ctx button:disabled:hover{background:none}
+.copyable:hover .hint{opacity:1}
+
+/* ── notes ──────────────────────────────────────────────────────────────── */
+.notes{flex:1;min-width:280px;max-width:470px}
+.note{display:flex;gap:11px;margin-bottom:15px}
+.note .n{margin-top:1px}
+.note .b{font-size:11.5px;color:var(--text2);line-height:1.6}
+.note .b b{color:var(--text);font-weight:600}
+.cap{font-size:10px;color:var(--text-disabled);margin-top:10px;text-align:center}
+.open-q{background:var(--s04);border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  border-radius:var(--r-chip);padding:11px 13px;margin-top:14px}
+.open-q b{font-size:10px;letter-spacing:.07em;color:var(--accent-soft);display:block;margin-bottom:4px}
+.open-q p{margin:0;font-size:11px;color:var(--text2);line-height:1.6}
+@media(max-width:700px){body{padding:28px 16px 60px}.row-of{gap:20px}
+  .panel{width:100%;max-width:var(--panel-w)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Tailscale bar module</h1>
+<p class="sub">Scoped to the equivalent of the Tailscale macOS menu — nothing invented, nothing added.
+c7shell's real tokens: <code>#e53a44</code> accent, <code>#0f0f13</code> glass at .80, 320px panel,
+14px padding, 11px gap, JetBrains Mono. Device and node names are live from <code>c7-test-2</code>.</p>
+<p class="src">palette.json · Theme.qml · Tailscale.app 1.104.1 · localapi <code>/status</code> + <code>/prefs</code> + <code>/suggest-exit-node</code></p>
+
+<!-- 1 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">1</span><h2>the slot, in the bar</h2>
+    <p>Permanently visible, like the wifi slot. Appearance carries the state.</p></div>
+  <div class="stage">
+    <div class="bar">
+      <span class="clock" style="color:var(--text)">c7shell</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="pill">
+          <div class="slot"><span class="ts"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span></div>
+          <div class="slot"><span style="font-size:11px">◗</span></div>
+          <div class="slot"><span style="font-size:11px">⌁</span></div>
+          <div class="slot tinted"><span style="font-size:11px;color:var(--accent-soft)">▮</span></div>
+        </div>
+        <span class="clock">14:28</span>
+      </div>
+    </div>
+    <p class="cap">left of the radios — egress outranks which radio carries it</p>
+  </div>
+</section>
+
+<!-- 2 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">2</span><h2>six icon states</h2>
+    <p>One per <code>StatusBarIcon*</code> asset in Tailscale.app. Error is an orthogonal modifier,
+       which is why there are two error entries rather than one.</p></div>
+  <div class="matrix">
+    <div class="state">
+      <div class="top"><span class="ts" style="color:var(--text)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span><span class="nm">CONNECTED</span></div>
+      <div class="d">Running, no exit node, nothing wrong. The resting state.</div>
+      <span class="asset">StatusBarIcon</span></div>
+    <div class="state">
+      <div class="top"><span class="ts" style="color:var(--text-disabled)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span><span class="nm">NOT CONNECTED</span></div>
+      <div class="d">Dimmed, still present. An absent icon would be ambiguous — the reason the slot is permanent.</div>
+      <span class="asset">StatusBarIconDimmed</span></div>
+    <div class="state">
+      <div class="top"><span class="ts badge warn" style="color:var(--text)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span><span class="nm">CONNECTED · ISSUES</span></div>
+      <div class="d">Up, but health has something to say. Amber, not crimson — nothing is broken.</div>
+      <span class="asset">StatusBarIconErrorOnline</span></div>
+    <div class="state">
+      <div class="top"><span class="ts badge warn" style="color:var(--text-disabled)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span><span class="nm">DOWN · ISSUES</span></div>
+      <div class="d">Dimmed and badged.</div>
+      <span class="asset">StatusBarIconErrorOffline</span></div>
+    <div class="state">
+      <div class="top"><span class="ts" style="color:var(--accent-soft)"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><span class="nm">EXIT NODE</span></div>
+      <div class="d">Egress routed elsewhere. All dots lit, accent-tinted, node name beside it.</div>
+      <span class="asset">StatusBarIconDefaultRouterOnline</span></div>
+    <div class="state crit">
+      <div class="top"><span class="ts badge err" style="color:var(--accent-soft)"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span><span class="nm">EXIT NODE UNREACHABLE</span></div>
+      <div class="d"><b>Traffic is blocked.</b> Fails closed — the one state that earns a crimson slot.</div>
+      <span class="asset">StatusBarIconDefaultRouterOffline</span></div>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">3</span><h2>root · the nine rows</h2>
+    <p>Same items as the Mac menu, minus the three that are macOS app chrome
+       (<code>Settings…</code>, <code>Open Tailscale</code>, <code>Quit</code>).</p></div>
+  <div class="row-of">
+    <div class="panel">
+      <div class="phead">
+        <span class="ts" style="color:var(--text)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span>
+        <div class="grow"><div class="t">tailscale</div><div class="st">connected</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="rule"></div>
+      <div class="row hover"><span class="av">A</span>
+        <div class="two"><div class="a">adriaan@crimson7.io</div><div class="b">crimson7.io</div></div>
+        <span class="chev">›</span></div>
+      <div class="rule"></div>
+      <div class="row"><span class="k">this device</span><span class="v">c7-test-2</span></div>
+      <div data-copy="100.73.10.20" data-ip6="fd7a:115c:a1e0::5e3b:a15" data-dns="c7-test-2.cama-major.ts.net" class="copyable row hover"><span class="k mono-ip">100.73.10.20</span><span class="v hint">copy</span></div>
+      <div class="row hover"><span class="k">network devices</span><span class="v">20</span><span class="chev">›</span></div>
+      <div class="rule"></div>
+      <div class="row hover"><span class="k">exit nodes</span><span class="v">none</span><span class="chev">›</span></div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="n">a</span><div class="b"><b>Header is one row.</b> Title, state subtitle, connect toggle — the same shape
+        as <code>BluetoothPopover</code>'s header (title + state text + <code>TogglePill</code>). The eight-state
+        vocabulary renders as that subtitle, never as its own element. The toggle is
+        <code>prefs.WantRunning</code>.</div></div>
+      <div class="note"><span class="n">b</span><div class="b"><b>Key expiry moved off the root.</b> The Mac keeps it in the account submenu,
+        so it goes behind that chevron here too — not on the root panel where I first put it.</div></div>
+      <div class="note"><span class="n">c</span><div class="b"><b>IP is its own row, click to copy.</b> Tailscale ships three copy actions
+        (IPv4, IPv6, MagicDNS hostname); one row covers the common case and the other two fit a right-click.</div></div>
+      <div class="note"><span class="n">d</span><div class="b"><b>Peers are one level down.</b> We'd scoped them out entirely — the Mac puts
+        them behind a chevron, which keeps the root clean without losing them.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">4</span><h2>account · devices</h2>
+    <p>The two chevrons off the root. Device sections are generated from c7-test-2's live peer list.</p></div>
+  <div class="row-of">
+    <div class="panel">
+      <div class="phead"><span class="back">‹</span><div class="grow"><div class="t">account</div></div></div>
+      <div class="row"><span class="av">A</span>
+        <div class="two"><div class="a">adriaan@crimson7.io</div><div class="b">crimson7.io</div></div></div>
+      <div class="rule"></div>
+      <div class="row hover"><span class="k">account settings…</span></div>
+      <div class="rule"></div>
+      <div class="row dis"><span class="k">expires in 18 months</span></div>
+      <div class="row hover"><span class="k">renew session…</span></div>
+    </div>
+    <div class="panel">
+      <div class="phead"><span class="back">‹</span><div class="grow"><div class="t">network devices</div></div></div>
+      <div class="search"><span>⌕</span><span>search…</span></div>
+      <div class="scroll">
+        <div class="lead">MY DEVICES</div>
+        <div data-copy="100.116.79.110" data-ip6="fd7a:115c:a1e0::9a3b:4f6f" data-dns="arch-dev01.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">arch-dev01</span><span class="v mono-ip">100.116.79.110</span></div>
+        <div data-copy="100.114.65.124" data-ip6="fd7a:115c:a1e0::e93b:417d" data-dns="hyperion.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">Hyperion</span><span class="v mono-ip">100.114.65.124</span></div>
+        <div data-copy="100.118.9.71" data-ip6="fd7a:115c:a1e0::443b:947" data-dns="iphone183.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">localhost</span><span class="v mono-ip">100.118.9.71</span></div>
+        <div data-copy="100.81.116.117" data-ip6="fd7a:115c:a1e0::cd01:7477" data-dns="c7-lap-g1157c6m.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">C7-LAP-G1157C6M</span><span class="v mono-ip">100.81.116.117</span></div>
+        <div data-copy="100.103.15.125" data-ip6="fd7a:115c:a1e0::7e01:f85" data-dns="c7-lap-g1157c6m-1.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">C7-LAP-G1157C6M</span><span class="v mono-ip">100.103.15.125</span></div>
+        <div data-copy="100.107.64.58" data-ip6="fd7a:115c:a1e0::b701:403c" data-dns="adriaan-desktop.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">DESKTOP-3RHVVOK</span><span class="v mono-ip">100.107.64.58</span></div>
+        <div data-copy="100.88.117.60" data-ip6="fd7a:115c:a1e0::303b:753c" data-dns="desktop-7h4k2q.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">DESKTOP-7H4K2Q</span><span class="v mono-ip">100.88.117.60</span></div>
+        <div data-copy="100.100.58.76" data-ip6="fd7a:115c:a1e0::553b:3a4c" data-dns="hp-lj-mfp.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">HP-LJ-MFP</span><span class="v mono-ip">100.100.58.76</span></div>
+        <div data-copy="100.85.33.48" data-ip6="fd7a:115c:a1e0::8001:2133" data-dns="adriaan-iphone.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">localhost</span><span class="v mono-ip">100.85.33.48</span></div>
+        <div data-copy="100.100.11.78" data-ip6="fd7a:115c:a1e0::713b:b50" data-dns="terrapod-poc.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><span class="k">terrapod-poc</span><span class="v mono-ip">100.100.11.78</span></div>
+        <div class="lead">TAGGED DEVICES</div>
+        <div data-copy="100.119.131.48" data-ip6="fd7a:115c:a1e0::ff3b:8333" data-dns="c7-pi.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">C7PI</span><span class="v mono-ip">100.119.131.48</span></div>
+        <div data-copy="100.103.255.63" data-ip6="fd7a:115c:a1e0::9b3b:ff40" data-dns="keystone.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">ip-10-20-9-170</span><span class="v mono-ip">100.103.255.63</span></div>
+        <div data-copy="100.111.18.72" data-ip6="fd7a:115c:a1e0::5101:1248" data-dns="pentest-exit-node.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">pentest-exit-node</span><span class="v mono-ip">100.111.18.72</span></div>
+        <div data-copy="100.75.26.11" data-ip6="fd7a:115c:a1e0::7201:1a0b" data-dns="pve1.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">pve1</span><span class="v mono-ip">100.75.26.11</span></div>
+        <div data-copy="100.114.128.121" data-ip6="fd7a:115c:a1e0::5301:8079" data-dns="pve2.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">pve2</span><span class="v mono-ip">100.114.128.121</span></div>
+        <div data-copy="100.123.48.51" data-ip6="fd7a:115c:a1e0::d201:303c" data-dns="pve4.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">pve4</span><span class="v mono-ip">100.123.48.51</span></div>
+        <div data-copy="100.64.121.1" data-ip6="fd7a:115c:a1e0::803b:7901" data-dns="pve6.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">pve6</span><span class="v mono-ip">100.64.121.1</span></div>
+        <div data-copy="100.89.219.105" data-ip6="fd7a:115c:a1e0::9c37:db69" data-dns="spark.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><span class="k">spark</span><span class="v mono-ip">100.89.219.105</span></div>
+        <div class="lead">OTHER USERS</div>
+        <div data-copy="100.89.152.30" data-ip6="fd7a:115c:a1e0::143b:981e" data-dns="workstation.cama-major.ts.net" class="copyable row hover"><span class="dot"></span><div class="two"><div class="a">workstation</div><div class="b">Atilla Balin</div></div><span class="v mono-ip">100.89.152.30</span></div>
+        <div data-copy="100.70.68.114" data-ip6="fd7a:115c:a1e0::e13b:4472" data-dns="pve5.cama-major.ts.net" class="copyable row dis"><span class="dot off"></span><div class="two"><div class="a">pve5</div><div class="b">Bryan De Houwer</div></div><span class="v mono-ip">100.70.68.114</span></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="n">a</span><div class="b"><b><code>Expires in 18 months</code> is disabled text</b>, directly above the action that
+        fixes it. Always shown, never gated on a threshold — I'd proposed hiding it until &lt;14 days,
+        which would have meant it was invisible for its entire development life.</div></div>
+      <div class="note"><span class="n">b</span><div class="b"><b>Three sections, and the grouping is just a group-by on <code>UserID</code>.</b> Tailscale puts every tagged node under one synthetic user — <code>User[uid].LoginName == "tagged-devices"</code>, display name <code>Tagged Devices</code> — so the sections fall out of the data with no special casing. Labels are the app's own: <code>My Devices</code>, <code>Tagged Devices</code>, <code>Other Users</code>.</div></div><div class="note"><span class="n">c</span><div class="b"><b>Only <code>Other Users</code> needs an owner line</b> — in the other two the owner is implied by the heading. c7-test-2 sees 10 / 8 / 2.</div></div><div class="note"><span class="n">e</span><div class="b"><b>Click a row, the IP goes to the clipboard.</b> Live in this mock — try it. Feedback stays in the row: a popover has nowhere else to put it, and a toast for a copy would outlive the panel that triggered it.</div></div><div class="note"><span class="n">d</span><div class="b"><b>Names are not unique.</b> <code>C7-LAP-G1157C6M</code> and <code>localhost</code> each appear twice in your tailnet, which is why every row carries its IP.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">5</span><h2>exit nodes</h2>
+    <p>No latency column — the real menu has no numbers in it, and <code>status --json</code> carries none.</p></div>
+  <div class="row-of">
+    <div class="panel">
+      <div class="phead"><span class="back">‹</span><div class="grow"><div class="t">exit nodes</div></div></div>
+      <div class="search"><span>⌕</span><span>search…</span></div>
+      <div class="row sel"><span class="check">✓</span><span class="k">none</span></div>
+      <div class="rule"></div>
+      <div class="lead">RECOMMENDED</div>
+      <div class="row hover"><span class="check"></span><span class="k">pentest-exit-node</span></div>
+      <div class="lead">TAILNET EXIT NODES</div>
+      <div class="row hover"><span class="check"></span><span class="k">ip-10-20-9-170</span></div>
+      <div class="row hover"><span class="check"></span><span class="k">pentest-exit-node</span></div>
+      <div class="rule"></div>
+      <div class="lead">PREFERENCES</div>
+      <div class="row hover"><span class="k">allow local network access</span><div class="toggle sm off"></div></div>
+      <div class="rule"></div>
+      <div class="row hover dis"><span class="k">use this device as an exit node…</span></div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="n">a</span><div class="b"><b>The recommendation is a server answer, not a measurement.</b>
+        <code>GET /localapi/v0/suggest-exit-node</code> returns 73 bytes — an ID and a name, no metric.
+        Eligible peers carry <code>CapMap: {"suggest-exit-node": null}</code>.</div></div>
+      <div class="note"><span class="n">b</span><div class="b"><b><code>none</code> is a checked row, not an absence.</b> Radio semantics: you pick
+        egress, you don't toggle a feature.</div></div>
+      <div class="note"><span class="n">c</span><div class="b"><b><code>allow local network access</code> is scoped here</b>, not in global settings —
+        it's <code>prefs.ExitNodeAllowLANAccess</code>, and it's the control for the LAN blackhole you flagged
+        when we put Tailscale on the VM.</div></div>
+      <div class="note"><span class="n">d</span><div class="b"><b>The republish trap does not apply here &mdash; the architecture already solved it.</b> docs/architecture.md mandates collections as <code>QAbstractListModel</code> with stable rows: <i>"A model updates rows in place, so a list view never rebuilds the row someone is typing a password into."</i> Rows key on <code>NodeID</code>. And nothing polls: <code>/localapi/v0/watch-ipn-bus</code> streams change notifications, so the backend is event-driven like <code>NmNetworkBackend</code> on <code>PropertiesChanged</code>.</div></div>
+      <div class="open-q"><b>OPEN — CONFIRMED, CAUSE UNKNOWN</b><p>Your Mac lists <code>keystone</code>;
+        <code>keystone</code> is not among c7-test-2's 20 peers at all. The two nodes see different tailnets —
+        ACL filtering is the likely cause. Either way the list must come from the local node.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────────────────────────────── -->
+<section class="sec">
+  <div class="sec-head"><span class="n">6</span><h2>the two states that interrupt</h2>
+    <p>Everything above is the quiet case. These are what the module exists for.</p></div>
+  <div class="row-of">
+    <div class="panel">
+      <div class="phead">
+        <span class="ts badge err" style="color:var(--accent-soft)"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+        <div class="grow"><div class="t">tailscale</div><div class="st" style="color:var(--accent-soft)">exit node unreachable</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="alert"><span class="ic">▲</span><div class="m">Cannot reach exit node <b>pentest-exit-node</b>.
+        Internet traffic is blocked until you disable the exit node or choose another.</div></div>
+      <div class="row hover"><span class="k">choose another…</span><span class="chev">›</span></div>
+      <div class="row hover"><span class="k">disable exit node</span></div>
+    </div>
+    <div class="panel">
+      <div class="phead">
+        <span class="ts badge warn" style="color:var(--text)"><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i></span>
+        <div class="grow"><div class="t">tailscale</div><div class="st">connected</div></div>
+        <div class="toggle"></div>
+      </div>
+      <div class="row hover"><span class="k" style="color:var(--warning)">1 issue detected…</span><span class="chev">›</span></div>
+      <div class="rule"></div>
+      <div class="lead">CURRENT ISSUES</div>
+      <div class="alert amber"><span class="ic">▲</span><div class="m">Some peers are advertising routes but
+        <code style="color:inherit;background:none;padding:0">--accept-routes</code> is false.</div></div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="n">a</span><div class="b"><b>Fails closed.</b> <code>exitNodeOfflineExplainer</code>: traffic is
+        <em>blocked</em> until you disable the exit node or choose another. Not degraded — stopped.
+        Same for an expired exit-node key.</div></div>
+      <div class="note"><span class="n">b</span><div class="b"><b>Both remedies sit on the surface that reports the problem.</b>
+        Tailscale's own copy names them in the sentence.</div></div>
+      <div class="open-q" style="margin-bottom:15px"><b>CAPTURED LIVE &mdash; THE REAL SHAPE</b><p><code>ExitNodeStatus</code> carries <b>no hostname</b>:<br><code>{"ID":"nWqTQFdqb121CNTRL","Online":true,"TailscaleIPs":["100.111.18.72/32","fd7a:...:1248/128"]}</code><br><br>So the name in the alert has to be joined back: <code>ExitNodeStatus.ID</code> &rarr; the matching <code>Peer[].ID</code>. And those IPs carry <code>/32</code> and <code>/128</code> masks while the peer's own <code>TailscaleIPs</code> are bare, so they will not compare equal without stripping. <code>ExitNodeStatus.Online</code> is the field that drives the blocked state.</p></div><div class="note"><span class="n">c</span><div class="b"><b><code>Issue(s) Detected…</code> and <code>Current Issues</code> are the app's own strings</b> —
+        a counted row that opens a list, which is where health goes. That amber warning is live on
+        c7-test-2 right now and is your deliberate anti-nullroute config, so it still needs
+        suppressing or it warns forever on the only machine this runs on.</div></div>
+    </div>
+  </div>
+</section>
+
+</div>
+<div class="ctx" id="ctx">
+  <div class="ctxhead" id="ctxhead"></div>
+  <button data-f="copy">Copy IPv4</button>
+  <button data-f="ip6">Copy IPv6</button>
+  <button data-f="dns">Copy MagicDNS hostname</button>
+</div>
+<script>
+// Click a host, its tailnet IP goes to the clipboard -- the Mac menu's behaviour.
+// Feedback is in the row itself: a popover has nowhere else to put it, and a
+// toast for a copy would outlive the panel that triggered it.
+document.addEventListener('click', function (e) {
+  const row = e.target.closest('.copyable');
+  if (!row) return;
+  const ip = row.dataset.copy;
+  const ipEl = row.querySelector('.mono-ip');
+  const hint = row.querySelector('.hint');
+  navigator.clipboard?.writeText(ip).catch(function () {});
+  if (row.dataset.busy) return;
+  row.dataset.busy = '1';
+  const was = ipEl.textContent, wasHint = hint ? hint.textContent : null;
+  ipEl.textContent = 'copied';
+  if (hint) hint.textContent = '✓';
+  row.classList.add('copied');
+  setTimeout(function () {
+    ipEl.textContent = was;
+    if (hint) hint.textContent = wasHint;
+    row.classList.remove('copied');
+    delete row.dataset.busy;
+  }, 1100);
+});
+
+// Right-click offers the other two. Tailscale keeps all three as separate
+// actions; a popover row can only have one primary, so IPv4 stays the click
+// and the full set lives here.
+const ctx = document.getElementById('ctx'), ctxhead = document.getElementById('ctxhead');
+let ctxRow = null;
+function closeCtx() { ctx.classList.remove('up'); ctxRow = null; }
+document.addEventListener('contextmenu', function (e) {
+  const row = e.target.closest('.copyable');
+  if (!row) return closeCtx();
+  e.preventDefault();
+  ctxRow = row;
+  const label = row.querySelector('.k, .two .a');
+  ctxhead.textContent = label ? label.textContent : row.dataset.copy;
+  for (const b of ctx.querySelectorAll('button')) b.disabled = !row.dataset[b.dataset.f];
+  ctx.classList.add('up');
+  const w = ctx.offsetWidth, hgt = ctx.offsetHeight;
+  ctx.style.left = Math.min(e.clientX, innerWidth - w - 8) + 'px';
+  ctx.style.top = Math.min(e.clientY, innerHeight - hgt - 8) + 'px';
+});
+ctx.addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (!b || !ctxRow) return;
+  const val = ctxRow.dataset[b.dataset.f];
+  navigator.clipboard?.writeText(val).catch(function () {});
+  const was = b.textContent;
+  b.textContent = '✓ ' + val;
+  setTimeout(function () { b.textContent = was; closeCtx(); }, 750);
+});
+document.addEventListener('click', function (e) { if (!e.target.closest('.ctx')) closeCtx(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCtx(); });
+addEventListener('scroll', closeCtx, true);
+</script>
+</body>
+</html>
