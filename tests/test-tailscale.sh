@@ -221,6 +221,14 @@ QtObject {
   property bool writable: true
   property string writeError: ""
 
+  // WHY THE LAST READ FAILED, cleared by the next whole snapshot. Empty is not
+  // "no failure": it is "nothing nameable is wrong", and the one read failure
+  // that leaves it empty is nothing listening at the socket path at all. So
+  // empty + NoState is a machine without tailscaled, and non-empty + NoState
+  // is a tailscaled that is THERE and unreadable -- which want opposite things
+  // on screen, and which the bar could not tell apart until this existed.
+  property string readError: ""
+
   // The read-back for the four write-backed switches, which is what a panel
   // binds a switch to. They are WRITTEN BY THE TEST and never by the actions
   // below -- the actions record and move nothing, as the contract specifies,

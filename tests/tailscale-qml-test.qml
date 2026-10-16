@@ -181,22 +181,65 @@ Window {
       "the bar has no Tailscale slot: nothing in StatusPill answers to objectName \"tailscale\"")
 
     // 1 -- NO TAILSCALE ON THIS MACHINE. Nothing has answered since this bar
-    // started, which is what a machine without tailscaled looks like forever,
-    // and a globe there is chrome for a thing that is not installed.
+    // started AND there is nothing at the socket path to answer -- which the
+    // contract publishes as NoState with an EMPTY readError, and which is what
+    // a machine without tailscaled looks like forever. A globe there is chrome
+    // for a thing that is not installed.
+    //
+    // The empty readError is the half this case used to leave out, and leaving
+    // it out is what made the check agree with the bug: `visible:
+    // everAnswered` alone, asserted against never-answered NoState, pins the
+    // conflation of "no tailscaled" with "tailscaled is there and I cannot
+    // read it" as correct. 1b below is the second reading, and the two differ
+    // only by this property.
     //
     // This runs FIRST deliberately: it is the only point in the file at which
-    // the slot has never seen a daemon, and 5b below is the other reading of
-    // the same NoState -- one that HAS, and must keep its badges. The values
-    // set underneath are a healthy tailnet with a live exit node, so a slot
-    // that showed anything here would be showing it from nowhere.
+    // the slot has never seen a daemon, and 5b below is the third reading of
+    // the same NoState -- one that HAS answered, and must keep its badges. The
+    // values set underneath are a healthy tailnet with a live exit node, so a
+    // slot that showed anything here would be showing it from nowhere.
     Tailscale.state = Tailscale.NoState
+    Tailscale.readError = ""
     Tailscale.exitNodeActive = true
     Tailscale.exitNodeOnline = true
     Tailscale.exitNodeName = "pentest-exit-node"
     root.check(root.slot().visible === false,
-      "the bar drew a Tailscale slot on a machine whose tailscaled has never answered")
+      "the bar drew a Tailscale slot on a machine that has no tailscaled at all")
     root.check(!root.visibleText("pentest-exit-node"),
       "an exit-node label was drawn before any daemon had reported one")
+
+    // 1b -- TAILSCALED IS THERE AND CANNOT BE READ. The same NoState, and the
+    // opposite thing to show: the daemon is present, something is wrong with
+    // it, and the panel carries the only sentence that says so. Every read
+    // failure lands here when it happens at boot -- a 403 on the read path, a
+    // TS_SOCKET naming another listener, a wedged daemon, a body that will not
+    // parse -- and at boot is when it usually happens, so nothing has ever
+    // answered and the latch is still false.
+    //
+    // With the slot hidden, the popover is unreachable: it opens by clicking
+    // the slot (StatusPill.onClicked), so "tailscaled is not responding" could
+    // never be shown in the one scenario it exists for.
+    Tailscale.readError = "/localapi/v0/status answered HTTP/1.1 403 Forbidden"
+    root.check(root.slot().visible === true,
+      "tailscaled is present and unreadable and the bar drew nothing at all, which leaves"
+      + " the panel that would explain it unreachable")
+    root.check(Qt.colorEqual(root.iconTint(), Theme.textDisabled),
+      "an unreadable tailscaled is drawn as brightly as a running one")
+    // The panel says why, in the words of whatever failed the read. The row
+    // above it is the same sentence for all three readings of NoState; this is
+    // the only thing that tells them apart on screen.
+    root.check(root.panelOne("ts-read-error").visible,
+      "the panel drew no diagnosis for a daemon it could not read")
+    root.check(root.panelOne("ts-read-error").text === Tailscale.readError,
+      `the panel published something other than the read failure's own words:`
+      + ` "${root.panelOne("ts-read-error").text}"`)
+    // And it goes when there is nothing to say: on a machine with no tailscaled
+    // the row above stands alone rather than over an empty line.
+    Tailscale.readError = ""
+    root.check(!root.panelOne("ts-read-error").visible,
+      "the diagnosis line was drawn with no diagnosis in it")
+    root.check(root.slot().visible === false,
+      "the slot stayed on the bar after the read failure cleared, with nothing having answered")
 
     // 2 -- connected, healthy: present, plain, undimmed, no label.
     root.connected()

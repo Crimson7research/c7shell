@@ -36,6 +36,10 @@ private slots:
         // left to make the write that would enable them.
         QVERIFY(ts->writable());
         QVERIFY(ts->writeError().isEmpty());
+        // And nothing nameable is wrong with the reads either -- which is also
+        // what a machine with no tailscaled on it reads as, deliberately: it is
+        // the non-empty case that means a daemon is there and unreadable.
+        QVERIFY(ts->readError().isEmpty());
     }
 
     // The actions exist for QML to call, and QML calls them by NAME through

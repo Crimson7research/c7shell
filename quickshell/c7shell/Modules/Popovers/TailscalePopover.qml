@@ -331,17 +331,48 @@ GlassPopover {
   // -- the daemon is gone ---------------------------------------------------
   // The one thing drawn when state is NoState. Everything below this is the
   // last snapshot and would be a lie.
-  ListRow {
+  Column {
     width: parent.width
     visible: !root.live
-    implicitHeight: 30
-    radius: Theme.radiusMenuRow
-    inset: 8
-    titleSize: 11
-    titleWeight: 500
-    hoverable: false
-    titleColor: Theme.textDisabled
-    title: qsTr("tailscaled is not responding")
+    spacing: 4
+
+    ListRow {
+      objectName: "ts-no-daemon"
+      width: parent.width
+      implicitHeight: 30
+      radius: Theme.radiusMenuRow
+      inset: 8
+      titleSize: 11
+      titleWeight: 500
+      hoverable: false
+      titleColor: Theme.textDisabled
+      title: qsTr("tailscaled is not responding")
+    }
+
+    // WHY, when this module can say why. NoState is three different things --
+    // nothing has answered yet, there is no tailscaled here, and tailscaled is
+    // there and cannot be read -- and the row above is the same sentence for
+    // all three. readError is the third one's own words: a 403, a socket
+    // closed mid-body, a non-hex chunk length, a timeout, a reply that is not
+    // a status. It is empty for the other two, so this line appears exactly
+    // when there is something to add.
+    //
+    // Not the row's subtitle: a diagnosis is a sentence and that row elides to
+    // one line, and the one thing a person can act on here is the whole of it.
+    Text {
+      objectName: "ts-read-error"
+      width: parent.width
+      visible: Tailscale.readError !== ""
+      leftPadding: 8
+      rightPadding: 8
+      text: Tailscale.readError
+      // Whatever failed the read, in its own words, which makes it
+      // daemon-supplied text.
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
+      color: Theme.textDisabled
+    }
   }
 
   // -- the state the module exists for --------------------------------------

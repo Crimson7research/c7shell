@@ -76,6 +76,7 @@ class TailscaleBackend : public QObject {
                    recommendedExitNodeIdChanged)
     Q_PROPERTY(bool writable READ writable NOTIFY writableChanged)
     Q_PROPERTY(QString writeError READ writeError NOTIFY writeErrorChanged)
+    Q_PROPERTY(QString readError READ readError NOTIFY readErrorChanged)
     Q_PROPERTY(bool wantRunning READ wantRunning NOTIFY wantRunningChanged)
     Q_PROPERTY(bool exitNodeAllowLANAccess READ exitNodeAllowLANAccess NOTIFY
                    exitNodeAllowLANAccessChanged)
@@ -306,6 +307,37 @@ public:
     // and docs/architecture.md keeps presentation in QML.
     virtual QString writeError() const = 0;
 
+    // WHY THE LAST READ FAILED, in the words of whatever failed it, cleared by
+    // the next whole snapshot. The read-side twin of writeError, and it exists
+    // because without it a read failure has exactly ONE observable --
+    // `state == NoState` -- which is also "has not started yet" and "this
+    // machine does not run Tailscale".
+    //
+    // Everything collapsed into that one value: a 403, a 500, a wedged daemon,
+    // a socket closed mid-body, a non-hex chunk length, a timeout, a 200 whose
+    // body will not parse, a TS_SOCKET pointing at some other listening
+    // socket, and a de-chunking regression in this very module. All of them
+    // read as "no daemon", which is the three words a panel shows for a
+    // machine that has never had Tailscale installed.
+    //
+    // EMPTY IS NOT "no failure". It is "nothing is wrong that this module can
+    // name", and the one failure that leaves it empty is the one that means
+    // Tailscale is not here at all: nothing listening at the socket path.
+    // That distinction is the whole point of publishing it --
+    //
+    //   readError empty      + NoState: no tailscaled on this machine, or it
+    //                                   has simply not answered yet
+    //   readError non-empty  + NoState: tailscaled is THERE and this module
+    //                                   cannot read it
+    //
+    // -- because the two want opposite things on screen. A machine without
+    // Tailscale gets no Tailscale chrome; a machine whose daemon is present
+    // and unreadable has to say so, and a UI that hides itself until a first
+    // reply has arrived can never say it, since no first reply is coming. A
+    // UI that shows the state at all therefore gates on
+    // `everAnswered || readError !== ""`, not on having been answered.
+    virtual QString readError() const = 0;
+
     // The singleton factory picks the backend. A configurable choice comes
     // only when a second backend exists.
     static TailscaleBackend *create(QQmlEngine *, QJSEngine *);
@@ -328,6 +360,7 @@ signals:
     void recommendedExitNodeIdChanged();
     void writableChanged();
     void writeErrorChanged();
+    void readErrorChanged();
     void wantRunningChanged();
     void exitNodeAllowLANAccessChanged();
     void acceptRoutesChanged();
