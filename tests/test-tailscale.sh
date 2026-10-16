@@ -55,8 +55,11 @@ printf 'import QtQuick\nItem { property real fraction: 0 }\n' \
 # The panel is built out of these three, and all three carry rules the panel
 # depends on -- ListRow's underlay stacking above its own MouseArea is how a
 # peer row gets a right-click at all.
+# SearchField is the fourth: both sub-cards filter their list through it, and
+# the one thing it owns -- which item holds the window's focus -- is exactly
+# what the panel is asserted on.
 cp "$src/Common/ListRow.qml" "$src/Common/SectionLabel.qml" "$src/Common/TogglePill.qml" \
-  "$src/Common/GlassPanel.qml" "$tmp/qs/Common/"
+  "$src/Common/GlassPanel.qml" "$src/Common/SearchField.qml" "$tmp/qs/Common/"
 
 # GlassPopover stands in: the real one is a PopupSurface, which is a
 # PopupWindow with a Hyprland focus grab on it, and none of that is the
@@ -115,7 +118,7 @@ Item {
 }
 QML
 
-printf 'module qs.Common\nIcon 1.0 Icon.qml\nProgressRing 1.0 ProgressRing.qml\nListRow 1.0 ListRow.qml\nSectionLabel 1.0 SectionLabel.qml\nTogglePill 1.0 TogglePill.qml\nGlassPanel 1.0 GlassPanel.qml\nGlassPopover 1.0 GlassPopover.qml\nTooltip 1.0 Tooltip.qml\n' \
+printf 'module qs.Common\nIcon 1.0 Icon.qml\nProgressRing 1.0 ProgressRing.qml\nListRow 1.0 ListRow.qml\nSectionLabel 1.0 SectionLabel.qml\nTogglePill 1.0 TogglePill.qml\nGlassPanel 1.0 GlassPanel.qml\nGlassPopover 1.0 GlassPopover.qml\nTooltip 1.0 Tooltip.qml\nSearchField 1.0 SearchField.qml\n' \
   > "$tmp/qs/Common/qmldir"
 
 # -- the popover, all of it real ---------------------------------------------
