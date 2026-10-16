@@ -124,9 +124,9 @@ printf 'module qs.Common\nIcon 1.0 Icon.qml\nProgressRing 1.0 ProgressRing.qml\n
 # -- the popover, all of it real ---------------------------------------------
 cp "$src/Modules/Popovers/TailscalePopover.qml" "$src/Modules/Popovers/PeerRow.qml" \
   "$src/Modules/Popovers/ExitNodeList.qml" "$src/Modules/Popovers/TailscaleSettings.qml" \
-  "$src/Modules/Popovers/CopyMenu.qml" \
+  "$src/Modules/Popovers/CopyMenu.qml" "$src/Modules/Popovers/TailscaleWriteNote.qml" \
   "$tmp/qs/Modules/Popovers/"
-printf 'module qs.Modules.Popovers\nTailscalePopover 1.0 TailscalePopover.qml\nPeerRow 1.0 PeerRow.qml\nExitNodeList 1.0 ExitNodeList.qml\nTailscaleSettings 1.0 TailscaleSettings.qml\nCopyMenu 1.0 CopyMenu.qml\n' \
+printf 'module qs.Modules.Popovers\nTailscalePopover 1.0 TailscalePopover.qml\nPeerRow 1.0 PeerRow.qml\nExitNodeList 1.0 ExitNodeList.qml\nTailscaleSettings 1.0 TailscaleSettings.qml\nCopyMenu 1.0 CopyMenu.qml\nTailscaleWriteNote 1.0 TailscaleWriteNote.qml\n' \
   > "$tmp/qs/Modules/Popovers/qmldir"
 
 # Quickshell's own singleton, for the one thing the panel asks of it: the

@@ -206,10 +206,33 @@ private:
     // PATCH /localapi/v0/prefs with `field` set to `value` AND the `<field>Set`
     // sibling beside it.
     void writePref(const QString &field, const QJsonValue &value);
+
+    // HOW A WRITE ENDED, and the three are not two. `writable` is a claim
+    // about PERMISSION -- see the contract, which sanctions a panel going
+    // dead once it is false -- and only one of the seven endings a write can
+    // have says anything about permission.
+    //
+    //   Accepted  tailscaled took it: writable true, no error.
+    //   Refused   403, which is tailscaled saying this process is not its
+    //             operator. That will not change under the running shell, so
+    //             the controls may go dead and the panel explains why.
+    //   Failed    anything else -- a timeout, a mid-write restart, a 500, a
+    //             vanished socket. It says NOTHING about permission, so
+    //             `writable` does not move at all: the error is published, the
+    //             control stays live, and clicking again is the correct
+    //             response to a transient.
+    //
+    // Every reason used to be Refused. The lockout was total: all five actions
+    // gate on writable twice, the only path back to true needs a successful
+    // write, which needs a live control, and neither open() nor a reconnect
+    // resets it -- so one click during a `tailscale` package upgrade left
+    // every control dead for the life of the shell process, under a message
+    // telling the user to run c7shell-bootstrap, which would not help.
+    enum class WriteOutcome { Accepted, Refused, Failed };
     // Store and announce what the last write did. Store first, both members,
     // then emit: a panel reacting to writableChanged must not read the
     // previous error beneath it.
-    void noteWriteOutcome(bool accepted, const QString &reason);
+    void noteWriteOutcome(WriteOutcome outcome, const QString &reason);
 
     // What this backend reads out of a /prefs reply. ONE STRUCT RATHER THAN
     // FOUR OPTIONALS, because all four are halves of the same pass: a pass

@@ -54,6 +54,11 @@ GlassPopover {
   // this off their own files; the header is the root card's one control.
   readonly property bool refused: !Tailscale.writable
 
+  // The sentence for a change that did not land, phrased in one place for the
+  // three sites that say it. Non-visual: the tooltip below draws it, and the
+  // two sub-cards draw their own copies of the same words.
+  TailscaleWriteNote { id: writeNote }
+
   // The eight-state vocabulary renders as the header's subtitle, never as its
   // own element.
   readonly property string stateText: {
@@ -307,13 +312,15 @@ GlassPopover {
           // panel. Text.implicitWidth is the unwrapped width and does not
           // depend on `width`, so this is a cap and not a loop.
           width: Math.min(tipLabel.implicitWidth, 220)
-          // After a refusal it carries tailscaled's own words plus the advice
-          // the contract deliberately does not phrase. The root card has no
-          // inline refusal line of its own -- the two sub-cards each carry
-          // one, and a third here would put two explanations on screen at
-          // once whenever a card is folded out.
-          text: root.refused
-            ? qsTr("tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (%1)").arg(Tailscale.writeError)
+          // After a write that did not land it carries TailscaleWriteNote's
+          // sentence -- tailscaled's own words plus the advice the contract
+          // deliberately does not phrase, which differs for a refusal and for
+          // a write that merely went wrong. The root card has no inline
+          // refusal line of its own: the two sub-cards each carry one, and a
+          // third here would put two explanations on screen at once whenever
+          // a card is folded out.
+          text: writeNote.message !== ""
+            ? writeNote.message
             : !root.live ? qsTr("tailscaled is not answering, so there is nothing to ask")
             : Tailscale.wantRunning
               ? qsTr("disconnect from the tailnet — a session reached over tailscale ends with it")

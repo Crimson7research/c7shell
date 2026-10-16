@@ -1453,6 +1453,37 @@ Window {
     root.check(root.tookCalls() !== "",
       "the settings controls stayed dead after `writable` came back, so the flag latched")
 
+    // -- a write that went wrong is not a refusal ---------------------------
+    // The other kind of failure, and the one the panel used to report as a
+    // permission problem: a timeout, a daemon restarting mid-write, a 500, a
+    // socket that vanished. `writable` stays TRUE for all of those -- the
+    // backend moves it for a 403 and nothing else -- so the controls have to
+    // stay live and the panel has to say something other than "run
+    // c7shell-bootstrap", which would not help.
+    //
+    // Trigger, as measured in shape: upgrade the tailscale package with this
+    // card open and click a switch during the two-second restart.
+    const transient = "the connection closed before the response headers"
+    Tailscale.writable = true
+    Tailscale.writeError = transient
+    root.layout()
+    const stillLive = root.panelShown("ts-settings-write-error")
+    root.check(stillLive.length === 1,
+      "a write that was never answered left the settings card silent")
+    root.check(stillLive[0].text.indexOf(transient) >= 0,
+      `the explanation does not carry what failed it: "${stillLive[0].text}"`)
+    root.check(stillLive[0].text.indexOf("c7shell-bootstrap") < 0,
+      `a write that went wrong was reported as a permission problem: "${stillLive[0].text}"`)
+    root.check(routesSwitch.enabled && dnsSwitch.enabled,
+      "a transient write failure killed the settings switches, which is what a refusal does")
+    root.tookCalls()
+    routesRow.clicked()
+    root.check(root.tookCalls() !== "",
+      "the settings controls went dead after a write that was never answered, so clicking"
+      + " again -- the correct response to a transient -- is not possible")
+    Tailscale.writeError = ""
+    root.layout()
+
     root.everyTextIsPlain(routesRow, "the accept routes row")
     root.everyTextIsPlain(dnsRow, "the accept dns row")
 

@@ -82,17 +82,20 @@ Column {
   // outcome TailscaleBackend.h says this module may not produce.
   readonly property bool lanAccess: Tailscale.exitNodeAllowLANAccess
 
-  // -- why everything below is dead -------------------------------------------
-  // Only after a refusal, which is the one moment the flag is for. The wording
-  // is presentation and so lives here: the contract publishes what refused it
-  // and deliberately does not phrase it.
+  // -- what the last change did -----------------------------------------------
+  // The same note the settings card and the header's tooltip draw, phrased in
+  // one place: a refusal means these rows are dead and c7shell-bootstrap is
+  // the answer, a write that merely went wrong leaves them live and the answer
+  // is to choose again.
+  TailscaleWriteNote { id: writeNote }
+
   Text {
     objectName: "ts-exit-write-error"
     width: root.width
-    visible: root.refused
+    visible: writeNote.message !== ""
     leftPadding: 8
     rightPadding: 8
-    text: qsTr("tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (%1)").arg(Tailscale.writeError)
+    text: writeNote.message
     // The daemon's own answer, verbatim, which makes it daemon-supplied text.
     textFormat: Text.PlainText
     wrapMode: Text.WordWrap
