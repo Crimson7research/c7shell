@@ -8,6 +8,18 @@ import qs.Common
 // tailnet, what tailscaled says about it, and the two chevrons the mock puts
 // the device list and the exit nodes behind.
 //
+// Those two open as SUB-CARDS folded out of this one, the way the macOS menu
+// grows its submenus -- the root rows stay where they were and the card gets
+// taller. v1 swapped the panel's contents for them and offered a `‹` back,
+// which loses the state the person opened the panel to read (what this machine
+// is, whether egress is blocked) at the moment they go looking for a device.
+//
+// Nothing in Common/GlassPopover had to change for it, and nothing in it was
+// changed: the panel already sizes itself off its content Column, so a card
+// that appears in that Column grows the popover on its own. GlassPopover is
+// also the base for the bluetooth, wifi and power panels, and a sizing or
+// anchoring change there reaches all three for no gain here.
+//
 // Everything that describes the tailnet is gated on `live`. TailscaleBackend.h
 // is explicit about why: losing tailscaled publishes NoState and deliberately
 // KEEPS the last snapshot, so the fail-closed exitNodeBlocked flag does not go
@@ -25,9 +37,16 @@ GlassPopover {
   panelWidth: 320
   gap: 10
 
-  // "root" | "devices" | "exit" -- the mock's three panels, which are one
-  // panel here because they share a header and a width.
-  property string view: "root"
+  // "" | "devices" | "exit" -- which sub-card is folded out, and only ever
+  // one: two open at once is a popover taller than the screen, and the macOS
+  // menu does not do it either.
+  property string expanded: ""
+
+  // Where this popover's height is decided. A sub-card's list is capped at
+  // this and scrolls past it; everything around the list -- a search field, a
+  // section heading, the preference rows -- stays pinned. The spec names a
+  // hundred-device tailnet, which is 3000px of rows hanging off a 38px bar.
+  readonly property int subListCap: 180
 
   readonly property bool live: Tailscale.state !== Tailscale.NoState
 
@@ -75,11 +94,69 @@ GlassPopover {
     return qsTr("expires in under a day")
   }
 
-  // The panel always reopens on the root view, and never over a menu left up
-  // from last time.
+  // The panel always reopens folded shut, and never over a menu left up from
+  // last time.
   onOpenChanged: if (!root.open) {
-    root.view = "root"
+    root.expanded = ""
     copyMenu.close()
+  }
+
+  // The row that opened a sub-card is the row that closes it -- there is no
+  // back chevron any more, so the chevron on the row has to work both ways.
+  function fold(which) {
+    if (root.expanded === which) {
+      root.expanded = ""
+      // Hand focus back to something still on screen, or esc stops closing the
+      // popup: the field that held it is inside the card being folded away.
+      // Common/PskField.collapse() does the same, for the same reason.
+      root.panel.forceActiveFocus()
+      return
+    }
+    root.expanded = which
+    // Focused as it grows, which is the order Common/PskField.ask() uses and
+    // the only one in this shell proven to take keystrokes under the popover's
+    // Hyprland focus grab. See Common/SearchField for what the keys travel
+    // through to get here.
+    if (which === "devices") deviceSearch.focusInput()
+    else if (which === "exit") exitList.focusSearch()
+  }
+
+  // -- filtering the device list ---------------------------------------------
+  // Folded once rather than per row per keystroke.
+  readonly property string deviceQuery: deviceSearch.text.trim().toLowerCase()
+
+  function deviceMatches(displayName) {
+    return root.deviceQuery === ""
+      || displayName.toLowerCase().indexOf(root.deviceQuery) >= 0
+  }
+
+  // How many rows of each group the query leaves standing, and how many in
+  // all. Counted off the delegates and not off the model, because the model is
+  // a QAbstractItemModel and QML has no way to walk one.
+  //
+  // The rows PUSH this rather than the panel walking the view for it, which
+  // ExitNodeList's Repeater can do and a ListView cannot: a delegate the view
+  // has just built is not yet reachable through itemAtIndex(), so a walk
+  // triggered from its own creation misses it and nothing ever triggers
+  // another. Measured, on fifty devices filtered to the last one: the only
+  // match in the list reported no group at all and its heading went with it.
+  // A row adding and removing itself is a statement no walk can be too early
+  // for.
+  property var groupTally: ({})
+  property int deviceMatchCount: 0
+  // `groupTally` is mutated in place and a `var` property does not announce
+  // that, so this is the dependency the headings actually bind to.
+  property int tallyRevision: 0
+
+  function tallyDevice(group, delta) {
+    root.groupTally[group] = (root.groupTally[group] ?? 0) + delta
+    root.deviceMatchCount += delta
+    ++root.tallyRevision
+  }
+
+  function groupMatched(group) {
+    // tallyRevision is read for the dependency, never for the value.
+    return root.tallyRevision >= 0 && (root.groupTally[group] ?? 0) > 0
   }
 
   // GlassPopover's default property appends into its content Column, and that
@@ -111,32 +188,17 @@ GlassPopover {
     width: parent.width
     implicitHeight: 28
 
-    // The back chevron takes the place of the glyph on the two sub-panels,
-    // exactly as the mock draws them.
+    // v1 swapped this glyph for a `‹` on the two sub-panels. There are no
+    // sub-panels any more -- the card keeps its own identity while a sub-card
+    // is out of it, so the header never changes and there is nowhere to go
+    // back to.
     Icon {
       id: headIcon
       anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-      visible: root.view === "root"
       name: "globe"
       size: 15
       tint: Tailscale.state !== Tailscale.Running ? Theme.textDisabled
         : Tailscale.exitNodeActive ? Theme.accentSoft : Theme.text
-    }
-    Text {
-      id: backChevron
-      objectName: "ts-back"
-      anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-      visible: root.view !== "root"
-      width: 15
-      horizontalAlignment: Text.AlignHCenter
-      text: "‹"
-      font { family: Theme.fontMono; pixelSize: 14; weight: 500 }
-      color: Theme.text3
-
-      MouseArea {
-        anchors { fill: parent; margins: -6 }
-        onClicked: root.view = "root"
-      }
     }
 
     Column {
@@ -149,9 +211,7 @@ GlassPopover {
 
       Text {
         width: parent.width
-        text: root.view === "devices" ? qsTr("network devices")
-          : root.view === "exit" ? qsTr("exit nodes")
-          : qsTr("tailscale")
+        text: qsTr("tailscale")
         font { family: Theme.fontMono; pixelSize: 12; weight: 600 }
         color: Theme.text
         elide: Text.ElideRight
@@ -159,7 +219,6 @@ GlassPopover {
       Text {
         objectName: "ts-state"
         width: parent.width
-        visible: root.view === "root"
         text: root.stateText
         font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
         color: Tailscale.exitNodeBlocked ? Theme.accentSoft : Theme.text3
@@ -310,11 +369,13 @@ GlassPopover {
     }
   }
 
-  // -- root view ------------------------------------------------------------
+  // -- the card -------------------------------------------------------------
+  // No longer gated on a view: these rows are what the panel IS, and they stay
+  // on screen while a sub-card is folded out from between them.
   Column {
     width: parent.width
     spacing: 2
-    visible: root.live && root.view === "root"
+    visible: root.live
 
     ListRow {
       objectName: "ts-self-name"
@@ -410,7 +471,7 @@ GlassPopover {
       titleWeight: 500
       title: qsTr("network devices")
 
-      onClicked: root.view = "devices"
+      onClicked: root.fold("devices")
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
@@ -418,11 +479,161 @@ GlassPopover {
         font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
         color: Theme.text3
       }
-      Text {
+      FoldChevron {
+        objectName: "ts-devices-chevron"
         anchors.verticalCenter: parent.verticalCenter
-        text: "›"
-        font { family: Theme.fontMono; pixelSize: 11; weight: 500 }
-        color: Theme.text3
+        open: root.expanded === "devices"
+      }
+    }
+
+    // -- network devices ----------------------------------------------------
+    SubCard {
+      objectName: "ts-devices-card"
+      width: parent.width
+      visible: root.live && root.expanded === "devices"
+
+      SearchField {
+        id: deviceSearch
+        objectName: "ts-peer-search"
+        fieldName: "ts-peer-search-input"
+        width: parent.width
+      }
+
+      // Instantiated whether or not the card is out, because the row above
+      // reads its `count` for the device tally. An invisible view costs its
+      // delegates and nothing else -- and keeping it alive is also what makes
+      // folding the card away and back NOT a reload: a Loader here would
+      // destroy every row and whatever it was holding.
+      ListView {
+        id: peerList
+
+        objectName: "ts-peer-list"
+        width: parent.width
+        height: Math.min(contentHeight, root.subListCap)
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        model: Tailscale.peers
+
+        // Rows arrive already sorted Mine / Tagged / Others, and PeerModel
+        // moves a row rather than removing and re-inserting it, so a section
+        // heading falls out of the data with no special casing -- and a group
+        // with no peers in it produces no heading at all.
+        section.property: "group"
+        section.criteria: ViewSection.FullString
+        // The label sits in a slot rather than being the section delegate
+        // itself, and that is load-bearing: a ListView OWNS `visible` on a
+        // section item and writes its own value over any binding put there --
+        // measured, the heading stayed on screen at zero height. The slot is
+        // the view's to show and hide; the label inside it is this panel's.
+        section.delegate: Item {
+          id: sectionSlot
+
+          required property string section
+
+          // A heading over a group the QUERY emptied has to go as well, or a
+          // filtered list reads as a group the search removed the devices
+          // from. Never consulted without a query: see tallyDevice().
+          readonly property bool shown: root.deviceQuery === ""
+            || root.groupMatched(sectionSlot.section)
+
+          width: peerList.width
+          // Collapsed as well as hidden: a section item keeps its slot in the
+          // view, so a heading that is merely invisible leaves a 20px hole
+          // where the group used to be.
+          height: sectionSlot.shown ? 20 : 0
+
+          SectionLabel {
+            objectName: "ts-section"
+            anchors.fill: parent
+            visible: sectionSlot.shown
+            verticalAlignment: Text.AlignBottom
+            text: sectionSlot.section === "0" ? qsTr("my devices")
+              : sectionSlot.section === "1" ? qsTr("tagged devices")
+              : qsTr("other users")
+          }
+        }
+
+        // The cache keeps a row that scrolls just out of sight alive, so the
+        // model is not the only thing standing between a delegate and its
+        // local state.
+        cacheBuffer: 400
+
+        delegate: PeerRow {
+          id: peerDelegate
+
+          // Reported rather than read off `visible`, so the counts above do
+          // not depend on the view having laid out yet.
+          readonly property bool matched: root.deviceMatches(peerDelegate.displayName)
+
+          width: peerList.width
+          visible: peerDelegate.matched
+          // Collapsed rather than merely hidden, for the same reason the
+          // heading is: a hidden row of its own height leaves a gap in the
+          // list exactly where it was filtered out.
+          height: peerDelegate.matched ? peerDelegate.implicitHeight : 0
+
+          // Which group this row is currently counted under, or -1 for not
+          // counted. Remembered rather than recomputed, because the group a
+          // row has to be taken OUT of is the one it was put into: PeerModel
+          // moves a device between groups in place, and a row that gave its
+          // match back to the group it had just moved to would leave the
+          // heading it came from standing over nothing.
+          property int countedGroup: -1
+
+          function syncTally() {
+            const want = peerDelegate.matched ? peerDelegate.group : -1
+            if (want === peerDelegate.countedGroup) return
+            if (peerDelegate.countedGroup >= 0) root.tallyDevice(peerDelegate.countedGroup, -1)
+            peerDelegate.countedGroup = want
+            if (want >= 0) root.tallyDevice(want, 1)
+          }
+
+          onMatchedChanged: peerDelegate.syncTally()
+          onGroupChanged: peerDelegate.syncTally()
+          Component.onCompleted: peerDelegate.syncTally()
+          // A row the view frees is a row that is no longer standing. Without
+          // this the tally only ever grows and every heading stays up.
+          Component.onDestruction: {
+            if (peerDelegate.countedGroup >= 0) root.tallyDevice(peerDelegate.countedGroup, -1)
+            peerDelegate.countedGroup = -1
+          }
+
+          onMenuRequested: (sceneX, sceneY) =>
+            root.openCopyMenu(peerDelegate.displayName, peerDelegate.ip4, peerDelegate.ip6,
+                              peerDelegate.dnsName, sceneX, sceneY)
+        }
+      }
+
+      // The two empty lists a device list has to tell apart, as the exit-node
+      // panel tells them apart: a query nobody answers to is not a tailnet
+      // with nothing on it, and a panel that says the wrong one of those looks
+      // broken rather than filtered.
+      ListRow {
+        objectName: "ts-peer-no-match"
+        width: parent.width
+        visible: root.deviceQuery !== "" && root.deviceMatchCount === 0 && peerList.count > 0
+        implicitHeight: 30
+        radius: Theme.radiusMenuRow
+        inset: 8
+        titleSize: 11
+        titleWeight: 500
+        hoverable: false
+        titleColor: Theme.textDisabled
+        title: qsTr("no matches")
+      }
+
+      ListRow {
+        objectName: "ts-peer-empty"
+        width: parent.width
+        visible: peerList.count === 0
+        implicitHeight: 30
+        radius: Theme.radiusMenuRow
+        inset: 8
+        titleSize: 11
+        titleWeight: 500
+        hoverable: false
+        titleColor: Theme.textDisabled
+        title: qsTr("no other devices on this tailnet")
       }
     }
 
@@ -436,7 +647,7 @@ GlassPopover {
       titleWeight: 500
       title: qsTr("exit nodes")
 
-      onClicked: root.view = "exit"
+      onClicked: root.fold("exit")
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
@@ -445,65 +656,58 @@ GlassPopover {
         font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
         color: Tailscale.exitNodeActive ? Theme.accentSoft : Theme.text3
       }
-      Text {
+      FoldChevron {
+        objectName: "ts-exit-chevron"
         anchors.verticalCenter: parent.verticalCenter
-        text: "›"
-        font { family: Theme.fontMono; pixelSize: 11; weight: 500 }
-        color: Theme.text3
+        open: root.expanded === "exit"
+      }
+    }
+
+    // -- exit nodes ---------------------------------------------------------
+    SubCard {
+      objectName: "ts-exit-card"
+      width: parent.width
+      visible: root.live && root.expanded === "exit"
+
+      ExitNodeList {
+        id: exitList
+        width: parent.width
+        maxListHeight: root.subListCap
       }
     }
   }
 
-  // -- network devices ------------------------------------------------------
-  // The ListView is instantiated on whichever view is up, because the root
-  // view reads its `count` for the chevron row. An invisible view costs its
-  // delegates and nothing else.
-  ListView {
-    id: peerList
+  // The card inside the card. Its own surface and hairline, because a list
+  // that simply appeared between two rows would read as more rows rather than
+  // as something folded out of one of them.
+  component SubCard: Rectangle {
+    default property alias body: cardColumn.data
 
-    objectName: "ts-peer-list"
-    width: parent.width
-    height: Math.min(contentHeight, 196)
-    visible: root.live && root.view === "devices"
+    implicitHeight: cardColumn.implicitHeight + 16
+    radius: Theme.radiusChip
+    color: Theme.surface04
+    border.width: 1
+    border.color: Theme.hairline
     clip: true
-    boundsBehavior: Flickable.StopAtBounds
-    model: Tailscale.peers
 
-    // Rows arrive already sorted Mine / Tagged / Others, and PeerModel moves a
-    // row rather than removing and re-inserting it, so a section heading falls
-    // out of the data with no special casing -- and a group with no peers in
-    // it produces no heading at all.
-    section.property: "group"
-    section.criteria: ViewSection.FullString
-    section.delegate: SectionLabel {
-      required property string section
-
-      objectName: "ts-section"
-      width: peerList.width
-      height: 20
-      verticalAlignment: Text.AlignBottom
-      text: section === "0" ? qsTr("my devices")
-        : section === "1" ? qsTr("tagged devices")
-        : qsTr("other users")
-    }
-
-    // The cache keeps a row that scrolls just out of sight alive, so the model
-    // is not the only thing standing between a delegate and its local state.
-    cacheBuffer: 400
-
-    delegate: PeerRow {
-      id: peerDelegate
-
-      width: peerList.width
-      onMenuRequested: (sceneX, sceneY) =>
-        root.openCopyMenu(peerDelegate.displayName, peerDelegate.ip4, peerDelegate.ip6,
-                          peerDelegate.dnsName, sceneX, sceneY)
+    Column {
+      id: cardColumn
+      anchors { top: parent.top; left: parent.left; right: parent.right; margins: 8 }
+      spacing: 6
     }
   }
 
-  // -- exit nodes -----------------------------------------------------------
-  ExitNodeList {
-    width: parent.width
-    visible: root.live && root.view === "exit"
+  // The `›` the mock puts on a row that opens something, turned a quarter when
+  // what it opens is open. Deliberately NOT animated: the popup window itself
+  // resizes in one step when the card grows, so a chevron easing round over
+  // 120ms next to a panel that snapped reads as a dropped frame rather than as
+  // motion.
+  component FoldChevron: Text {
+    property bool open: false
+
+    text: "›"
+    rotation: open ? 90 : 0
+    font { family: Theme.fontMono; pixelSize: 11; weight: 500 }
+    color: Theme.text3
   }
 }

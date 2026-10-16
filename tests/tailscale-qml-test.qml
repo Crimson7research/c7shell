@@ -301,6 +301,7 @@ Window {
 
     // -- the panel behind the slot ------------------------------------------
     root.panelChecks()
+    root.foldOutChecks()
     root.exitNodeControlChecks()
     root.delegateIdentityChecks()
   }
@@ -332,10 +333,17 @@ Window {
   // A Column, a Row and a ListView all lay out on polish rather than on the
   // binding change that provoked it, so a geometry or a delegate read in the
   // same block is the previous frame's. The shell gets a frame along in a
-  // millisecond; this has none. Twice, because a child positioner settling
-  // changes the implicitHeight its parent is about to lay out against.
+  // millisecond; this has none.
+  //
+  // Once per level of nesting, because a child positioner settling changes the
+  // implicitHeight its parent is about to lay out against, and these are
+  // walked parents first. Two passes was enough until the sub-cards: the exit
+  // nodes are now a Column inside a Flickable inside a card's Column inside
+  // the panel's Column inside the popover's, and at two passes the panel's
+  // height read back as the previous shape's -- which is the trap this helper
+  // exists for, arriving one level deeper.
   function layout() {
-    for (let pass = 0; pass < 2; ++pass)
+    for (let pass = 0; pass < 5; ++pass)
       for (const o of root.descendants(pop))
         if (o.forceLayout !== undefined) o.forceLayout()
   }
@@ -526,13 +534,14 @@ Window {
 
     // -- the device list ----------------------------------------------------
     root.check(root.panelShown("ts-peer").length === 0,
-      "the device list is on the root panel; the mock puts it behind a chevron")
-    root.check(root.panelOne("ts-back").visible === false,
-      "the root panel offers a back chevron with nothing to go back to")
+      "the device list is on the root card; it belongs in a sub-card folded out of it")
+    // The `‹` is v1's navigation and is gone with it: a card that keeps its
+    // root rows has nothing to go back from, and a chevron that says otherwise
+    // is an offer to leave a panel nobody left.
+    root.check(root.panelAll("ts-back").length === 0,
+      "the panel still carries a back chevron, so it navigates by replacing itself")
     root.panelOne("ts-devices-row").clicked()
     root.layout()
-    root.check(root.panelOne("ts-back").visible === true,
-      "a sub-panel with no way back to the root")
 
     const rows = root.panelShown("ts-peer")
     root.check(rows.length === 4, `the device list drew ${rows.length} of 4 peers`)
@@ -651,7 +660,7 @@ Window {
     // Back to the root by hand: the back chevron is a glyph with a MouseArea
     // on it and there is no press to send it here. That it is there, and only
     // on a sub-panel, is asserted above.
-    pop.view = "root"
+    pop.expanded = ""
     root.layout()
     Tailscale.exitNodes.clear()
     // The first one is the cloud instance whose OS hostname is its private
@@ -746,6 +755,230 @@ Window {
   }
 
   // ==========================================================================
+  // The sub-card folds OUT of the card
+  // ==========================================================================
+  //
+  // v1 replaced the panel's contents and offered a `‹` back. The macOS app
+  // grows the sub-panel out of the card instead, and nothing in the earlier
+  // section can tell the two apart: a replaced panel draws the same rows, in
+  // the same order, with the same objectNames. So every check here is about
+  // what stays on screen, what the card's HEIGHT does, and whether a row that
+  // was folded away is the same row when it comes back.
+  //
+  // The height half is not cosmetic. The fold-out is where the popover's
+  // height is decided, and the spec names a hundred-device tailnet: 3000px of
+  // rows under a 38px bar. The two lists are capped and scroll, which is
+  // asserted by growing the tailnet past the cap and reading that the card
+  // stopped growing with it.
+  function foldOutChecks() {
+    root.connectedWithPeers()
+    PopoverManager.toggle("tailscale", null)
+    pop.expanded = ""
+    root.panelOne("ts-peer-search-input").text = ""
+    root.layout()
+
+    // The card with nothing folded out of it. Every height assertion below is
+    // a comparison against this one reading.
+    const shut = pop.panel.height
+    const rootRows = ["ts-self-name", "ts-self-ip4", "ts-devices-row", "ts-exit-row-entry"]
+    for (const n of rootRows)
+      root.check(root.panelOne(n).visible, `${n} is not on the card to begin with`)
+    const chevron = root.panelOne("ts-devices-chevron")
+    const shutRotation = chevron.rotation
+
+    // -- opening GROWS the card, it does not replace it ---------------------
+    root.panelOne("ts-devices-row").clicked()
+    root.layout()
+    for (const n of rootRows)
+      root.check(root.panelOne(n).visible,
+        `${n} left the card when the device list opened, so the sub-card replaced it`)
+    root.check(root.panelShown("ts-peer").length === 4,
+      `the folded-out device list drew ${root.panelShown("ts-peer").length} of 4 peers`)
+    root.check(pop.panel.height > shut,
+      `the card is ${pop.panel.height}px with the sub-card out and was ${shut}px without it`)
+    root.check(chevron.rotation !== shutRotation,
+      "the chevron on the row points the same way open as shut, so the row does not say what it does")
+
+    // Folded out of ITS OWN row: between the row that opened it and the next
+    // one, not appended to the bottom of the panel.
+    const cardY = root.panelOne("ts-devices-card").mapToItem(pop.panel, 0, 0).y
+    const devicesRowY = root.panelOne("ts-devices-row").mapToItem(pop.panel, 0, 0).y
+    const exitRowY = root.panelOne("ts-exit-row-entry").mapToItem(pop.panel, 0, 0).y
+    root.check(cardY > devicesRowY && cardY < exitRowY,
+      `the device sub-card is at ${cardY}, outside the ${devicesRowY}..${exitRowY} gap under its own row`)
+
+    // -- the field the keyboard has to reach --------------------------------
+    // As far as a test with no compositor reaches: the item the window reports
+    // as focused is exactly what PopupSurface hands the bar's keys to
+    // (`innerFocus` -> Keys.forwardTo, off PopoverManager.keySink). A field
+    // that is not this item cannot receive a keystroke however the Hyprland
+    // grab behaves, so this is the half that CAN be pinned.
+    const search = root.panelOne("ts-peer-search-input")
+    root.check(search.activeFocus,
+      "the device search did not take focus as its card folded out, so there is nothing to type into")
+    root.check(root.activeFocusItem === search,
+      "the device search holds focus but is not what the window reports as focused,"
+      + " which is the item the bar forwards keys to")
+
+    // -- closing comes back, and does not reload ----------------------------
+    const tango = root.peerRow("tango")
+    Quickshell.clipboardText = ""
+    tango.clicked()
+    root.check(tango.copied, "the row under test never took the local state this check is about")
+    root.panelOne("ts-devices-row").clicked()
+    root.layout()
+    root.check(root.panelShown("ts-peer").length === 0,
+      "the device rows stayed on screen after their card was folded away")
+    root.check(Math.abs(pop.panel.height - shut) < 1,
+      `the card is ${pop.panel.height}px with the sub-card folded away and was ${shut}px before it opened`)
+    root.check(chevron.rotation === shutRotation, "the chevron did not turn back")
+    root.panelOne("ts-devices-row").clicked()
+    root.layout()
+    root.check(root.peerRow("tango") === tango,
+      "folding the sub-card away and back rebuilt the device rows -- same bug as #124,"
+      + " one level out: whatever a row was holding is gone")
+    root.check(root.peerRow("tango").copied,
+      "the row survived the fold but its own state did not")
+
+    // -- the device search --------------------------------------------------
+    search.text = "TANGO"
+    root.layout()
+    const hits = root.panelShown("ts-peer")
+    root.check(hits.length === 1 && hits[0].title === "tango",
+      `searching "TANGO" left ${hits.length} rows: ${hits.map(o => o.title).join(", ")}`)
+    root.check(root.panelShown("ts-peer-no-match").length === 0,
+      "a device search that DID match said it matched nothing")
+
+    // A section whose every row the query hid may not keep its heading -- a
+    // heading over nothing reads as a group the search emptied of devices
+    // rather than one it filtered out.
+    const mine = root.panelShown("ts-section").map(o => o.text)
+    root.check(mine.length === 1 && mine[0] === "my devices",
+      `a query answered only by one of your own devices left these headings: ${mine.join(" | ")}`)
+
+    // The same from the other end of the list: the heading that has to SURVIVE
+    // is the one two emptied sections above it.
+    search.text = "workstation"
+    root.layout()
+    const others = root.panelShown("ts-section").map(o => o.text)
+    root.check(others.length === 1 && others[0] === "other users",
+      `a query answered only by another user's device left these headings: ${others.join(" | ")}`)
+
+    // The two empty lists a device list has to tell apart, exactly as the
+    // exit-node panel tells them apart.
+    search.text = "no-device-answers-to-this"
+    root.layout()
+    root.check(root.panelShown("ts-peer").length === 0, "a query matching no device still drew rows")
+    root.check(root.panelShown("ts-section").length === 0,
+      "every heading stayed up over a device list the query left empty")
+    root.check(root.panelShown("ts-peer-no-match").length === 1,
+      "a device query matching nothing said nothing at all")
+    root.check(root.panelShown("ts-peer-empty").length === 0,
+      "a device query that matched nothing reads as a tailnet with no devices on it")
+
+    search.text = ""
+    root.seedPeers([])
+    root.layout()
+    root.check(root.panelShown("ts-peer-empty").length === 1,
+      "a tailnet with no devices on it says nothing about why the list is empty")
+    root.check(root.panelShown("ts-peer-no-match").length === 0,
+      "an empty tailnet reads as a failed search")
+    root.seedPeers(root.tailnetPeers)
+    root.layout()
+    root.check(root.panelShown("ts-peer").length === 4, "the device list did not come back")
+
+    // -- the height the fold-out decides ------------------------------------
+    // Twenty-five devices is an ordinary tailnet. The card has to stop growing
+    // somewhere, and the list scrolls past that point instead: without it the
+    // popover is taller than the screen and there is nothing to scroll.
+    root.seedPeers(root.manyPeers(25))
+    root.layout()
+    const list = root.panelOne("ts-peer-list")
+    const at25 = pop.panel.height
+    root.check(list.contentHeight > list.height,
+      "twenty-five devices did not fill the capped list, so the cap is not being exercised")
+    root.check(list.clip, "the capped list does not clip, so its rows draw outside the card")
+    root.seedPeers(root.manyPeers(50))
+    root.layout()
+    root.check(Math.abs(pop.panel.height - at25) < 1,
+      `the card grew from ${at25}px to ${pop.panel.height}px when the tailnet went from 25 devices to 50`)
+
+    // A heading is hidden off a count of the delegates the VIEW built, and a
+    // view builds only what is near its viewport. The case that would break
+    // that is a single match in the LAST group of a long list -- which is this
+    // one: filtered rows collapse to zero height, so the whole model lands
+    // inside the viewport and every row is counted.
+    search.text = "node-49"
+    root.layout()
+    const far = root.panelShown("ts-peer")
+    root.check(far.length === 1 && far[0].title === "node-49",
+      `a query answered by the last device of fifty left ${far.length} rows`)
+    const farSections = root.panelShown("ts-section").map(o => o.text)
+    root.check(farSections.length === 1 && farSections[0] === "other users",
+      `the last group of a long filtered list left these headings: ${farSections.join(" | ")}`)
+
+    search.text = ""
+    root.seedPeers(root.tailnetPeers)
+    root.layout()
+
+    // -- the exit sub-card ---------------------------------------------------
+    root.panelOne("ts-exit-row-entry").clicked()
+    root.layout()
+    root.check(root.panelOne("ts-self-name").visible,
+      "the exit sub-card replaced the card instead of folding out of it")
+    root.check(root.panelShown("ts-peer").length === 0,
+      "opening the exit nodes left the device sub-card folded out as well")
+    const exitSearch = root.panelOne("ts-exit-search-input")
+    root.check(exitSearch.activeFocus && root.activeFocusItem === exitSearch,
+      "the exit-node search did not take focus as its card folded out")
+
+    // Same cap, same reason: a tailnet can offer more exit nodes than a
+    // popover has room for, and Task 5 shipped this list uncapped.
+    Tailscale.exitNodes.clear()
+    Tailscale.recommendedExitNodeId = ""
+    for (let i = 0; i < 20; ++i)
+      Tailscale.exitNodes.append({ hostName: `exit-${i}`, displayName: `exit-${i}`,
+                                   nodeId: `nE${i}CNTRL` })
+    root.layout()
+    const scroll = root.panelOne("ts-exit-scroll")
+    const exitAt20 = pop.panel.height
+    root.check(scroll.contentHeight > scroll.height,
+      "twenty exit nodes did not fill the capped list, so the cap is not being exercised")
+    root.check(scroll.clip, "the capped exit list does not clip, so its rows draw outside the card")
+    for (let i = 20; i < 40; ++i)
+      Tailscale.exitNodes.append({ hostName: `exit-${i}`, displayName: `exit-${i}`,
+                                   nodeId: `nE${i}CNTRL` })
+    root.layout()
+    root.check(Math.abs(pop.panel.height - exitAt20) < 1,
+      `the card grew from ${exitAt20}px to ${pop.panel.height}px when the tailnet went`
+      + ` from 20 exit nodes to 40`)
+
+    // The search field stays put while the nodes under it scroll: a filter you
+    // have to scroll back up to reach is not a filter.
+    const searchY = root.panelOne("ts-exit-search").mapToItem(pop.panel, 0, 0).y
+    root.check(searchY < scroll.mapToItem(pop.panel, 0, 0).y,
+      "the exit-node search scrolls away with the list it filters")
+
+    Tailscale.exitNodes.clear()
+    pop.expanded = ""
+    root.layout()
+  }
+
+  // A tailnet of `n` devices, all but the last of them your own: the last one
+  // is in Other Users, which is the group a long filtered list is most likely
+  // to lose the heading of.
+  function manyPeers(n) {
+    const out = []
+    for (let i = 0; i < n; ++i)
+      out.push({ hostName: `node-${i}`, displayName: `node-${i}`,
+                 ip4: `100.64.1.${i}`, ip6: "",
+                 dnsName: `node-${i}.example-tailnet.ts.net`, online: true,
+                 group: i === n - 1 ? 2 : 0, ownerName: "Third Example",
+                 nodeId: `n${i}0CNTRL`, exitNodeOption: false })
+    return out
+  }
+
+  // ==========================================================================
   // The exit-node view as a CONTROL
   // ==========================================================================
   //
@@ -768,7 +1001,7 @@ Window {
     Tailscale.exitNodeId = ""
     Tailscale.exitNodeName = ""
     root.seedExitNodes()
-    pop.view = "exit"
+    pop.expanded = "exit"
     root.layout()
 
     // -- live before the first write ----------------------------------------
@@ -996,7 +1229,7 @@ Window {
     ]
     root.connected()
     root.seedPeers(three)
-    pop.view = "devices"
+    pop.expanded = "devices"
     root.layout()
 
     const list = root.panelOne("ts-peer-list")

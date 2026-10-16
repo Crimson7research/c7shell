@@ -27,6 +27,15 @@ Column {
   // control disabled and no way left to make the first write.
   readonly property bool refused: !Tailscale.writable
 
+  // How tall the scrolling part of this list may get. The owner decides it --
+  // this panel is folded out of a card that has a header, an alert and the
+  // root rows above it, and only the owner knows what is left.
+  property int maxListHeight: 180
+
+  // Focused by whatever grew this panel, never by this panel itself: see
+  // Common/SearchField.
+  function focusSearch() { searchField.focusInput() }
+
   // Folded once here rather than per row per keystroke.
   readonly property string query: searchField.text.trim().toLowerCase()
 
@@ -86,58 +95,18 @@ Column {
   }
 
   // -- search ------------------------------------------------------------------
-  // A twenty-node tailnet is a scroll and a hundred-node one is unusable, and
-  // the filter is on the display name because that is what the row shows.
-  Rectangle {
+  // The list below scrolls now, so this is no longer the only thing standing
+  // between a hundred-node tailnet and an unusable panel -- but scrolling for
+  // a node you can name is still worse than typing it. The filter is on the
+  // display name because that is what the row shows.
+  SearchField {
+    id: searchField
+
     objectName: "ts-exit-search"
+    // The FIELD, not the pill: the focus check and the filter both want the
+    // item holding the text.
+    fieldName: "ts-exit-search-input"
     width: root.width
-    implicitHeight: 26
-    radius: Theme.radiusChip
-    color: Theme.surface05
-
-    Icon {
-      id: glass
-      anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter }
-      name: "search"
-      size: 11
-      tint: Theme.alpha(Theme.text, 0.4)
-    }
-
-    TextInput {
-      id: searchField
-
-      objectName: "ts-exit-search-input"
-      anchors {
-        left: glass.right; leftMargin: 8
-        right: parent.right; rightMargin: 9
-        verticalCenter: parent.verticalCenter
-      }
-      font { family: Theme.fontMono; pixelSize: 11; weight: 400 }
-      color: Theme.text
-      clip: true
-      // Accepted, so esc clears the query rather than closing the popover out
-      // from under someone who is still reading the list.
-      Keys.onEscapePressed: event => {
-        searchField.text = ""
-        event.accepted = true
-      }
-
-      Text {
-        anchors.fill: parent
-        verticalAlignment: Text.AlignVCenter
-        visible: searchField.text === ""
-        text: qsTr("search…")
-        textFormat: Text.PlainText
-        font { family: Theme.fontMono; pixelSize: 11; weight: 400 }
-        color: Theme.alpha(Theme.text, 0.35)
-      }
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      // 26px of field: the whole pill should take the press.
-      onClicked: searchField.forceActiveFocus()
-    }
   }
 
   // `none` is a checked row rather than an absence: you pick egress, you do
@@ -221,17 +190,41 @@ Column {
     text: root.refused ? qsTr("tailnet exit nodes (read-only)") : qsTr("tailnet exit nodes")
   }
 
-  Repeater {
-    id: nodes
+  // The one part of this panel that is allowed to be longer than the card.
+  // v1 and Task 5 both left it as a plain Column, which made a twenty-node
+  // tailnet a 700px popover and the hundred-node one the spec names
+  // unopenable. Everything else here -- the search, the `none` row, the
+  // recommendation, the preference rows -- stays pinned: a filter you have to
+  // scroll back up to reach is not a filter, and the preferences are not part
+  // of the list they sit under.
+  Flickable {
+    objectName: "ts-exit-scroll"
+    width: root.width
+    height: Math.min(nodeColumn.implicitHeight, root.maxListHeight)
+    contentHeight: nodeColumn.implicitHeight
+    clip: true
+    boundsBehavior: Flickable.StopAtBounds
 
-    model: Tailscale.exitNodes
-
-    onItemAdded: root.recount()
-    onItemRemoved: root.recount()
-
-    ExitRow {
-      objectName: "ts-exit-row"
+    Column {
+      id: nodeColumn
+      // Explicit: a Flickable's contentItem has no width of its own to
+      // inherit, so `parent.width` here is zero and every row in it collapses.
       width: root.width
+      spacing: 6
+
+      Repeater {
+        id: nodes
+
+        model: Tailscale.exitNodes
+
+        onItemAdded: root.recount()
+        onItemRemoved: root.recount()
+
+        ExitRow {
+          objectName: "ts-exit-row"
+          width: root.width
+        }
+      }
     }
   }
 
