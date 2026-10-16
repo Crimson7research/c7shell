@@ -3,40 +3,167 @@ import C7
 import qs.Theme
 import qs.Common
 
-// The exit-node panel of the mock: a checked `none` row, the node
-// /localapi/v0/suggest-exit-node recommends promoted under its own heading,
-// then every exit node the tailnet offers.
+// The exit-node panel of the mock: a search field, a checked `none` row, the
+// node /localapi/v0/suggest-exit-node recommends promoted under its own
+// heading, every exit node the tailnet offers, and the two preference rows
+// the mock drew underneath them.
 //
-// v1 is read-only. `tailscale set` refuses for a non-root, non-operator user,
-// so picking a node here would be a row that looks like a radio button and
-// does nothing. The rows are therefore drawn at Theme.textDisabled and the
-// heading says so, rather than being left out -- which node you are on, and
-// which one the tailnet suggests, is worth reading even when it cannot be
-// changed from here.
+// The rows are CONTROLS. v1 drew them dead because `tailscale set` refuses for
+// a non-root, non-operator user; the contract can write now, and
+// c7shell-bootstrap names the desktop user as tailscaled's operator, so a row
+// here asks for the node it names.
 Column {
   id: root
 
+  objectName: "ts-exit-list"
   spacing: 6
 
+  // `writable` is a claim about the LAST write, never permission for the next
+  // one: TailscaleBackend.h says so in as many words, because the name invites
+  // the opposite reading. It starts TRUE and goes false only once tailscaled
+  // has refused something, so these controls are live until a refusal and dead
+  // afterwards -- with the refusal's own words above them. Gated the other way
+  // round, a correctly bootstrapped machine would open this panel with every
+  // control disabled and no way left to make the first write.
+  readonly property bool refused: !Tailscale.writable
+
+  // Folded once here rather than per row per keystroke.
+  readonly property string query: searchField.text.trim().toLowerCase()
+
+  function matches(displayName) {
+    return root.query === "" || displayName.toLowerCase().indexOf(root.query) >= 0
+  }
+
+  // How many node rows the query leaves standing. Counted rather than derived
+  // from the children, because Item.visibleChildren does not re-announce
+  // itself when a child's own `visible` flips -- measured on this tree, not
+  // assumed. Every delegate calls this when its own `matched` moves, so the
+  // last call always lands after the last binding has settled; the Repeater
+  // calls it when the model gains or loses a row.
+  property int matchCount: 0
+
+  function recount() {
+    let found = 0
+    for (let i = 0; i < nodes.count; ++i) {
+      const row = nodes.itemAt(i)
+      if (row && row.matched) ++found
+    }
+    root.matchCount = found
+  }
+
+  // An action is a REQUEST: this asks, and the daemon's next notification is
+  // what moves the check mark. Nothing is drawn as selected here.
+  function choose(nodeId) {
+    if (root.refused) return
+    Tailscale.setExitNode(nodeId)
+  }
+
+  // THE ONE CONTROL ON THIS PANEL WITH NOWHERE TO READ ITSELF BACK FROM. The
+  // contract publishes setExitNodeAllowLANAccess but no matching property, so
+  // this is what was last asked for here and not what tailscaled holds: a
+  // value changed by `tailscale set` elsewhere does not reach the switch, and
+  // a panel opened on a machine with LAN access already on draws it off. The
+  // pref is `ExitNodeAllowLANAccess`, beside RouteAll and CorpDNS, which Task
+  // 7 gives read-back properties; this wants one in the same round.
+  property bool lanAccess: false
+
+  // -- why everything below is dead -------------------------------------------
+  // Only after a refusal, which is the one moment the flag is for. The wording
+  // is presentation and so lives here: the contract publishes what refused it
+  // and deliberately does not phrase it.
+  Text {
+    objectName: "ts-exit-write-error"
+    width: root.width
+    visible: root.refused
+    leftPadding: 8
+    rightPadding: 8
+    text: qsTr("tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (%1)").arg(Tailscale.writeError)
+    // The daemon's own answer, verbatim, which makes it daemon-supplied text.
+    textFormat: Text.PlainText
+    wrapMode: Text.WordWrap
+    font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
+    color: Theme.accentSoft
+  }
+
+  // -- search ------------------------------------------------------------------
+  // A twenty-node tailnet is a scroll and a hundred-node one is unusable, and
+  // the filter is on the display name because that is what the row shows.
+  Rectangle {
+    objectName: "ts-exit-search"
+    width: root.width
+    implicitHeight: 26
+    radius: Theme.radiusChip
+    color: Theme.surface05
+
+    Icon {
+      id: glass
+      anchors { left: parent.left; leftMargin: 9; verticalCenter: parent.verticalCenter }
+      name: "search"
+      size: 11
+      tint: Theme.alpha(Theme.text, 0.4)
+    }
+
+    TextInput {
+      id: searchField
+
+      objectName: "ts-exit-search-input"
+      anchors {
+        left: glass.right; leftMargin: 8
+        right: parent.right; rightMargin: 9
+        verticalCenter: parent.verticalCenter
+      }
+      font { family: Theme.fontMono; pixelSize: 11; weight: 400 }
+      color: Theme.text
+      clip: true
+      // Accepted, so esc clears the query rather than closing the popover out
+      // from under someone who is still reading the list.
+      Keys.onEscapePressed: event => {
+        searchField.text = ""
+        event.accepted = true
+      }
+
+      Text {
+        anchors.fill: parent
+        verticalAlignment: Text.AlignVCenter
+        visible: searchField.text === ""
+        text: qsTr("search…")
+        textFormat: Text.PlainText
+        font { family: Theme.fontMono; pixelSize: 11; weight: 400 }
+        color: Theme.alpha(Theme.text, 0.35)
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      // 26px of field: the whole pill should take the press.
+      onClicked: searchField.forceActiveFocus()
+    }
+  }
+
   // `none` is a checked row rather than an absence: you pick egress, you do
-  // not toggle a feature.
+  // not toggle a feature. It is never filtered -- it is the reading of where
+  // traffic goes now, not a search result.
   ListRow {
     objectName: "ts-exit-none"
-    width: parent.width
+    width: root.width
     implicitHeight: 30
     radius: Theme.radiusMenuRow
     inset: 8
     leadingSize: 12
     titleSize: 11
     titleWeight: 500
-    hoverable: false
+    hoverable: !root.refused
     active: !Tailscale.exitNodeActive
     title: qsTr("none")
 
-    // Deliberately NOT drawn at Theme.textDisabled like the rows below it.
-    // Those are dimmed because they offer a choice v1 cannot make; this one
-    // is not an offer, it is the reading -- egress is unrouted right now --
-    // and a reading of current state has to stay legible.
+    // An empty id is how the contract spells "no exit node" -- the same string
+    // exitNodeId publishes when egress is unrouted.
+    onClicked: root.choose("")
+
+    // Deliberately NOT drawn at Theme.textDisabled with the rest after a
+    // refusal: the others are offers that cannot be taken, this one is the
+    // reading -- egress is unrouted right now -- and a reading of current
+    // state has to stay legible however dead the panel is.
     leading: Icon {
       name: "check"
       size: 12
@@ -66,8 +193,12 @@ Column {
 
       width: root.width
       spacing: 6
+      // Filtered with the list: the suggested node is one of the rows below
+      // too, so a query it does not answer to would otherwise leave it on
+      // screen as the only hit, under a heading, twice.
       visible: recommended.nodeId !== ""
         && recommended.nodeId === Tailscale.recommendedExitNodeId
+        && root.matches(recommended.displayName)
 
       SectionLabel {
         objectName: "ts-exit-recommended-label"
@@ -85,16 +216,116 @@ Column {
 
   SectionLabel {
     objectName: "ts-exit-all-label"
-    text: qsTr("tailnet exit nodes (read-only)")
+    // The list says what it is. "(read-only)" is the state after a refusal
+    // now, not the permanent condition it was in v1.
+    text: root.refused ? qsTr("tailnet exit nodes (read-only)") : qsTr("tailnet exit nodes")
   }
 
   Repeater {
+    id: nodes
+
     model: Tailscale.exitNodes
+
+    onItemAdded: root.recount()
+    onItemRemoved: root.recount()
 
     ExitRow {
       objectName: "ts-exit-row"
       width: root.width
     }
+  }
+
+  // The two empty lists a view has to tell apart. A query that found nothing
+  // is not a tailnet with no exit nodes on it, and a panel that says the wrong
+  // one of those looks broken rather than filtered.
+  ListRow {
+    objectName: "ts-exit-no-match"
+    width: root.width
+    visible: root.query !== "" && root.matchCount === 0 && nodes.count > 0
+    implicitHeight: 30
+    radius: Theme.radiusMenuRow
+    inset: 8
+    titleSize: 11
+    titleWeight: 500
+    hoverable: false
+    titleColor: Theme.textDisabled
+    title: qsTr("no matches")
+  }
+
+  ListRow {
+    objectName: "ts-exit-empty"
+    width: root.width
+    visible: nodes.count === 0
+    implicitHeight: 30
+    radius: Theme.radiusMenuRow
+    inset: 8
+    titleSize: 11
+    titleWeight: 500
+    hoverable: false
+    titleColor: Theme.textDisabled
+    title: qsTr("no exit nodes on this tailnet")
+  }
+
+  SectionLabel {
+    objectName: "ts-exit-prefs-label"
+    text: qsTr("preferences")
+  }
+
+  // Scoped to the exit-node view and not to global settings, because it is
+  // meaningless without one: it is the control that matters when an exit node
+  // is blackholing the LAN, which is the failure this project hit on its own
+  // test VM -- without it, a node that stops answering takes the printer, the
+  // router's web UI and the NAS with it.
+  ListRow {
+    id: lanRow
+
+    objectName: "ts-exit-lan"
+    width: root.width
+    implicitHeight: 30
+    radius: Theme.radiusMenuRow
+    inset: 8
+    titleSize: 11
+    titleWeight: 500
+    hoverable: !root.refused
+    titleColor: root.refused ? Theme.textDisabled : Theme.alpha(Theme.text, 0.85)
+    title: qsTr("allow local network access")
+
+    onClicked: {
+      if (root.refused) return
+      root.lanAccess = !root.lanAccess
+      Tailscale.setExitNodeAllowLANAccess(root.lanAccess)
+    }
+
+    TogglePill {
+      objectName: "ts-exit-lan-switch"
+      anchors.verticalCenter: parent.verticalCenter
+      checked: root.lanAccess
+      enabled: !root.refused
+      // The pill sits in the trailing slot, above the row's own MouseArea, so
+      // it takes its own press -- both paths end in the one handler.
+      onToggled: lanRow.clicked()
+    }
+  }
+
+  // THE CONTRACT HAS NO ACTION FOR THIS. Advertising this machine as an exit
+  // node is `AdvertiseRoutes: ["0.0.0.0/0", "::/0"]`, and the five actions the
+  // contract publishes are WantRunning, ExitNodeID, ExitNodeAllowLANAccess,
+  // RouteAll and CorpDNS -- the v2 spec puts advertising routes out of scope.
+  // The mock drew this row disabled and so does this: a row wired to nothing
+  // would be indistinguishable from one whose write is being refused.
+  ListRow {
+    objectName: "ts-exit-advertise"
+    width: root.width
+    implicitHeight: 38
+    radius: Theme.radiusMenuRow
+    inset: 8
+    titleSize: 11
+    titleWeight: 500
+    hoverable: false
+    titleColor: Theme.textDisabled
+    title: qsTr("use this device as an exit node…")
+    subtitle: qsTr("not in this release")
+    subtitleColor: Theme.textDisabled
   }
 
   component ExitRow: ListRow {
@@ -105,17 +336,27 @@ Column {
     required property string displayName
     required property string nodeId
 
+    // Reported rather than read off `visible`, so the count above does not
+    // depend on a positioner having laid out yet.
+    readonly property bool matched: root.matches(exitRow.displayName)
+
     implicitHeight: 30
     radius: Theme.radiusMenuRow
     inset: 8
     leadingSize: 12
     titleSize: 11
     titleWeight: 500
-    // Not selectable in v1, so it does not light up under the pointer either:
-    // a hover tint on a row that cannot be chosen is a promise.
-    hoverable: false
-    titleColor: Theme.textDisabled
+    visible: exitRow.matched
+    // Dead only after a refusal, and then it does not light up under the
+    // pointer either: a hover tint on a row that cannot be chosen is a promise.
+    hoverable: !root.refused
+    titleColor: root.refused ? Theme.textDisabled : Theme.alpha(Theme.text, 0.85)
     title: exitRow.displayName
+
+    // Its own id, never its name: the row next to it may carry the same one.
+    onClicked: root.choose(exitRow.nodeId)
+
+    onMatchedChanged: root.recount()
 
     // Joined on the ID, never the name. TailscaleBackend.h says why: nothing
     // stops two machines enrolling under one hostname, and a check mark
