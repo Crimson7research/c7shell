@@ -92,6 +92,9 @@ grep -q 'pipewire.socket' <<<"$out" || fail "the pipewire user units are not ena
 grep -q 'enable: .*sddm.service' <<<"$out" || fail "sddm.service is not enabled:\n$out"
 grep -q 'enable: .*NetworkManager.service' <<<"$out" || fail "NetworkManager is not enabled:\n$out"
 grep -q 'enable: .*bluetooth.service' <<<"$out" || fail "bluetooth is not enabled:\n$out"
+grep -q 'enable: .*tailscaled.service' <<<"$out" || fail "tailscaled.service is not enabled:\n$out"
+grep -q '\btailscale\b' <<<"$out" || fail "tailscaled.service is enabled but the client is never installed:\n$out"
+grep -q 'join with: sudo tailscale up' <<<"$out" || fail "no tailnet here, yet nothing says how to join one:\n$out"
 
 # --dry-run really does nothing: no stub was asked to change anything
 [[ ! -s $log ]] || fail "--dry-run ran something:\n$(cat "$log")"
@@ -168,7 +171,7 @@ grep -q 'not enabling NetworkManager' <<<"$out" || fail "systemd-networkd was no
 grep -q 'enable: .*NetworkManager.service' <<<"$out" && fail "NetworkManager enabled over systemd-networkd:\n$out"
 
 # already-enabled units are not enabled again
-STUB_ENABLED='sddm.service NetworkManager.service bluetooth.service' out=$(plan "$AMD")
+STUB_ENABLED='sddm.service NetworkManager.service bluetooth.service tailscaled.service' out=$(plan "$AMD")
 grep -q 'no system units to enable' <<<"$out" || fail "re-enabled units that were already enabled:\n$out"
 
 # --- the update flow's dependencies ----------------------------------------
