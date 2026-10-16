@@ -113,6 +113,40 @@ private slots:
         QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g.endsWith("<three>"); }));
     }
 
+    // A request that declares a body is not whole at its delimiter. The
+    // delimiter that frames an HTTP request is the one that ENDS ITS HEADERS,
+    // so a PATCH framed on it alone is recorded without the thing it is for,
+    // and the bytes behind it are read as the start of the next request. A
+    // test asserting what a write put on the wire would then be asserting
+    // against a request with no body in it -- and would pass whatever the
+    // body said.
+    void readsTheBodyARequestDeclaresBeforeFramingIt()
+    {
+        FakeSocketServer server(path);
+        server.onRequest([](const QByteArray &) { return QByteArray("ok"); },
+                         FakeSocketServer::KeepOpen, "\r\n\r\n");
+        auto client = connectTo(path);
+        QVERIFY(client);
+        // Split across two writes, because a declared body arrives whenever
+        // it arrives: nothing may be framed until all of it has.
+        client->write("PATCH /p HTTP/1.1\r\nContent-Length: 10\r\n\r\n{\"a\":");
+        client->flush();
+        QByteArray got;
+        // Proving a negative needs a bounded wait, not the 10s one above.
+        QTest::qWait(50);
+        QVERIFY2(server.requests().isEmpty(), "a request with half its body was framed as whole");
+        client->write("true}");
+        QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g == "ok"; }));
+        QCOMPARE(server.requests().size(), 1);
+        QCOMPARE(server.requests().first(),
+                 QByteArray("PATCH /p HTTP/1.1\r\nContent-Length: 10\r\n\r\n{\"a\":true}"));
+        // And the next request on the same connection still frames: the body
+        // was consumed, not left to be read as the head of this one.
+        client->write("GET /q HTTP/1.1\r\n\r\n");
+        QVERIFY(waitUntil([&] { return server.requests().size() == 2; }));
+        QCOMPARE(server.requests().last(), QByteArray("GET /q HTTP/1.1"));
+    }
+
     void answersNothingAfterClosing()
     {
         // Two framed requests in one read: the first reply closes the client,
@@ -147,6 +181,23 @@ private slots:
         QVERIFY(readUntil(*second, b, [](const QByteArray &g) { return g.endsWith('\n'); }));
         QCOMPARE(a, QByteArray("workspace>>2\n"));
         QCOMPARE(b, QByteArray("workspace>>2\n"));
+    }
+
+    void pushesExactlyTheBytesOfAChunk()
+    {
+        // Half a line, then the rest: what a client that reads lines out of a
+        // stream has to survive, and what pushLine alone cannot stage.
+        FakeSocketServer server(path);
+        auto client = connectTo(path);
+        QVERIFY(client);
+        QVERIFY(waitUntil([&] { return server.clientCount() == 1; }));
+
+        QCOMPARE(server.pushChunk("{\"half\":"), 1);
+        QByteArray got;
+        QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g == "{\"half\":"; }));
+        QCOMPARE(server.pushChunk("1}\n"), 1);
+        QVERIFY(readUntil(*client, got, [](const QByteArray &g) { return g.endsWith('\n'); }));
+        QCOMPARE(got, QByteArray("{\"half\":1}\n"));
     }
 
     void saysWhenALineReachedNobody()

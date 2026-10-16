@@ -4,7 +4,30 @@
 #include <QtCore/QFileInfo>
 #include <QtNetwork/QLocalSocket>
 
+#include <utility>
+
 namespace c7::testing {
+
+namespace {
+
+// The body size `head` declares, or 0 when it declares none. Only HTTP says
+// this, which is the point: a framed request from anything else carries no
+// such header and is unaffected.
+qsizetype declaredBodySize(const QByteArray &head)
+{
+    const QList<QByteArray> lines = head.split('\n');
+    for (const QByteArray &line : lines) {
+        const qsizetype colon = line.indexOf(':');
+        if (colon < 0 || line.left(colon).trimmed().toLower() != "content-length")
+            continue;
+        bool ok = false;
+        const qsizetype size = line.mid(colon + 1).trimmed().toLongLong(&ok);
+        return ok && size > 0 ? size : 0;
+    }
+    return 0;
+}
+
+} // namespace
 
 FakeSocketServer::FakeSocketServer(const QString &path, QObject *parent)
     : QObject(parent), m_path(path)
@@ -50,11 +73,43 @@ void FakeSocketServer::onRequest(Handler handler, AfterReply after, const QByteA
 
 int FakeSocketServer::pushLine(const QByteArray &line)
 {
+    return pushChunk(line + '\n');
+}
+
+int FakeSocketServer::pushChunk(const QByteArray &bytes)
+{
     // A copy: a write that fails can disconnect a client, which edits m_clients.
-    const QList<QPointer<QLocalSocket>> clients = m_clients;
+    QList<QPointer<QLocalSocket>> clients = m_clients;
+    // A held client is mid-request: bytes pushed at it are read as that
+    // request's body, which is not what a push means.
+    for (const QPointer<QLocalSocket> &held : std::as_const(m_held))
+        clients.removeAll(held);
+    return writeTo(clients, bytes);
+}
+
+void FakeSocketServer::holdNext(const QByteArray &fragment)
+{
+    m_holdFragment = fragment;
+}
+
+int FakeSocketServer::completeHeld(const QByteArray &reply)
+{
+    const QList<QPointer<QLocalSocket>> held = std::exchange(m_held, {});
+    const int reached = writeTo(held, reply);
+    if (m_after == CloseAfterReply) {
+        for (const QPointer<QLocalSocket> &c : held) {
+            if (c)
+                c->disconnectFromServer();
+        }
+    }
+    return reached;
+}
+
+int FakeSocketServer::writeTo(const QList<QPointer<QLocalSocket>> &clients, const QByteArray &bytes)
+{
     int reached = 0;
     for (const QPointer<QLocalSocket> &c : clients) {
-        if (c && c->state() == QLocalSocket::ConnectedState && c->write(line + '\n') == line.size() + 1)
+        if (c && c->state() == QLocalSocket::ConnectedState && c->write(bytes) == bytes.size())
             ++reached;
     }
     return reached;
@@ -67,6 +122,7 @@ void FakeSocketServer::accept()
         connect(client, &QLocalSocket::readyRead, this, [this, client] { read(client); });
         connect(client, &QLocalSocket::disconnected, this, [this, client] {
             m_clients.removeAll(client);
+            m_held.removeAll(client);
             m_pending.remove(client);
             client->deleteLater();
         });
@@ -89,8 +145,17 @@ void FakeSocketServer::read(QLocalSocket *client)
     // disconnect also drops the client's pending bytes.
     while (m_pending.contains(client) && client->state() == QLocalSocket::ConnectedState
            && (at = pending.indexOf(m_delimiter)) >= 0) {
-        const QByteArray request = pending.left(at);
-        pending.remove(0, at + m_delimiter.size());
+        const QByteArray head = pending.left(at);
+        // A request that declares a body is not whole at the delimiter. The
+        // delimiter that frames HTTP is the one ending its HEADERS, so a
+        // request with a body would otherwise be recorded without the thing
+        // it is for, and its body read as the start of the next request.
+        const qsizetype body = declaredBodySize(head);
+        if (pending.size() < at + m_delimiter.size() + body)
+            return;
+        const QByteArray request =
+            body > 0 ? head + m_delimiter + pending.mid(at + m_delimiter.size(), body) : head;
+        pending.remove(0, at + m_delimiter.size() + body);
         answer(client, request);
     }
 }
@@ -98,6 +163,12 @@ void FakeSocketServer::read(QLocalSocket *client)
 void FakeSocketServer::answer(QLocalSocket *client, const QByteArray &request)
 {
     m_requests << request;
+    // Held: recorded, unanswered, and left connected -- a request in flight.
+    if (!m_holdFragment.isEmpty() && request.contains(m_holdFragment)) {
+        m_holdFragment.clear();
+        m_held << client;
+        return;
+    }
     if (!m_handler)
         return;
     client->write(m_handler(request));
