@@ -170,7 +170,11 @@ void selectsAnExitNodeByIdNotByIp()       // ExitNodeID is written, ExitNodeIP i
 
 Restores what the mock drew and v1 dropped: rows become selectable, plus `allow local network access` as a switch and `use this device as an exit node…`, and a search field filtering the list.
 
-- [ ] **Step 1: Write the failing tests** — clicking a row calls `setExitNode(nodeId)`; `none` calls it with `""`; the LAN switch calls `setExitNodeAllowLANAccess`; search filters and a no-match query reads as "no matches"; every control is disabled with an explanation when `!Tailscale.writable`.
+- [ ] **Step 1: Write the failing tests** — clicking a row calls `setExitNode(nodeId)`; `none` calls it with `""`; the LAN switch calls `setExitNodeAllowLANAccess`; search filters and a no-match query reads as "no matches"; every control is disabled with an explanation when `!Tailscale.writable` — which means
+  *after a refusal*, not before the first write. `writable` starts **true** and goes false on a
+  403; it is an explanation, not a precondition. The earlier wording, "false until a write has
+  been seen to succeed", deadlocked against this rule: a correctly bootstrapped machine would
+  have opened with every control disabled and no way to make the first write.
 - [ ] **Step 2: Run to verify they fail** — `$RR tests/test-tailscale.sh`
 - [ ] **Step 3: Implement**
 - [ ] **Step 4: Run to verify they pass**, and `$RR tests/test-qml-hygiene.sh`
@@ -207,7 +211,7 @@ A settings sub-card with `accept routes` (`RouteAll`) and `accept dns` (`CorpDNS
 
 `accept routes` closes a loop from v1: `RouteAll: false` is the pref behind the standing health warning the module suppresses. With the switch present, the suppressed warning becomes explicable — say why it is suppressed, beside the control that changes it.
 
-- [ ] **Step 1: Write the failing tests** — both switches reflect the backend and call their actions; the suppressed route warning is shown as an explanation beside `accept routes` rather than silently dropped; both are disabled with a reason when `!Tailscale.writable`.
+- [ ] **Step 1: Write the failing tests** — both switches reflect the backend and call their actions; a control is live until a write is refused and disabled with its reason afterwards; the suppressed route warning is shown as an explanation beside `accept routes` rather than silently dropped; both are disabled with a reason when `!Tailscale.writable`.
 - [ ] **Step 2: Run to verify they fail**
 - [ ] **Step 3: Implement**
 - [ ] **Step 4: Run to verify they pass**
