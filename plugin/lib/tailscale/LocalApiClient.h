@@ -84,6 +84,21 @@ public:
     // caller with one request in flight and nothing to disambiguate.
     void get(const QString &path, quint64 token = 0);
 
+    // PATCH `path` with `body` as JSON, ending in replied() or failed() with
+    // `token` handed back, exactly as get() does.
+    //
+    // The one write this local API takes, and it lives here rather than in a
+    // backend for the reason every read does: it is the same exchange, one
+    // socket and one response, and the deadline below is the whole reason
+    // nothing else may open a socket of its own.
+    //
+    // A REFUSAL IS AN ORDINARY OUTCOME HERE, not a sign tailscaled is gone.
+    // It authorises writes by peer credentials -- root, or the one user named
+    // as its operator -- and answers anyone else 403 while serving that same
+    // user's reads perfectly. A caller that treats a failed write like a
+    // failed read publishes "no daemon" for what is a permission setting.
+    void patch(const QString &path, const QByteArray &body, quint64 token = 0);
+
     // Stream /localapi/v0/watch-ipn-bus: one event() per complete line, then
     // watchEnded() when the stream stops.
     void watch();
@@ -138,7 +153,8 @@ private:
         QTimer *deadline = nullptr;
     };
 
-    void start(const QString &path, bool streaming, quint64 token);
+    void start(const QByteArray &method, const QString &path, const QByteArray &body,
+               bool streaming, quint64 token);
     void read(QLocalSocket *socket);
     // Headers, framing, delivery -- each step able to end the exchange, after
     // which the ones behind it do nothing.

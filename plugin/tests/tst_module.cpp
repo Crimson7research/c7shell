@@ -2,6 +2,7 @@
 
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QFileInfo>
+#include <QtCore/QMetaMethod>
 #include <QtCore/QMetaObject>
 #include <QtCore/QMetaProperty>
 #include <QtCore/QStringList>
@@ -39,6 +40,24 @@ QStringList declaredProperties(const QObject *obj)
     QStringList names;
     for (int i = QObject::staticMetaObject.propertyCount(); i < meta->propertyCount(); ++i)
         names << QString::fromUtf8(meta->property(i).name());
+    names.sort();
+    return names;
+}
+
+// Every method `obj` offers QML beyond QObject's own, sorted and with its
+// signature. Signals are left out: they are reached by their property's
+// binding, never called. QML can only call what is in here, so a
+// Q_INVOKABLE that lost its macro is a method that still compiles, still
+// links, and is simply not there behind the click.
+QStringList invokableMethods(const QObject *obj)
+{
+    const QMetaObject *meta = obj->metaObject();
+    QStringList names;
+    for (int i = QObject::staticMetaObject.methodCount(); i < meta->methodCount(); ++i) {
+        const QMetaMethod method = meta->method(i);
+        if (method.methodType() == QMetaMethod::Method && method.access() == QMetaMethod::Public)
+            names << QString::fromUtf8(method.methodSignature());
+    }
     names.sort();
     return names;
 }
@@ -115,9 +134,29 @@ private slots:
             QStringLiteral("exitNodeOnline"),  QStringLiteral("exitNodeBlocked"),
             QStringLiteral("issues"),          QStringLiteral("issueCount"),
             QStringLiteral("peers"),           QStringLiteral("exitNodes"),
-            QStringLiteral("recommendedExitNodeId")};
+            QStringLiteral("recommendedExitNodeId"), QStringLiteral("writable"),
+            QStringLiteral("writeError")};
         expected.sort();
         QCOMPARE(declaredProperties(ts), expected);
+    }
+
+    // The other half of the same contract: what QML may CALL. These are the
+    // first actions on any C7 singleton, and the way to lose one is silent --
+    // a method without Q_INVOKABLE compiles, links and is absent at run time,
+    // where the only sign is a warning on a console nobody is reading behind a
+    // control that does nothing.
+    void tailscaleSingletonExposesExactlyItsActions()
+    {
+        QQmlEngine engine;
+        QObject *ts = singleton(engine, "Tailscale");
+        QVERIFY2(ts, "module C7 loaded but its Tailscale singleton did not");
+        QStringList expected{QStringLiteral("setWantRunning(bool)"),
+                             QStringLiteral("setExitNode(QString)"),
+                             QStringLiteral("setExitNodeAllowLANAccess(bool)"),
+                             QStringLiteral("setAcceptRoutes(bool)"),
+                             QStringLiteral("setAcceptDns(bool)")};
+        expected.sort();
+        QCOMPARE(invokableMethods(ts), expected);
     }
 };
 

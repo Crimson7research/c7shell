@@ -6,6 +6,7 @@
 #include "tailscale/Types.h"
 
 #include <QtCore/QByteArray>
+#include <QtCore/QJsonValue>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 
@@ -104,6 +105,18 @@ public:
 
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
 
+    bool writable() const override { return m_writable; }
+    QString writeError() const override { return m_writeError; }
+
+    // Each one PATCHes the single pref behind it and publishes nothing: see
+    // the note on writePref, and on the contract, for why the bus and not the
+    // reply is what moves the properties these change.
+    void setWantRunning(bool on) override;
+    void setExitNode(const QString &nodeId) override;
+    void setExitNodeAllowLANAccess(bool on) override;
+    void setAcceptRoutes(bool on) override;
+    void setAcceptDns(bool on) override;
+
 signals:
     // The delay this backend armed, each time it armed one. Nothing in QML
     // binds to it: it is here so a test can read the curve the reconnect
@@ -171,6 +184,14 @@ private:
     // running flat at the base delay forever. Only m_settle firing clears it.
     void noteEstablished();
 
+    // PATCH /localapi/v0/prefs with `field` set to `value` AND the `<field>Set`
+    // sibling beside it.
+    void writePref(const QString &field, const QJsonValue &value);
+    // Store and announce what the last write did. Store first, both members,
+    // then emit: a panel reacting to writableChanged must not read the
+    // previous error beneath it.
+    void noteWriteOutcome(bool accepted, const QString &reason);
+
     // Publish the pass once both its replies are in; do nothing until then.
     void applySnapshotWhenWhole();
     void applyStatus(const c7::tailscale::Status &status, const QString &prefsExitNodeId);
@@ -203,6 +224,15 @@ private:
     QString m_recommendedExitNodeId;
 
     c7::tailscale::LocalApiClient m_client;
+    // A SECOND CLIENT, FOR WRITES ONLY, and the separation is load-bearing
+    // twice over. /localapi/v0/prefs is both the read path and the write
+    // path, so a PATCH answered on m_client would arrive at onReplied as the
+    // prefs half of a snapshot -- a pass paired out of a status tailscaled
+    // sent and a reply to something this object asked it to do. And a refused
+    // write would arrive at onFailed, which routes everything but the
+    // suggestion to lostTailscaled(): a permission setting would publish
+    // NoState, blank the panel and start the reconnect curve.
+    c7::tailscale::LocalApiClient m_writer;
     QTimer m_retry;
     // Armed when the connection is whole, and the only thing that clears the
     // backoff. A connection that does not outlive it did not work.
@@ -241,4 +271,9 @@ private:
     int m_openingReads = 0;
     bool m_attemptFailed = false;
     bool m_established = false;
+    // False until a write has been seen to work -- see the contract. Nothing
+    // in a /status or a /prefs says whether this process may write, so until
+    // one is attempted there is nothing to publish but "not known to".
+    bool m_writable = false;
+    QString m_writeError;
 };

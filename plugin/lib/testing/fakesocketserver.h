@@ -44,6 +44,13 @@ public:
     // delimiter shows as a missing request, never a partial one. Without one, a
     // request is whatever one read returns, which is how Hyprland's request
     // socket reads; use that only where the client writes once and waits.
+    //
+    // With a delimiter, a request that declares a `Content-Length` also takes
+    // that many bytes from behind the delimiter, and is not a request until
+    // all of them have arrived. That is HTTP, whose delimiter ends its
+    // HEADERS and not its message: without this a PATCH is recorded with its
+    // body missing, and the body is then read as the start of the next
+    // request. Nothing else sends that header, so nothing else is affected.
     void onRequest(Handler handler, AfterReply after = CloseAfterReply, const QByteArray &delimiter = {});
 
     // Withhold the reply to the next request whose text contains `fragment`:

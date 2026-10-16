@@ -10,6 +10,10 @@
 #include <QtCore/QFile>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QJsonValue>
+#include <QtCore/QList>
+#include <QtCore/QMetaObject>
+#include <QtCore/QVariant>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QSignalSpy>
@@ -104,6 +108,76 @@ void serveEndableWatch(FakeSocketServer &server, const char *statusFixture)
             FakeSocketServer::KeepOpen, "\r\n\r\n");
 }
 
+// A tailscaled that takes writes, and whose answers the test can change under
+// the backend. `prefs` is read AT THE MOMENT IT IS ASKED, which is the whole
+// point: a daemon that did something other than what it was told is the case
+// rule 2 is about, and it cannot be staged with a fixed reply.
+struct Daemon {
+    // What a PATCH is answered with. Measured against a live tailscaled
+    // 1.104.1: 200 and the resulting prefs for the operator, and
+    // 403 "prefs write access denied" for anyone else.
+    QByteArray patchReply;
+    QByteArray prefs;
+    const char *statusFixture = "status-idle.json";
+};
+
+// 403 Forbidden exactly as a live tailscaled 1.104.1 refuses a write from a
+// user who is not its operator -- status, body and all. This is the ORDINARY
+// answer on a machine where c7shell-bootstrap has not run.
+QByteArray refused()
+{
+    return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; "
+                             "charset=utf-8\r\nContent-Length: 26\r\n\r\n"
+                             "prefs write access denied\n");
+}
+
+// Routes on the METHOD before the path, because /localapi/v0/prefs is both
+// the read and the write path: a handler that matched the path first would
+// answer every write with the prefs body and the backend would never see a
+// refusal at all.
+void serveWritableDaemon(FakeSocketServer &server, const Daemon *daemon)
+{
+    server.onRequest(
+            [daemon](const QByteArray &request) -> QByteArray {
+                if (request.startsWith("PATCH"))
+                    return daemon->patchReply;
+                if (request.contains("/localapi/v0/watch-ipn-bus"))
+                    return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                if (request.contains("/localapi/v0/suggest-exit-node"))
+                    return measured(fixture("suggest-exit-node.json"));
+                if (request.contains("/localapi/v0/prefs"))
+                    return measured(daemon->prefs);
+                if (request.contains("/localapi/v0/status"))
+                    return chunked(fixture(daemon->statusFixture));
+                return QByteArrayLiteral("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+            },
+            FakeSocketServer::KeepOpen, "\r\n\r\n");
+}
+
+// Every PATCH the fake received, in order, as it arrived.
+QByteArrayList writeRequests(const FakeSocketServer &server)
+{
+    QByteArrayList patches;
+    for (const QByteArray &request : server.requests()) {
+        if (request.startsWith("PATCH"))
+            patches.append(request);
+    }
+    return patches;
+}
+
+// Their bodies, parsed. The request line is a separate assertion where it
+// matters, so a body that is right on a request that went somewhere else
+// fails on the line rather than on a count that never arrives.
+QList<QJsonObject> writes(const FakeSocketServer &server)
+{
+    QList<QJsonObject> bodies;
+    for (const QByteArray &request : writeRequests(server)) {
+        const qsizetype at = request.indexOf("\r\n\r\n");
+        bodies.append(QJsonDocument::fromJson(request.mid(at + 4)).object());
+    }
+    return bodies;
+}
+
 // The capture's /prefs with ExitNodeID set to `id` -- a selection tailscaled
 // has taken but whose ExitNodeStatus the status does not yet carry, which is
 // the window this module exists to be honest about and cannot be captured
@@ -150,6 +224,21 @@ QString nodeIdOf(const char *statusFixture, const QString &hostName)
     for (const Peer &peer : status->peers) {
         if (peer.hostName == hostName)
             return peer.nodeId;
+    }
+    return {};
+}
+
+// That peer's tailnet address, read out of the same capture. The other thing
+// tailscaled will accept in a prefs write where a node id belongs, and the
+// one that silently selects nothing.
+QString ip4Of(const char *statusFixture, const QString &hostName)
+{
+    const auto status = StatusParser::parse(fixture(statusFixture));
+    if (!status)
+        return {};
+    for (const Peer &peer : status->peers) {
+        if (peer.hostName == hostName)
+            return peer.ip4;
     }
     return {};
 }
@@ -936,6 +1025,184 @@ private slots:
         QCOMPARE(requestsFor(server, "/localapi/v0/suggest-exit-node "), 1);
         server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
         QTRY_COMPARE(requestsFor(server, "/localapi/v0/suggest-exit-node "), 2);
+    }
+
+    // ---- Writes ----
+
+    // Each action is one pref, written with the `...Set` sibling beside it.
+    // MaskedPrefs is a prefs object plus a boolean per field naming it as one
+    // the caller means: tailscaled drops a field whose sibling is absent,
+    // SILENTLY AND WITH A 200, which is a control that reports success and
+    // changes nothing. The exact-object comparison is the point -- a body
+    // carrying anything else is a body this module did not mean to send.
+    void writesThePrefAndItsSetSibling_data()
+    {
+        QTest::addColumn<QByteArray>("action");
+        QTest::addColumn<QVariant>("argument");
+        QTest::addColumn<QString>("field");
+        QTest::newRow("connect") << QByteArray("setWantRunning") << QVariant(true)
+                                 << QStringLiteral("WantRunning");
+        QTest::newRow("disconnect") << QByteArray("setWantRunning") << QVariant(false)
+                                    << QStringLiteral("WantRunning");
+        QTest::newRow("local network access")
+                << QByteArray("setExitNodeAllowLANAccess") << QVariant(true)
+                << QStringLiteral("ExitNodeAllowLANAccess");
+        // RouteAll and CorpDNS, not the names the panel uses for them: the
+        // wire names are tailscaled's and nothing else accepts them.
+        QTest::newRow("accept routes") << QByteArray("setAcceptRoutes") << QVariant(true)
+                                       << QStringLiteral("RouteAll");
+        QTest::newRow("accept dns") << QByteArray("setAcceptDns") << QVariant(false)
+                                    << QStringLiteral("CorpDNS");
+        QTest::newRow("an exit node")
+                << QByteArray("setExitNode")
+                << QVariant(nodeIdOf("status-idle.json", QStringLiteral("pentest-exit-node")))
+                << QStringLiteral("ExitNodeID");
+        // "none" is an empty id, and it still carries the sibling: without it
+        // the clear is dropped and the exit node stays selected.
+        QTest::newRow("no exit node") << QByteArray("setExitNode") << QVariant(QString())
+                                      << QStringLiteral("ExitNodeID");
+    }
+
+    void writesThePrefAndItsSetSibling()
+    {
+        QFETCH(QByteArray, action);
+        QFETCH(QVariant, argument);
+        QFETCH(QString, field);
+        Daemon daemon{measured(fixture("prefs-patched.json")), fixture("prefs.json")};
+        FakeSocketServer server(socketPath());
+        serveWritableDaemon(server, &daemon);
+        LocalApiTailscaleBackend b(socketPath());
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+
+        const bool called = argument.typeId() == QMetaType::QString
+                ? QMetaObject::invokeMethod(ts, action.constData(),
+                                            Q_ARG(QString, argument.toString()))
+                : QMetaObject::invokeMethod(ts, action.constData(),
+                                            Q_ARG(bool, argument.toBool()));
+        QVERIFY2(called, action.constData());
+
+        QTRY_COMPARE(writes(server).size(), 1);
+        QVERIFY2(writeRequests(server).first().startsWith(
+                         "PATCH /localapi/v0/prefs HTTP/1.1\r\n"),
+                 writeRequests(server).first().constData());
+        QJsonObject expected;
+        expected.insert(field, QJsonValue::fromVariant(argument));
+        expected.insert(field + QStringLiteral("Set"), true);
+        QCOMPARE(writes(server).first(), expected);
+    }
+
+    // The ordinary failure on a machine where nobody has named this user as
+    // tailscaled's operator, which is every machine until c7shell-bootstrap
+    // has run. It must be visible: a toggle that springs back for no stated
+    // reason is the thing this property exists to prevent.
+    void reportsThatItCannotWriteOnA403()
+    {
+        Daemon daemon{refused(), fixture("prefs.json")};
+        FakeSocketServer server(socketPath());
+        serveWritableDaemon(server, &daemon);
+        LocalApiTailscaleBackend b(socketPath());
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QVERIFY2(!ts->writable(), "a backend that has never written claimed that it could");
+
+        QSignalSpy writable(&b, &TailscaleBackend::writableChanged);
+        QSignalSpy error(&b, &TailscaleBackend::writeErrorChanged);
+        ts->setAcceptRoutes(true);
+        QTRY_VERIFY2(!ts->writeError().isEmpty(), "a refused write said nothing at all");
+        QVERIFY2(ts->writeError().contains(QStringLiteral("403")), qPrintable(ts->writeError()));
+        QCOMPARE(error.size(), 1);
+        QVERIFY(!ts->writable());
+
+        // A PERMISSION SETTING IS NOT A DAEMON THAT HAS GONE. Every other
+        // failure on this socket routes to lostTailscaled(), which publishes
+        // NoState, blanks the panel and starts the reconnect curve -- and a
+        // panel that has just disappeared cannot explain why the toggle moved
+        // back. This is what the separate write client is for.
+        QCOMPARE(b.state(), TailscaleBackend::State::Running);
+        QCOMPARE(b.peers()->rowCount(), 20);
+
+        // Not a constant: the same backend reads as writable the moment a
+        // write is taken, which is what makes the false above mean something.
+        daemon.patchReply = measured(fixture("prefs-patched.json"));
+        ts->setAcceptRoutes(true);
+        QTRY_VERIFY(ts->writable());
+        QCOMPARE(writable.size(), 1);
+        QVERIFY2(ts->writeError().isEmpty(), qPrintable(ts->writeError()));
+    }
+
+    // THE BUS IS THE AUTHORITY. A write is a request; what this module
+    // publishes is what tailscaled then says, even when that is not what was
+    // asked for -- another process selecting a different exit node a moment
+    // later is the ordinary way that happens, and the panel has no standing to
+    // argue with it. Publishing the click instead makes a refused write and an
+    // accepted one look identical.
+    void letsTheBusOverruleAnOptimisticWrite()
+    {
+        const QString chosen =
+                nodeIdOf("status-idle.json", QStringLiteral("pentest-exit-node"));
+        const QString imposed = nodeIdOf("status-idle.json", QStringLiteral("ip-172-31-0-10"));
+        QVERIFY(!chosen.isEmpty());
+        QVERIFY(!imposed.isEmpty());
+        QVERIFY(chosen != imposed);
+
+        Daemon daemon{measured(fixture("prefs-patched.json")), fixture("prefs.json")};
+        FakeSocketServer server(socketPath());
+        serveWritableDaemon(server, &daemon);
+        LocalApiTailscaleBackend b(socketPath());
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QVERIFY(ts->exitNodeId().isEmpty());
+
+        ts->setExitNode(chosen);
+        // Nothing has moved yet, and nothing may: no event loop has run
+        // between the call and this line, so the request cannot even have
+        // left the process. A backend that published here would be reporting
+        // its own intention as tailscaled's state.
+        QCOMPARE(ts->exitNodeId(), QString());
+        QVERIFY(!ts->exitNodeActive());
+
+        // tailscaled took the write and ended up somewhere else.
+        daemon.prefs = prefsSelecting(imposed);
+        QTRY_VERIFY(ts->writable());
+        QCOMPARE(ts->exitNodeId(), QString());
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+
+        QTRY_COMPARE(ts->exitNodeId(), imposed);
+        QVERIFY2(ts->exitNodeId() != chosen,
+                 "the panel published what was clicked instead of what tailscaled reported");
+    }
+
+    // /prefs carries ExitNodeID and ExitNodeIP side by side. A selection
+    // written into the address is accepted without complaint and selects
+    // nothing, and tailscaled refuses a mask that names both at once -- so the
+    // field that goes on the wire is pinned here rather than left to read the
+    // same either way.
+    void selectsAnExitNodeByIdNotByIp()
+    {
+        const QString id = nodeIdOf("status-idle.json", QStringLiteral("pentest-exit-node"));
+        const QString ip4 = ip4Of("status-idle.json", QStringLiteral("pentest-exit-node"));
+        QVERIFY(!id.isEmpty());
+        QVERIFY(!ip4.isEmpty());
+
+        Daemon daemon{measured(fixture("prefs-patched.json")), fixture("prefs.json")};
+        FakeSocketServer server(socketPath());
+        serveWritableDaemon(server, &daemon);
+        LocalApiTailscaleBackend b(socketPath());
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+
+        ts->setExitNode(id);
+        QTRY_COMPARE(writes(server).size(), 1);
+        const QJsonObject body = writes(server).first();
+        QCOMPARE(body.value(QLatin1String("ExitNodeID")).toString(), id);
+        QVERIFY(body.value(QLatin1String("ExitNodeIDSet")).toBool());
+        QVERIFY2(!body.contains(QLatin1String("ExitNodeIP")), "the write named an address too");
+        QVERIFY2(!body.contains(QLatin1String("ExitNodeIPSet")), "the write named an address too");
+        // What reached the wire is the id, not the peer's address under
+        // another name.
+        QVERIFY2(!QJsonDocument(body).toJson(QJsonDocument::Compact).contains(ip4.toUtf8()),
+                 "the exit node's tailnet address went out in the prefs write");
     }
 
 private:
