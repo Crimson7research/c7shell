@@ -100,14 +100,19 @@ LocalApiClient::~LocalApiClient()
 
 void LocalApiClient::get(const QString &path, quint64 token)
 {
-    start(path, false, token);
+    start("GET", path, {}, false, token);
+}
+
+void LocalApiClient::patch(const QString &path, const QByteArray &body, quint64 token)
+{
+    start("PATCH", path, body, false, token);
 }
 
 void LocalApiClient::watch()
 {
     // Zero: a watch is a stream, not a round of asking, and has nothing for a
     // token to identify.
-    start(kWatchPath, true, 0);
+    start("GET", kWatchPath, {}, true, 0);
 }
 
 void LocalApiClient::stop()
@@ -117,7 +122,8 @@ void LocalApiClient::stop()
         take(socket);
 }
 
-void LocalApiClient::start(const QString &path, bool streaming, quint64 token)
+void LocalApiClient::start(const QByteArray &method, const QString &path,
+                           const QByteArray &body, bool streaming, quint64 token)
 {
     auto *socket = new QLocalSocket(this);
     Exchange exchange;
@@ -143,8 +149,15 @@ void LocalApiClient::start(const QString &path, bool streaming, quint64 token)
         deadline->start(m_timeoutMs);
     }
 
-    const QByteArray request =
-        "GET " + path.toUtf8() + " HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n";
+    // Content-Length and nothing clever: tailscaled reads the body only when
+    // one is declared, so a write sent without it is a 200 that changed
+    // nothing. A request with no body keeps exactly the bytes it always sent.
+    QByteArray request = method + " " + path.toUtf8()
+            + " HTTP/1.1\r\nHost: local-tailscaled.sock\r\n";
+    if (!body.isEmpty())
+        request += "Content-Type: application/json\r\nContent-Length: "
+                + QByteArray::number(body.size()) + "\r\n";
+    request += "\r\n" + body;
     // Written once connected rather than straight away: a connection that
     // never happens must end in errorOccurred, not in a buffered write.
     connect(socket, &QLocalSocket::connected, this, [socket, request] { socket->write(request); });

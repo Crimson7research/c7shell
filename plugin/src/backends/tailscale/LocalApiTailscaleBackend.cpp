@@ -74,8 +74,9 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QObject *parent)
 LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retryBaseMs,
                                                    int settleMs, int requestTimeoutMs,
                                                    QObject *parent)
-    : TailscaleBackend(parent), m_client(std::move(socketPath), requestTimeoutMs, this),
-      m_retryBaseMs(retryBaseMs), m_settleMs(settleMs)
+    : TailscaleBackend(parent), m_client(socketPath, requestTimeoutMs, this),
+      m_writer(std::move(socketPath), requestTimeoutMs, this), m_retryBaseMs(retryBaseMs),
+      m_settleMs(settleMs)
 {
     connect(&m_client, &LocalApiClient::replied, this, &LocalApiTailscaleBackend::onReplied);
     connect(&m_client, &LocalApiClient::failed, this, &LocalApiTailscaleBackend::onFailed);
@@ -91,6 +92,28 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     connect(&m_client, &LocalApiClient::watchEnded, this,
             &LocalApiTailscaleBackend::lostTailscaled);
 
+    // The write client, whose endings go nowhere near the ones above.
+    //
+    // Accepted: say so, and publish NOTHING FROM THE REPLY. It carries the
+    // prefs tailscaled ended up with, and reading them here would be this
+    // module learning its own state from its own request -- the one source
+    // that cannot contradict what was asked for. tailscaled sends every
+    // watcher a notification for an accepted prefs change, and that
+    // notification is what starts the pass that publishes it.
+    connect(&m_writer, &LocalApiClient::replied, this,
+            [this](const QString &, const QByteArray &, quint64) { noteWriteOutcome(true, {}); });
+    // Refused: say why, and do nothing else. 403 "prefs write access denied"
+    // is the ORDINARY answer here -- the desktop user is not tailscaled's
+    // operator, which c7shell-bootstrap names once -- and it says nothing
+    // whatever about the daemon, which is serving this same process's reads
+    // on the same socket. Reaching lostTailscaled() from here would publish
+    // NoState for a permission setting and take away the panel that was about
+    // to explain it.
+    connect(&m_writer, &LocalApiClient::failed, this,
+            [this](const QString &, const QString &reason, quint64) {
+                noteWriteOutcome(false, reason);
+            });
+
     m_retry.setSingleShot(true);
     connect(&m_retry, &QTimer::timeout, this, &LocalApiTailscaleBackend::open);
     m_settle.setSingleShot(true);
@@ -99,6 +122,63 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     // over rather than resuming it.
     connect(&m_settle, &QTimer::timeout, this, [this] { m_attempts = 0; });
     open();
+}
+
+void LocalApiTailscaleBackend::setWantRunning(bool on)
+{
+    writePref(QStringLiteral("WantRunning"), on);
+}
+
+void LocalApiTailscaleBackend::setExitNode(const QString &nodeId)
+{
+    writePref(QStringLiteral("ExitNodeID"), nodeId);
+}
+
+void LocalApiTailscaleBackend::setExitNodeAllowLANAccess(bool on)
+{
+    writePref(QStringLiteral("ExitNodeAllowLANAccess"), on);
+}
+
+void LocalApiTailscaleBackend::setAcceptRoutes(bool on)
+{
+    writePref(QStringLiteral("RouteAll"), on);
+}
+
+void LocalApiTailscaleBackend::setAcceptDns(bool on)
+{
+    writePref(QStringLiteral("CorpDNS"), on);
+}
+
+void LocalApiTailscaleBackend::writePref(const QString &field, const QJsonValue &value)
+{
+    // THE VALUE AND ITS `...Set` SIBLING. tailscaled takes a MaskedPrefs: a
+    // prefs object plus one boolean per field naming it as a field the caller
+    // means. A field whose sibling is absent is dropped -- silently, and with
+    // a 200 -- so a write without it is a control that reports success and
+    // changes nothing. Measured against a live 1.104.1.
+    //
+    // One field per write, never a whole prefs object: a mask naming only
+    // what moved cannot carry a value this module read minutes ago back over
+    // a change something else made since.
+    QJsonObject masked;
+    masked.insert(field, value);
+    masked.insert(field + QStringLiteral("Set"), true);
+    m_writer.patch(kPrefsPath, QJsonDocument(masked).toJson(QJsonDocument::Compact));
+}
+
+void LocalApiTailscaleBackend::noteWriteOutcome(bool accepted, const QString &reason)
+{
+    // Both members before either signal, as everywhere else here: a panel
+    // reacting to writableChanged must not read the previous error underneath
+    // it.
+    const bool writableMoved = m_writable != accepted;
+    const bool errorMoved = m_writeError != reason;
+    m_writable = accepted;
+    m_writeError = reason;
+    if (writableMoved)
+        emit writableChanged();
+    if (errorMoved)
+        emit writeErrorChanged();
 }
 
 const QStringList &LocalApiTailscaleBackend::suppressedHealth()
@@ -132,6 +212,11 @@ void LocalApiTailscaleBackend::open()
     // attempt's sockets to report endings that are no longer about the
     // connection this object has. stop() is silent by contract, so dropping
     // the old watch here cannot trigger the very reconnect it is part of.
+    //
+    // m_writer is deliberately left alone: a write in flight is a thing
+    // someone asked for, and it has an answer of its own coming. Dropping it
+    // because the read side reconnected would lose that answer silently --
+    // and silence is the one outcome a write may not have.
     m_client.stop();
     m_settle.stop();
     m_openPass = 0;

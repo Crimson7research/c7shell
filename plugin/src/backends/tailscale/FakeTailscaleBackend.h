@@ -41,6 +41,33 @@ public:
     QAbstractItemModel *peers() const override { return &m_peers; }
     QAbstractItemModel *exitNodes() const override { return &m_exitNodes; }
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
+    bool writable() const override { return m_writable; }
+    QString writeError() const override { return m_writeError; }
+
+    // The actions, recorded rather than performed: "setWantRunning(true)",
+    // "setExitNode(nABC123CNTRL)". What a view is answerable for is WHAT it
+    // asked for -- whether tailscaled then does it is the real backend's
+    // business and the daemon's -- so a recording is the whole of what a test
+    // of a control needs.
+    //
+    // Deliberately not also moving the matching property: a fake that applied
+    // its own writes would be a fake of a tailscaled that never refuses
+    // anything, and every test written against it would pass on a machine
+    // where the panel does nothing at all.
+    void setWantRunning(bool on) override { record(QStringLiteral("setWantRunning"), on); }
+    void setExitNode(const QString &nodeId) override
+    {
+        record(QStringLiteral("setExitNode"), nodeId);
+    }
+    void setExitNodeAllowLANAccess(bool on) override
+    {
+        record(QStringLiteral("setExitNodeAllowLANAccess"), on);
+    }
+    void setAcceptRoutes(bool on) override { record(QStringLiteral("setAcceptRoutes"), on); }
+    void setAcceptDns(bool on) override { record(QStringLiteral("setAcceptDns"), on); }
+
+    QStringList calls() const { return m_calls; }
+    void clearCalls() { m_calls.clear(); }
 
     void setState(State value) { set(m_state, value, &TailscaleBackend::stateChanged); }
     void setSelfName(const QString &v) { set(m_selfName, v, &TailscaleBackend::selfNameChanged); }
@@ -79,6 +106,14 @@ public:
     {
         set(m_recommendedExitNodeId, v, &TailscaleBackend::recommendedExitNodeIdChanged);
     }
+    // The outcome of a write, which a test states because this fake never
+    // attempts one: what a panel does after a 403 is a thing to put it in,
+    // not a thing to wait for.
+    void setWritable(bool v) { set(m_writable, v, &TailscaleBackend::writableChanged); }
+    void setWriteError(const QString &v)
+    {
+        set(m_writeError, v, &TailscaleBackend::writeErrorChanged);
+    }
 
     // The models are the real PeerModel, not a stand-in: stable-row behaviour
     // is the library's and a fake of it would be a fake of our own code.
@@ -98,6 +133,18 @@ private:
         emit(this->*changed)();
     }
 
+    // Every call recorded, in order and including a repeat: clicking a switch
+    // that is already on is a thing a view can do wrongly, and a recording
+    // that collapsed it could not show that.
+    void record(const QString &action, const QString &argument)
+    {
+        m_calls.append(action + u'(' + argument + u')');
+    }
+    void record(const QString &action, bool argument)
+    {
+        record(action, argument ? QStringLiteral("true") : QStringLiteral("false"));
+    }
+
     State m_state = State::NoState;
     QString m_selfName;
     QString m_selfIp4;
@@ -113,4 +160,7 @@ private:
     mutable c7::tailscale::PeerModel m_peers;
     mutable c7::tailscale::PeerModel m_exitNodes;
     QString m_recommendedExitNodeId;
+    bool m_writable = false;
+    QString m_writeError;
+    QStringList m_calls;
 };

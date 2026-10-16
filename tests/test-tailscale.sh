@@ -208,6 +208,30 @@ QtObject {
   // reason.
   readonly property ListModel peers: ListModel { dynamicRoles: false }
   readonly property ListModel exitNodes: ListModel { dynamicRoles: false }
+
+  // The outcome of a write, which a test states because this stub never
+  // attempts one. writable starts FALSE and is an explanation rather than a
+  // gate -- nothing short of writing tells the module whether tailscaled will
+  // permit one, so a panel that disabled its controls on it would disable them
+  // on a machine where writing works.
+  property bool writable: false
+  property string writeError: ""
+
+  // The actions. An action is a REQUEST: it reports what was asked for and
+  // moves nothing here, exactly as the contract specifies and as
+  // src/backends/tailscale/FakeTailscaleBackend.h behaves. A stub that
+  // applied its own writes would stand in for a tailscaled that never refuses
+  // anything.
+  //
+  // Reported through a signal rather than collected into a property, so the
+  // property comparison below stays exactly the contract's set: a test
+  // connects to `called` and keeps the list itself.
+  signal called(string call)
+  function setWantRunning(on) { root.called("setWantRunning(" + on + ")") }
+  function setExitNode(nodeId) { root.called("setExitNode(" + nodeId + ")") }
+  function setExitNodeAllowLANAccess(on) { root.called("setExitNodeAllowLANAccess(" + on + ")") }
+  function setAcceptRoutes(on) { root.called("setAcceptRoutes(" + on + ")") }
+  function setAcceptDns(on) { root.called("setAcceptDns(" + on + ")") }
 }
 QML
 printf 'module C7\nsingleton Tailscale 1.0 Tailscale.qml\n' > "$tmp/C7/qmldir"

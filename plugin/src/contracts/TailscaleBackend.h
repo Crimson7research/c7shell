@@ -19,9 +19,11 @@ class QQmlEngine;
 // local API socket. FakeTailscaleBackend, built into tests only, is the
 // second -- the contract is substitutable or it is nothing.
 //
-// Everything here is read-only to QML. Nothing on this class blocks: a
-// property reads what the backend already knows, never what it would have to
-// go and ask for.
+// Every property here is read-only to QML; the changing is done by the
+// actions, which ask the system rather than assigning to a property. Nothing
+// on this class blocks: a property reads what the backend already knows,
+// never what it would have to go and ask for, and an action returns before
+// anything has happened.
 //
 // A property whose value is derived from other properties is computed here,
 // not in a backend, and its getter is non-virtual: two backends must not be
@@ -72,6 +74,8 @@ class TailscaleBackend : public QObject {
     Q_PROPERTY(QAbstractItemModel *exitNodes READ exitNodes CONSTANT)
     Q_PROPERTY(QString recommendedExitNodeId READ recommendedExitNodeId NOTIFY
                    recommendedExitNodeIdChanged)
+    Q_PROPERTY(bool writable READ writable NOTIFY writableChanged)
+    Q_PROPERTY(QString writeError READ writeError NOTIFY writeErrorChanged)
 
 public:
     // The six values tailscaled's BackendState actually reports. The macOS
@@ -169,6 +173,76 @@ public:
     // key changes under a node that re-keys.
     virtual QString recommendedExitNodeId() const = 0;
 
+    // ---- What this contract can change ----
+    //
+    // The first actions on any C7 contract, so the shape is spelt out once
+    // here rather than guessed at twenty times. An action is
+    // `Q_INVOKABLE virtual void ... = 0`: QML calls it on the singleton and a
+    // backend decides what talking to the system means.
+    //
+    // AN ACTION IS A REQUEST, NOT A PROPERTY WRITE. It is named setX because
+    // that is how a call site reads, but nothing on this object moves when one
+    // is called. The action asks tailscaled to change; tailscaled's bus says
+    // what it did; the bus is what moves the properties. A UI may draw the
+    // clicked value at once, and the next notification decides what it settles
+    // on -- so a toggle that was refused springs back, which is the entire
+    // point. A backend that published the requested value itself would make a
+    // refused write indistinguishable from an accepted one, and that is the
+    // one outcome this module may not produce.
+    //
+    // IT RETURNS VOID AND IT DOES NOT BLOCK. An outcome that arrives later
+    // cannot be a return value, and waiting for it is what
+    // docs/architecture.md forbids, so every outcome an action has is
+    // published as state: `writable` and `writeError` below.
+    // NetworkBackend::connect() returning ConnectResult is not a
+    // counter-example -- it answers a question decidable before anything is
+    // attempted (does this network need a key), not the result of attempting.
+    //
+    // REFUSAL IS ORDINARY, not an error path to log and move past. tailscaled
+    // authorises its local API by peer credentials: root, or the single user
+    // named as its operator. Until c7shell-bootstrap has named this one, every
+    // action below is refused -- measured, 403 "prefs write access denied" --
+    // and a panel that cannot tell that apart from success is a panel full of
+    // controls that silently do nothing.
+
+    // Connect and disconnect this machine from the tailnet.
+    Q_INVOKABLE virtual void setWantRunning(bool on) = 0;
+    // Send egress through the peer with this id; an empty id selects none.
+    //
+    // THE ID, the same string exitNodeId publishes and a row of exitNodes is
+    // keyed by -- never an IP address. tailscaled's prefs carry ExitNodeIP
+    // beside ExitNodeID, a selection written into the wrong one is accepted
+    // without complaint, and what it selects is nothing.
+    Q_INVOKABLE virtual void setExitNode(const QString &nodeId) = 0;
+    // Keep reaching this machine's own LAN while an exit node carries the
+    // rest of its traffic. The control that matters most on a blocked exit
+    // node: without it, an exit node that stops answering takes the printer,
+    // the router's web UI and the NAS with it.
+    Q_INVOKABLE virtual void setExitNodeAllowLANAccess(bool on) = 0;
+    // Accept the subnet routes peers advertise. Also what the one suppressed
+    // health warning is about -- see suppressedHealth() in the backend.
+    Q_INVOKABLE virtual void setAcceptRoutes(bool on) = 0;
+    // Use the tailnet's DNS configuration, MagicDNS included.
+    Q_INVOKABLE virtual void setAcceptDns(bool on) = 0;
+
+    // Whether the last change this backend asked for was accepted. FALSE
+    // UNTIL ONE HAS BEEN: nothing short of attempting a write tells this
+    // module whether tailscaled will permit one, so a backend that has not
+    // tried does not know and does not claim to.
+    //
+    // It is an EXPLANATION, not a gate. A panel that disabled its controls on
+    // it would disable them on a machine where writing works perfectly and
+    // leave no way to make the first write that would clear it. What it is
+    // for is the moment after a refusal, when a toggle has sprung back to
+    // where it was and the panel has to say why.
+    virtual bool writable() const = 0;
+    // Why the last change failed, in the words of whatever refused it, or
+    // empty after one that was accepted. Published rather than phrased: the
+    // wording a user reads -- that tailscaled takes orders only from root or
+    // its operator, and that c7shell-bootstrap names one -- is presentation,
+    // and docs/architecture.md keeps presentation in QML.
+    virtual QString writeError() const = 0;
+
     // The singleton factory picks the backend. A configurable choice comes
     // only when a second backend exists.
     static TailscaleBackend *create(QQmlEngine *, QJSEngine *);
@@ -189,6 +263,8 @@ signals:
     void exitNodeBlockedChanged();
     void issuesChanged();
     void recommendedExitNodeIdChanged();
+    void writableChanged();
+    void writeErrorChanged();
 
 protected:
     // What tailscaled gave for Self's DNSName, root dot and all. A backend

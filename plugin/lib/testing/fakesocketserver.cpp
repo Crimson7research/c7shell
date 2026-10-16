@@ -8,6 +8,27 @@
 
 namespace c7::testing {
 
+namespace {
+
+// The body size `head` declares, or 0 when it declares none. Only HTTP says
+// this, which is the point: a framed request from anything else carries no
+// such header and is unaffected.
+qsizetype declaredBodySize(const QByteArray &head)
+{
+    const QList<QByteArray> lines = head.split('\n');
+    for (const QByteArray &line : lines) {
+        const qsizetype colon = line.indexOf(':');
+        if (colon < 0 || line.left(colon).trimmed().toLower() != "content-length")
+            continue;
+        bool ok = false;
+        const qsizetype size = line.mid(colon + 1).trimmed().toLongLong(&ok);
+        return ok && size > 0 ? size : 0;
+    }
+    return 0;
+}
+
+} // namespace
+
 FakeSocketServer::FakeSocketServer(const QString &path, QObject *parent)
     : QObject(parent), m_path(path)
 {
@@ -124,8 +145,17 @@ void FakeSocketServer::read(QLocalSocket *client)
     // disconnect also drops the client's pending bytes.
     while (m_pending.contains(client) && client->state() == QLocalSocket::ConnectedState
            && (at = pending.indexOf(m_delimiter)) >= 0) {
-        const QByteArray request = pending.left(at);
-        pending.remove(0, at + m_delimiter.size());
+        const QByteArray head = pending.left(at);
+        // A request that declares a body is not whole at the delimiter. The
+        // delimiter that frames HTTP is the one ending its HEADERS, so a
+        // request with a body would otherwise be recorded without the thing
+        // it is for, and its body read as the start of the next request.
+        const qsizetype body = declaredBodySize(head);
+        if (pending.size() < at + m_delimiter.size() + body)
+            return;
+        const QByteArray request =
+            body > 0 ? head + m_delimiter + pending.mid(at + m_delimiter.size(), body) : head;
+        pending.remove(0, at + m_delimiter.size() + body);
         answer(client, request);
     }
 }

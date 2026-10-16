@@ -54,6 +54,67 @@ private slots:
                  QByteArrayLiteral("GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock"));
     }
 
+    // The only write this local API takes, and the whole of what tailscaled
+    // needs to accept it: the method, the Host header its own client sends,
+    // and a Content-Length -- a body without one is read as no body at all
+    // and the write silently changes nothing.
+    void patchSendsTheBodyUnderItsOwnLength()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        const QByteArray body = QByteArrayLiteral("{\"RouteAllSet\":true,\"RouteAll\":true}");
+        c.patch(QStringLiteral("/localapi/v0/prefs"), body);
+        QVERIFY(replied.wait());
+        QCOMPARE(server.requests().size(), 1);
+        const QByteArray request = server.requests().first();
+        QVERIFY2(request.startsWith("PATCH /localapi/v0/prefs HTTP/1.1\r\n"), request.constData());
+        QVERIFY2(request.contains("Host: local-tailscaled.sock"), request.constData());
+        QVERIFY2(request.contains("Content-Length: " + QByteArray::number(body.size())),
+                 request.constData());
+        QVERIFY2(request.endsWith("\r\n\r\n" + body), request.constData());
+    }
+
+    // A write is answered by the same two signals a read is, carrying the same
+    // token: a caller that numbers its reads has nothing new to learn for its
+    // writes.
+    void patchCarriesItsTokenBackOnEitherEnding()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        c.patch(QStringLiteral("/localapi/v0/prefs"), QByteArrayLiteral("{}"), 7);
+        QVERIFY(replied.wait());
+        QCOMPARE(replied.first().at(2).toULongLong(), 7u);
+    }
+
+    // The ordinary refusal on a machine where tailscaled has not been told
+    // who its operator is. Measured against a live 1.104.1: 403, body
+    // "prefs write access denied", on a socket that serves this same user's
+    // reads perfectly -- so it must end in failed() and in nothing else.
+    void patchFailsWhenTailscaledRefusesTheWrite()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Length: 26\r\n\r\n"
+                                     "prefs write access denied");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.patch(QStringLiteral("/localapi/v0/prefs"), QByteArrayLiteral("{}"));
+        QVERIFY(failed.wait());
+        QCOMPARE(replied.count(), 0);
+        QVERIFY2(failed.first().at(1).toString().contains(QStringLiteral("403")),
+                 qPrintable(failed.first().at(1).toString()));
+    }
+
     void getReassemblesAChunkedBody()
     {
         // tailscaled answers /status -- the endpoint the whole backend stands
