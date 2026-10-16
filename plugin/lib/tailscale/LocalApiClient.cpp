@@ -363,9 +363,19 @@ void LocalApiClient::errored(QLocalSocket *socket)
     const auto it = m_exchanges.find(socket);
     if (it == m_exchanges.end())
         return;
-    // tailscaled closing a response it has finished is an ending, not a
-    // failure; Qt reports that close as an error on some paths.
-    if (socket->error() == QLocalSocket::PeerClosedError && it->headersDone) {
+    // A PEER CLOSE IS JUDGED BY THE RESPONSE, NOT BY Qt. tailscaled closing a
+    // response it has finished is an ending rather than a failure, and Qt
+    // reports that close as an error on some paths -- so it goes to closed(),
+    // which decides what the close meant from what had arrived.
+    //
+    // Including before the headers, which is the half this guard used to keep
+    // out. Qt emits errorOccurred(PeerClosedError) BEFORE disconnected() for a
+    // remote close, so a `&& it->headersDone` here took every pre-headers close
+    // and failed it with QLocalSocket's own "Remote closed" -- and closed()'s
+    // "closed before the response headers" branch, the one diagnosis that says
+    // which end of the exchange went wrong, was unreachable from outside this
+    // file. That is why deleting it cost nothing and the suite stayed green.
+    if (socket->error() == QLocalSocket::PeerClosedError) {
         closed(socket);
         return;
     }

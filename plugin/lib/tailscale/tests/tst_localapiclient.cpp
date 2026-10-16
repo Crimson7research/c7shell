@@ -49,6 +49,38 @@ private slots:
         QCOMPARE(replied.first().at(1).toByteArray(), QByteArrayLiteral("{\"ok\":true}"));
     }
 
+    // A connection accepted and then closed with NOTHING written is a failure,
+    // and the branch that says so is load-bearing rather than tidy. Without it
+    // the close falls through to finish(), which emits replied() with an empty
+    // body -- neither framing having been read, so neither "the body ended
+    // short" test applies -- and a FAILURE BECOMES A SUCCESSFUL EMPTY REPLY.
+    //
+    // For /prefs that is the fail-closed flag going quiet on exactly the
+    // failure it exists for: parsePrefs("") yields the documented defaults, no
+    // exit node selected and four switches off, which pairs with a status and
+    // is published as a real snapshot.
+    //
+    // Trigger: tailscaled restarting between the connect and the first write,
+    // or TS_SOCKET naming a listening socket that closes on connect.
+    void failsWhenTheConnectionClosesBeforeTheResponseHeaders()
+    {
+        FakeSocketServer server(socketPath());
+        // An empty reply, then the close: the request is read and answered with
+        // no bytes at all, which is what a daemon going away mid-exchange
+        // leaves on the wire.
+        server.onRequest([](const QByteArray &) { return QByteArray(); },
+                         FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/prefs"));
+        QVERIFY2(failed.wait(), "a connection closed before any headers reported no ending at all");
+        QCOMPARE(replied.count(), 0);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("/localapi/v0/prefs"));
+        QVERIFY2(failed.first().at(1).toString().contains(QStringLiteral("before the response headers")),
+                 qPrintable(failed.first().at(1).toString()));
+    }
+
     void sendsAHostHeaderTailscaledAccepts()
     {
         // tailscaled refuses a request without one; local-tailscaled.sock is
