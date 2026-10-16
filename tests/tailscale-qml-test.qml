@@ -299,6 +299,30 @@ Window {
       "the slot kept the width of the long name after a short one replaced it")
     root.check(!root.label().truncated, "a short node name was elided")
 
+    // 6b -- the name is DRAWN, never interpreted. Common/ListRow.qml:97-105
+    // writes the prohibition out in full and seven other sites on this branch
+    // set Text.PlainText; this label is the eighth, and it is the one in the
+    // bar. The default is Text.AutoText, which renders <b> AND fetches a
+    // remote <img src> -- a markup injection, and a beacon, in the shell's own
+    // chrome. The trigger is ordinary: a peer with no DNSName, whose raw
+    // HostName is whatever that machine was called when it enrolled, selected
+    // as the exit node.
+    //
+    // Read as WIDTH rather than as the textFormat property, because width is
+    // what the person sees: eight literal characters are several times the
+    // single glyph the markup would decorate, and nothing about an
+    // interpreted label looks wrong in a screenshot.
+    Tailscale.exitNodeName = "a"
+    root.slotWidth()
+    const bare = root.label().implicitWidth
+    Tailscale.exitNodeName = "<b>a</b>"
+    root.slotWidth()
+    const literal = root.label().implicitWidth
+    root.check(literal > bare * 2,
+      `the slot interpreted the markup in an exit-node name instead of drawing it:`
+      + ` "<b>a</b>" took ${literal}px where the one glyph it decorates takes ${bare}px`)
+    Tailscale.exitNodeName = "sierra"
+
     // -- the panel behind the slot ------------------------------------------
     root.panelChecks()
     root.foldOutChecks()

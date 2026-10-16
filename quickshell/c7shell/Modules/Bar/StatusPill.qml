@@ -189,6 +189,13 @@ Rectangle {
         // to clear, and the name is the only identity the panel will offer.
         visible: Tailscale.exitNodeActive
         text: Tailscale.exitNodeName
+        // A MagicDNS label, or -- for a peer with no DNSName -- the raw
+        // HostName tailscaled was handed when that machine enrolled. Either
+        // way it is text off the network, and Common/ListRow.qml:97-105
+        // writes out what the default Text.AutoText does with it: it renders
+        // <b> AND fetches a remote <img src>, which is a markup injection and
+        // a beacon in the shell's own bar.
+        textFormat: Text.PlainText
         // Capped, unlike the update slot's label beside it: that one is a
         // count, this is a MagicDNS hostname off the network and nothing
         // bounds its length. QuickSlot grows with its content and the pill
