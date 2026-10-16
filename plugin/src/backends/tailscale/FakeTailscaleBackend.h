@@ -160,7 +160,9 @@ private:
     mutable c7::tailscale::PeerModel m_peers;
     mutable c7::tailscale::PeerModel m_exitNodes;
     QString m_recommendedExitNodeId;
-    bool m_writable = false;
+    // True until refused, as the contract specifies: a fake that started
+    // false would let a panel gated on it pass here and be dead in the shell.
+    bool m_writable = true;
     QString m_writeError;
     QStringList m_calls;
 };

@@ -271,9 +271,10 @@ private:
     int m_openingReads = 0;
     bool m_attemptFailed = false;
     bool m_established = false;
-    // False until a write has been seen to work -- see the contract. Nothing
-    // in a /status or a /prefs says whether this process may write, so until
-    // one is attempted there is nothing to publish but "not known to".
-    bool m_writable = false;
+    // TRUE until a write is refused -- see the contract. Nothing in a /status
+    // or a /prefs says whether this process may write, and this module does
+    // not ask: the first click answers it, and starting false would leave a
+    // panel gated on it with no way to make that click.
+    bool m_writable = true;
     QString m_writeError;
 };

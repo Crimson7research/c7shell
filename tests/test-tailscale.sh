@@ -210,11 +210,11 @@ QtObject {
   readonly property ListModel exitNodes: ListModel { dynamicRoles: false }
 
   // The outcome of a write, which a test states because this stub never
-  // attempts one. writable starts FALSE and is an explanation rather than a
-  // gate -- nothing short of writing tells the module whether tailscaled will
-  // permit one, so a panel that disabled its controls on it would disable them
-  // on a machine where writing works.
-  property bool writable: false
+  // attempts one. writable is TRUE until a write is refused: it says the last
+  // attempt was not refused, never that the next one will be taken, so a
+  // control that goes dead on it is "disabled after a refusal" and not
+  // disabled until proven.
+  property bool writable: true
   property string writeError: ""
 
   // The actions. An action is a REQUEST: it reports what was asked for and
