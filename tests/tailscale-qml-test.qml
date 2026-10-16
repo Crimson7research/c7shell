@@ -304,6 +304,7 @@ Window {
     root.foldOutChecks()
     root.exitNodeControlChecks()
     root.settingsChecks()
+    root.connectToggleChecks()
     root.delegateIdentityChecks()
   }
 
@@ -1411,6 +1412,135 @@ Window {
     Tailscale.exitNodes.append({ hostName: "pentest-exit-node", displayName: "pentest-exit-node",
                                  nodeId: "nFFF1CNTRL" })
     Tailscale.recommendedExitNodeId = "nCCC1CNTRL"
+  }
+
+  // ==========================================================================
+  // The connect toggle
+  // ==========================================================================
+  //
+  // prefs.WantRunning, and the one control the v2 spec's table promised that
+  // no task in the plan ever claimed. It shipped `enabled: false` under a
+  // tooltip saying the panel could not write -- true in v1, and untrue from
+  // the moment the contract grew actions. A control that is permanently dead
+  // is indistinguishable from one whose write is being refused, which is the
+  // distinction this whole module is built around.
+  //
+  // Same shape as the other three switches: bound to what tailscaled holds,
+  // asking for the opposite, settled by the bus. The toggle is driven through
+  // `toggled()` directly, which bypasses TogglePill's own `enabled` gate and
+  // reaches the handler -- so a handler relying on `enabled` alone fails here,
+  // exactly as the ListRow checks drive `clicked()` past `hoverable`.
+  function connectToggleChecks() {
+    root.connected()
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    Tailscale.wantRunning = true
+    PopoverManager.toggle("tailscale", null)
+    root.layout()
+
+    const toggle = root.panelOne("ts-connect-toggle")
+    root.check(toggle.enabled,
+      "the connect toggle opened disabled with nothing refused yet -- which is how it shipped,"
+      + " and is indistinguishable from a control whose write tailscaled is refusing")
+    root.check(toggle.checked,
+      "the connect toggle does not read WantRunning back off the contract")
+
+    // WantRunning, NOT `state`. They are different questions, and the panel
+    // has `state` on screen already as the header's subtitle. A machine that
+    // is Starting, or NeedsLogin with WantRunning true, is one tailscale is
+    // MEANT to be up on -- a toggle drawn off `state` there says the daemon
+    // was told to stop, which it was not, and clicking it would then ask for
+    // the value it already holds.
+    Tailscale.state = Tailscale.Starting
+    root.layout()
+    root.check(toggle.checked,
+      "the toggle went off while tailscaled was still coming up, so it is drawing what the"
+      + " daemon is DOING rather than what it was told to do")
+    Tailscale.state = Tailscale.NeedsLogin
+    root.layout()
+    root.check(toggle.checked,
+      "the toggle went off on a logged-out machine that is meant to be on the tailnet")
+    root.connected()
+    root.layout()
+
+    // -- the request, and the bus settling it -------------------------------
+    root.tookCalls()
+    toggle.toggled()
+    root.check(root.tookCalls() === "setWantRunning(false)",
+      "the connect toggle does not ask for the opposite of what tailscaled holds")
+    root.layout()
+    root.check(toggle.checked,
+      "the toggle moved on its own click rather than on what the daemon then reported, so a"
+      + " refused `tailscale down` would leave the panel saying the tailnet is off")
+    Tailscale.wantRunning = false
+    root.layout()
+    root.check(!toggle.checked, "the toggle did not follow the daemon's own notification")
+    toggle.toggled()
+    root.check(root.tookCalls() === "setWantRunning(true)",
+      "the connect toggle asks for the same value twice, so it is not a toggle")
+
+    // -- no daemon, nothing to ask ------------------------------------------
+    // TailscaleBackend.h: NoState KEEPS the last snapshot, so WantRunning is
+    // then a value from a daemon that is not there. Every other row on this
+    // panel is gated on that and this one has to be too -- it would otherwise
+    // be offering to write to nothing, over a header that says "no daemon".
+    Tailscale.wantRunning = true
+    Tailscale.state = Tailscale.NoState
+    root.layout()
+    root.check(!toggle.enabled,
+      "the toggle still offers to connect a machine whose tailscaled is not answering")
+    root.tookCalls()
+    toggle.toggled()
+    root.check(root.tookCalls() === "",
+      "a toggle over a daemon that is gone still asked tailscaled to change something")
+    root.connected()
+    Tailscale.wantRunning = true
+    root.layout()
+    root.check(toggle.enabled && toggle.checked,
+      "the toggle did not come back when the daemon did")
+
+    // -- after a refusal, and only after one --------------------------------
+    const refusal = "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden"
+    Tailscale.writable = false
+    Tailscale.writeError = refusal
+    root.layout()
+    root.check(!toggle.enabled, "the connect toggle is still live after a refusal")
+    root.tookCalls()
+    toggle.toggled()
+    root.check(root.tookCalls() === "",
+      "a toggle disabled after a refusal still asked tailscaled to change something")
+
+    // The reason, where this control has always put its explanation: under
+    // the pointer. The root card carries no inline refusal line -- the two
+    // sub-cards each carry their own, and a third would mean two of them on
+    // screen at once whenever a card is folded out.
+    const tip = root.panelOne("ts-connect-tip")
+    root.check(tip.text.indexOf(refusal) >= 0,
+      `a refused connect toggle does not say what refused it: "${tip.text}"`)
+    root.check(tip.textFormat === Text.PlainText,
+      "the refusal is daemon-supplied text in a markup-parsing element")
+
+    // And back: `writable` follows the LAST attempt rather than latching.
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    root.layout()
+    root.check(toggle.enabled,
+      "the toggle stayed dead after `writable` came back, so the flag latched")
+    root.check(tip.text.indexOf(refusal) < 0,
+      "the toggle still explains a refusal after a write was accepted")
+
+    // A live toggle says what it DOES, and on this one that is worth a
+    // sentence: WantRunning: false is `tailscale down`, which on a machine
+    // reached over the tailnet ends the session doing the clicking. A
+    // confirmation dialog was considered and rejected -- see TailscalePopover
+    // -- so this sentence is the whole of the warning and may not be empty.
+    root.check(tip.text !== "",
+      "a live connect toggle says nothing about what it does, and what it does is drop the"
+      + " tailnet this machine may be reached over")
+    root.tookCalls()
+    toggle.toggled()
+    root.check(root.tookCalls() !== "",
+      "the toggle recorded no request once `writable` came back")
   }
 
   // ==========================================================================

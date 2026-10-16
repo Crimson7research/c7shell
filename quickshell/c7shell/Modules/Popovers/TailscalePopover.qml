@@ -26,10 +26,6 @@ import qs.Common
 // quiet exactly when the daemon behind it dies. Drawing that snapshot anyway
 // would render a healthy tailnet served by nothing.
 //
-// The exit-node view writes; the connect toggle here does not yet. The
-// contract publishes setWantRunning, so nothing stands in its way but the
-// wiring -- until then it renders disabled rather than offering an action
-// nothing is behind.
 GlassPopover {
   id: root
 
@@ -49,6 +45,14 @@ GlassPopover {
   readonly property int subListCap: 180
 
   readonly property bool live: Tailscale.state !== Tailscale.NoState
+
+  // `writable` is a claim about the LAST write and never permission for the
+  // next one -- TailscaleBackend.h spells that out, because the name invites
+  // the opposite reading. The header's toggle is live until tailscaled has
+  // refused something and dead afterwards, which is the same rule the
+  // exit-node rows and the settings switches follow. The two sub-cards read
+  // this off their own files; the header is the root card's one control.
+  readonly property bool refused: !Tailscale.writable
 
   // The eight-state vocabulary renders as the header's subtitle, never as its
   // own element.
@@ -224,10 +228,25 @@ GlassPopover {
       }
     }
 
-    // The toggle is prefs.WantRunning, which is a write, which v1 does not
-    // have. Shown anyway, dead, with the reason under the pointer: leaving it
-    // out would make the panel look like it had never been designed to have
-    // one.
+    // prefs.WantRunning: connect and disconnect this machine from the tailnet.
+    //
+    // It shipped `enabled: false` under a tooltip saying the panel could not
+    // write, which was true in v1 and stopped being true the moment the
+    // contract grew actions. A control that is permanently dead cannot be
+    // told apart from one whose write tailscaled is refusing -- which is the
+    // distinction this whole module is built around.
+    //
+    // NO CONFIRMATION, DELIBERATELY, and this is the one control on the panel
+    // where that was a decision rather than a default. WantRunning: false is
+    // `tailscale down`: it drops the tailnet, and on a machine reached OVER
+    // tailscale it ends the session doing the clicking -- the one action here
+    // that cannot be undone from where it was taken. Three reasons it is
+    // still a plain toggle: the macOS menu offers it as one; a confirmation
+    // on a quick-settings switch is dismissed rather than read, so it trains
+    // the habit it is meant to interrupt; and a popover has nowhere to put a
+    // modal that does not also cover the state the person opened it to read.
+    // What it gets instead is a sentence under the pointer saying what it
+    // does, which is the thing the mock's bare pill never said.
     Item {
       id: toggleHit
       anchors { right: parent.right; verticalCenter: parent.verticalCenter }
@@ -236,28 +255,71 @@ GlassPopover {
 
       TogglePill {
         id: connectToggle
-        checked: Tailscale.state === Tailscale.Running
-        enabled: false
+
+        objectName: "ts-connect-toggle"
+        // WantRunning, NOT `state` -- what tailscaled was TOLD, never what it
+        // is doing. The two disagree for as long as a machine is Starting and
+        // indefinitely on a logged-out one that wants to be up, and on both
+        // of those a toggle drawn off `state` says the daemon was told to
+        // stop when it was not. `state` is on screen already, as the header's
+        // subtitle, which is where "is the tailnet actually up" belongs.
+        //
+        // Gated on `live` all the same: NoState keeps the last snapshot, so
+        // WantRunning then describes a daemon that is not there, and every
+        // other row on this panel is gated the same way.
+        checked: root.live && Tailscale.wantRunning
+        // Live by default. Dead after a refusal -- and dead with no daemon to
+        // ask, which is not a judgement about permission but the absence of
+        // anything to write to.
+        enabled: root.live && !root.refused
+
+        // The request, never an assignment: the next Prefs notification is
+        // what moves the pill, as it is for the other three switches.
+        onToggled: {
+          if (!root.live || root.refused) return
+          Tailscale.setWantRunning(!Tailscale.wantRunning)
+        }
       }
 
       MouseArea {
         id: toggleHover
         anchors.fill: parent
         hoverEnabled: true
+        // Hover only: the press belongs to the pill underneath.
         acceptedButtons: Qt.NoButton
       }
 
       Tooltip {
         open: toggleHover.containsMouse
         anchorItem: toggleHit
-        panelWidth: tipLabel.implicitWidth + 16
+        panelWidth: tipLabel.width + 16
         panelHeight: tipLabel.implicitHeight + 10
         panelRadius: Theme.radiusChip
 
         Text {
           id: tipLabel
+
+          objectName: "ts-connect-tip"
           anchors.centerIn: parent
-          text: qsTr("read-only: tailscale set needs root or the operator")
+          // CAPPED, because this label stopped being one short phrase: the
+          // refusal branch is three sentences and tailscaled's own words, and
+          // an uncapped implicitWidth would hang a 1000px tooltip off a 320px
+          // panel. Text.implicitWidth is the unwrapped width and does not
+          // depend on `width`, so this is a cap and not a loop.
+          width: Math.min(tipLabel.implicitWidth, 220)
+          // After a refusal it carries tailscaled's own words plus the advice
+          // the contract deliberately does not phrase. The root card has no
+          // inline refusal line of its own -- the two sub-cards each carry
+          // one, and a third here would put two explanations on screen at
+          // once whenever a card is folded out.
+          text: root.refused
+            ? qsTr("tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (%1)").arg(Tailscale.writeError)
+            : !root.live ? qsTr("tailscaled is not answering, so there is nothing to ask")
+            : Tailscale.wantRunning
+              ? qsTr("disconnect from the tailnet — a session reached over tailscale ends with it")
+              : qsTr("connect to the tailnet")
+          // Carries the daemon's own refusal verbatim on one of its branches.
+          textFormat: Text.PlainText
           font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
           color: Theme.text2
           wrapMode: Text.WordWrap

@@ -43,6 +43,7 @@ public:
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
+    bool wantRunning() const override { return m_wantRunning; }
     bool exitNodeAllowLANAccess() const override { return m_exitNodeAllowLANAccess; }
     bool acceptRoutes() const override { return m_acceptRoutes; }
     bool acceptDns() const override { return m_acceptDns; }
@@ -125,6 +126,7 @@ public:
     // tailscaled for something, the other is tailscaled having answered -- and
     // a test that wants a switch to move calls this one, which is the only
     // thing that moves one in the shell either.
+    void reportWantRunning(bool v) { set(m_wantRunning, v, &TailscaleBackend::wantRunningChanged); }
     void reportExitNodeAllowLANAccess(bool v)
     {
         set(m_exitNodeAllowLANAccess, v, &TailscaleBackend::exitNodeAllowLANAccessChanged);
@@ -184,6 +186,7 @@ private:
     // False until a /prefs says otherwise, as in the real backend: a fake that
     // started these at tailscaled's own defaults would be inventing a daemon
     // it has not heard from.
+    bool m_wantRunning = false;
     bool m_exitNodeAllowLANAccess = false;
     bool m_acceptRoutes = false;
     bool m_acceptDns = false;

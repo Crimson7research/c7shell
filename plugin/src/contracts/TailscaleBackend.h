@@ -76,6 +76,7 @@ class TailscaleBackend : public QObject {
                    recommendedExitNodeIdChanged)
     Q_PROPERTY(bool writable READ writable NOTIFY writableChanged)
     Q_PROPERTY(QString writeError READ writeError NOTIFY writeErrorChanged)
+    Q_PROPERTY(bool wantRunning READ wantRunning NOTIFY wantRunningChanged)
     Q_PROPERTY(bool exitNodeAllowLANAccess READ exitNodeAllowLANAccess NOTIFY
                    exitNodeAllowLANAccessChanged)
     Q_PROPERTY(bool acceptRoutes READ acceptRoutes NOTIFY acceptRoutesChanged)
@@ -177,7 +178,7 @@ public:
     // key changes under a node that re-keys.
     virtual QString recommendedExitNodeId() const = 0;
 
-    // ---- The three prefs a switch on screen reads itself back from ----
+    // ---- The four prefs a switch on screen reads itself back from ----
     //
     // Each of these is the READ side of one of the actions below, and each
     // exists because the action alone was not enough. An action is a request
@@ -195,9 +196,20 @@ public:
     // within milliseconds and the re-read settles the value, which is both
     // faster than a person can see and the only reading that is true.
     //
-    // No signal is shared and none is derived: a backend owns all three and
+    // No signal is shared and none is derived: a backend owns all four and
     // emits each as it moves.
 
+    // prefs.WantRunning -- setWantRunning reads back here.
+    //
+    // IT IS NOT `state`, and the difference is the whole reason it is read
+    // from the prefs rather than inferred. `state` is what tailscaled is
+    // DOING; this is what it was last told to do. They disagree for as long
+    // as a machine is Starting, and indefinitely on one that is NeedsLogin
+    // with WantRunning true -- a machine tailscale is meant to be up on, and
+    // on which a toggle drawn off `state` says the daemon was told to stop
+    // when it was not. A UI wanting "is the tailnet actually up" has `state`
+    // for that and should not read this; a UI drawing the CONTROL reads this.
+    virtual bool wantRunning() const = 0;
     // prefs.ExitNodeAllowLANAccess -- setExitNodeAllowLANAccess reads back
     // here.
     virtual bool exitNodeAllowLANAccess() const = 0;
@@ -316,6 +328,7 @@ signals:
     void recommendedExitNodeIdChanged();
     void writableChanged();
     void writeErrorChanged();
+    void wantRunningChanged();
     void exitNodeAllowLANAccessChanged();
     void acceptRoutesChanged();
     void acceptDnsChanged();
