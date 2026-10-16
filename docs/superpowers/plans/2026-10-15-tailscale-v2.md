@@ -209,6 +209,13 @@ v1 replaces the panel contents and offers `‹`. v2 folds a sub-card out of the 
 
 A settings sub-card with `accept routes` (`RouteAll`) and `accept dns` (`CorpDNS`).
 
+**This task also adds the read-back properties for all three write-backed switches**, including
+`exitNodeAllowLANAccess` for the switch Task 5 built. Task 3 gave the contract actions but no
+properties to read those prefs back, so Task 5's LAN switch currently shows what was last clicked
+in this session rather than what tailscaled holds — it opens *off* on a machine where LAN access
+is already on. The backend already fetches `/prefs` every pass, so the values are in hand; they
+are simply not published. One contract change covers all three.
+
 `accept routes` closes a loop from v1: `RouteAll: false` is the pref behind the standing health warning the module suppresses. With the switch present, the suppressed warning becomes explicable — say why it is suppressed, beside the control that changes it.
 
 - [ ] **Step 1: Write the failing tests** — both switches reflect the backend and call their actions; a control is live until a write is refused and disabled with its reason afterwards; the suppressed route warning is shown as an explanation beside `accept routes` rather than silently dropped; both are disabled with a reason when `!Tailscale.writable`.
