@@ -111,8 +111,12 @@ hundred-peer list possible at all.
 
 - A polkit helper and `c7tailscale-root`. See above: the operator is the
   mechanism tailscale provides.
-- Running *this* device as an exit node is offered as an action, but
-  advertising routes, tailnet lock, Taildrop and Tailscale SSH are not.
+- Running *this* device as an exit node. It was listed as in scope beside
+  "advertising routes ... not", which contradicted itself: running as an exit
+  node IS advertising a route (`0.0.0.0/0`, `::/0`) through `AdvertiseRoutes`.
+  The panel shows the row disabled so the capability is visible and honestly
+  marked, and no action is invented for it.
+- Tailnet lock, Taildrop and Tailscale SSH.
 - Per-peer latency. No endpoint carries it and the macOS app shows none.
 
 ## Constraints
