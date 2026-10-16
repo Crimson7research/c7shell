@@ -427,6 +427,59 @@ private slots:
         QTRY_COMPARE(ev.count(), 1);
     }
 
+    // The token is handed back untouched, on both endings, so a caller that
+    // asks the same endpoint twice can tell the two replies apart. A path
+    // cannot do that -- ask twice and both say "/localapi/v0/prefs" -- which
+    // is what let a reply from an abandoned round be paired with the round
+    // after it.
+    void handsTheTokenBackOnTheReply()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        c.get(QStringLiteral("/localapi/v0/prefs"), 7);
+        QVERIFY(replied.wait());
+        QCOMPARE(replied.first().at(2).toULongLong(), 7u);
+    }
+
+    void handsTheTokenBackOnTheFailure()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &) {
+            return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/prefs"), 9);
+        QVERIFY(failed.wait());
+        QCOMPARE(failed.first().at(2).toULongLong(), 9u);
+    }
+
+    // Untagged by default, for a caller with one request in flight and
+    // nothing to disambiguate -- and the watch is always untagged, because a
+    // stream is not a round of asking.
+    void reportsZeroForAnUntaggedGetAndForTheWatch()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest([](const QByteArray &request) -> QByteArray {
+            if (request.contains("/localapi/v0/watch-ipn-bus"))
+                return QByteArrayLiteral("HTTP/1.1 500 Server Error\r\nContent-Length: 0\r\n\r\n");
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+        }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
+        LocalApiClient c(socketPath());
+        QSignalSpy replied(&c, &LocalApiClient::replied);
+        QSignalSpy failed(&c, &LocalApiClient::failed);
+        c.get(QStringLiteral("/localapi/v0/status"));
+        QVERIFY(replied.wait());
+        QCOMPARE(replied.first().at(2).toULongLong(), 0u);
+        c.watch();
+        QVERIFY(failed.wait());
+        QCOMPARE(failed.first().at(2).toULongLong(), 0u);
+    }
+
     void saysNothingWhenTheWatchIsStopped()
     {
         // stop() is the caller's own doing, so it reports no ending: a caller

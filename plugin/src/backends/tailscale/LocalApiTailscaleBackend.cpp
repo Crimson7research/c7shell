@@ -134,7 +134,7 @@ void LocalApiTailscaleBackend::open()
     // the old watch here cannot trigger the very reconnect it is part of.
     m_client.stop();
     m_settle.stop();
-    m_refreshInFlight = false;
+    m_openPass = 0;
     m_refreshStale = false;
     // A reply from the attempt just dropped is not half of this attempt's
     // snapshot: whichever half arrived goes with the attempt it belonged to.
@@ -154,9 +154,12 @@ void LocalApiTailscaleBackend::open()
 
 void LocalApiTailscaleBackend::refresh()
 {
-    m_refreshInFlight = true;
+    // A pass of asking, numbered. Every get of this pass carries the number
+    // back on its reply, which is how a straggler from a pass this object has
+    // abandoned is told apart from an answer to the one it is waiting on.
+    m_openPass = ++m_passes;
     m_refreshStale = false;
-    m_client.get(kStatusPath);
+    m_client.get(kStatusPath, m_openPass);
     // The other half of the snapshot, and read on every pass rather than only
     // on connect: ExitNodeID is what says an exit node is SELECTED, and a
     // selection made or cleared since the last read would otherwise be
@@ -165,11 +168,11 @@ void LocalApiTailscaleBackend::refresh()
     // health probe: it answers 200 unprivileged on a working tailscaled, so a
     // refusal means this socket is not a local API this backend can publish
     // from.
-    m_client.get(kPrefsPath);
+    m_client.get(kPrefsPath, m_openPass);
     // Re-read alongside the status, not only on connect: the suggestion names
     // a row of exitNodes, so a published id outlives the row it points at
     // whenever the set of exit nodes changes under it.
-    m_client.get(kSuggestPath);
+    m_client.get(kSuggestPath, m_openPass);
 }
 
 bool LocalApiTailscaleBackend::worthRefreshing(const QByteArray &notification)
@@ -192,7 +195,7 @@ void LocalApiTailscaleBackend::onEvent(const QByteArray &notification)
     // nothing here is reconstructed from a notification.
     if (!worthRefreshing(notification))
         return;
-    if (m_refreshInFlight) {
+    if (passOpen()) {
         // The reply on its way was asked for before this change, so it cannot
         // be the answer to it.
         m_refreshStale = true;
@@ -211,15 +214,50 @@ void LocalApiTailscaleBackend::noteEstablished()
     m_settle.start(m_settleMs);
 }
 
-void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &body)
+void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &body,
+                                         quint64 token)
 {
     if (path == kSuggestPath) {
         // Not one of the opening reads and not a health probe: see the note on
         // OpeningRead. The suggestion is published when it arrives and nothing
         // about the connection rests on it.
+        //
+        // DELIBERATELY NOT pass-checked, unlike the two below. A pass closes
+        // the moment its two halves pair, and the suggestion is a third socket
+        // that routinely answers after that, so turning away a reply whose
+        // pass has closed would throw away most suggestions. It is not part of
+        // the snapshot, so it has nothing to be out of step with.
         applySuggestion(body);
         return;
     }
+
+    // THE TWO SNAPSHOT READS ARE PASS-SCOPED: a reply is half of a snapshot
+    // only for the pass that asked for it. A pass opens in refresh() -- which
+    // open() calls, so the opening reads are a pass like any other -- and
+    // closes when both halves have been paired, or when lostTailscaled()
+    // abandons it. A reply carrying any other number belongs to a pass that is
+    // over: it describes a moment this object has already given up on, and
+    // pairing it with the other half of a LATER pass publishes an exit node
+    // selected at one moment against a status read at another, which is the
+    // fail-closed path reading from two moments at once.
+    //
+    // The NUMBER is what makes that decidable, and a boolean is not enough.
+    // "Is a pass open?" answers yes to a straggler too, because the
+    // notification that starts the next pass routinely beats a slow /prefs
+    // from the last one -- which is how this was got wrong twice before.
+    //
+    // This is the rule for anything added to the snapshot, and the question to
+    // ask of a new endpoint is which side of it the endpoint falls on: a read
+    // the exit-node reading is assembled from is pass-scoped and belongs
+    // below; one that stands alone, as /suggest-exit-node does above, is not.
+    //
+    // Only the gets. The watch is not pass-scoped and never passes through
+    // here: event() and watchEnded() have slots of their own, and a
+    // notification arriving between passes is exactly what starts the next
+    // one.
+    if (token != m_openPass)
+        return;
+
     if (path == kPrefsPath) {
         // ExitNodeID is the only field read: it is what says an exit node is
         // selected at all, which ExitNodeStatus cannot while it is still
@@ -244,7 +282,6 @@ void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &
     // without one there is nothing to publish but the parser's defaults, which
     // would read as a tailnet with no peers rather than as no answer.
     if (!status || status->backendState.isEmpty()) {
-        m_refreshInFlight = false;
         lostTailscaled();
         return;
     }
@@ -262,7 +299,7 @@ void LocalApiTailscaleBackend::applySnapshotWhenWhole()
     const Status status = *std::exchange(m_pendingStatus, std::nullopt);
     const QString exitNodeId = *std::exchange(m_pendingExitNodeId, std::nullopt);
 
-    m_refreshInFlight = false;
+    m_openPass = 0;
     applyStatus(status, exitNodeId);
     // Deliberately after applyStatus and deliberately not a reset of its own:
     // a good snapshot is one of the things this attempt needs, never the whole
@@ -275,7 +312,7 @@ void LocalApiTailscaleBackend::applySnapshotWhenWhole()
         refresh();
 }
 
-void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &)
+void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &, quint64 token)
 {
     // A suggestion that does not arrive is not a tailscaled that is gone. The
     // endpoint is optional -- a tailnet with no exit nodes has nothing to
@@ -293,8 +330,20 @@ void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &)
         applySuggestion({});
         return;
     }
-    if (path == kStatusPath)
-        m_refreshInFlight = false;
+    // A straggler from a pass already given up on says nothing about the
+    // connection this object has now: it is the same loss that closed that
+    // pass, arriving a second time by another socket. Acting on it would
+    // abandon the LIVE pass and publish NoState over a tailscaled that is
+    // answering -- the skew this token exists for, in its other direction.
+    //
+    // The watch carries no token and reports zero, and its failure is always
+    // this object's business: a watch that drops is a lost connection whenever
+    // it happens.
+    if (token != 0 && token != m_openPass)
+        return;
+    // No bookkeeping of the open pass here: lostTailscaled() closes it for
+    // every path, which is what keeps /prefs and the watch from leaving one
+    // open behind them.
     lostTailscaled();
 }
 
@@ -305,6 +354,16 @@ void LocalApiTailscaleBackend::lostTailscaled()
     // the loss and still pending.
     m_attemptFailed = true;
     m_settle.stop();
+    // The pass is over, whichever of its reads reported the loss: it is closed
+    // here and not in the failing path, so /prefs and the watch end it as
+    // surely as /status does. Closing it is half of what keeps a straggler
+    // out -- the number it carries no longer matches any open pass -- and
+    // dropping the halves already in hand is the other half, because a pass
+    // this object has given up on must not leave one of its two readings to
+    // be paired with the other half of the next.
+    m_openPass = 0;
+    m_pendingStatus.reset();
+    m_pendingExitNodeId.reset();
     // State alone, because state is the only thing that is certainly wrong
     // when tailscaled stops answering. The rest of the snapshot is the last
     // thing it said, and blanking it would set exitNodeActive to false -- the

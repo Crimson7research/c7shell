@@ -98,14 +98,16 @@ LocalApiClient::~LocalApiClient()
     stop();
 }
 
-void LocalApiClient::get(const QString &path)
+void LocalApiClient::get(const QString &path, quint64 token)
 {
-    start(path, false);
+    start(path, false, token);
 }
 
 void LocalApiClient::watch()
 {
-    start(kWatchPath, true);
+    // Zero: a watch is a stream, not a round of asking, and has nothing for a
+    // token to identify.
+    start(kWatchPath, true, 0);
 }
 
 void LocalApiClient::stop()
@@ -115,11 +117,12 @@ void LocalApiClient::stop()
         take(socket);
 }
 
-void LocalApiClient::start(const QString &path, bool streaming)
+void LocalApiClient::start(const QString &path, bool streaming, quint64 token)
 {
     auto *socket = new QLocalSocket(this);
     Exchange exchange;
     exchange.path = path;
+    exchange.token = token;
     exchange.streaming = streaming;
     m_exchanges.insert(socket, exchange);
 
@@ -365,9 +368,10 @@ void LocalApiClient::finish(QLocalSocket *socket)
         emit watchEnded();
         return;
     }
-    emit replied(exchange->path, exchange->contentLength >= 0
-                                     ? exchange->body.left(exchange->contentLength)
-                                     : exchange->body);
+    emit replied(exchange->path,
+                 exchange->contentLength >= 0 ? exchange->body.left(exchange->contentLength)
+                                              : exchange->body,
+                 exchange->token);
 }
 
 void LocalApiClient::fail(QLocalSocket *socket, const QString &reason)
@@ -375,7 +379,7 @@ void LocalApiClient::fail(QLocalSocket *socket, const QString &reason)
     const std::optional<Exchange> exchange = take(socket);
     if (!exchange)
         return;
-    emit failed(exchange->path, reason);
+    emit failed(exchange->path, reason, exchange->token);
     if (exchange->streaming)
         emit watchEnded();
 }

@@ -140,8 +140,11 @@ private:
     // Drop whatever is in flight, start the watch, read the three endpoints.
     // Also the retry timer's slot.
     void open();
-    void onReplied(const QString &path, const QByteArray &body);
-    void onFailed(const QString &path, const QString &reason);
+    void onReplied(const QString &path, const QByteArray &body, quint64 token);
+    void onFailed(const QString &path, const QString &reason, quint64 token);
+    // Whether a pass is open at all. A pass is numbered from 1, so a reply
+    // that carries no token cannot be mistaken for one belonging to it.
+    bool passOpen() const { return m_openPass != 0; }
     void onEvent(const QByteArray &notification);
     // Whether this notification is worth a re-read. The body is read for that
     // one decision and nothing else: what changed still comes from /status.
@@ -208,11 +211,25 @@ private:
     int m_settleMs;
     int m_attempts = 0;
     // One refresh at a time: tailscaled emits several notifications for one
-    // change, and a pair of sockets per notification would be a storm. A
+    // change, and a set of sockets per notification would be a storm. A
     // notification that arrives while a refresh is out is remembered, not
     // dropped -- the reply in flight was asked for before the change, so it
     // cannot be the answer to it.
-    bool m_refreshInFlight = false;
+    //
+    // A NUMBER RATHER THAN A FLAG, and this is the whole of the fix for the
+    // skew it replaced. A flag answers "is a pass open?", and the question
+    // that has to be answered is "is this reply from the pass that is open?".
+    // Those differ exactly when a reply from an abandoned pass arrives while
+    // the next one is out -- which is ordinary, because the notification that
+    // starts the next pass routinely beats a slow /prefs from the last one --
+    // and the flag says yes to the straggler, which is then paired with the
+    // new pass's other half.
+    //
+    // m_passes only ever counts up, so a number is never reused and a
+    // straggler can always be recognised. m_openPass is the one this object
+    // is still interested in, or 0 when none is.
+    quint64 m_passes = 0;
+    quint64 m_openPass = 0;
     bool m_refreshStale = false;
     // The two halves of the pass in flight. A pass publishes when both are
     // here and not before -- see the note on snapshots at the top of this

@@ -154,6 +154,21 @@ QString nodeIdOf(const char *statusFixture, const QString &hostName)
     return {};
 }
 
+// The name the panel puts on that peer, read out of the capture by the same
+// rule the parser uses. A literal would have been "gamma" until Task 1 moved
+// naming onto the DNS label, where that peer answers to host-1.
+QString displayNameOf(const char *statusFixture, const QString &hostName)
+{
+    const auto status = StatusParser::parse(fixture(statusFixture));
+    if (!status)
+        return {};
+    for (const Peer &peer : status->peers) {
+        if (peer.hostName == hostName)
+            return peer.displayName;
+    }
+    return {};
+}
+
 } // namespace
 
 // LocalApiTailscaleBackend against a fake tailscaled: every case drives the
@@ -277,6 +292,71 @@ private slots:
         QVERIFY(!b.exitNodeBlocked());
         QVERIFY(b.exitNodeId().isEmpty());
         QVERIFY(b.exitNodeName().isEmpty());
+    }
+
+    // A pass that fails leaves no half of itself behind, and a straggler from
+    // it is not half of the pass that comes after. The sequence is specific:
+    // /status fails, closing the pass while the /prefs read beside it is still
+    // out; that late /prefs reply then arrives; and a notification starts a
+    // new pass before the retry fires. The straggler has to be told apart from
+    // the new pass's own /prefs, and only the token it was issued with can do
+    // that -- "is a pass open?" answers yes in both cases. Paired wrongly, the
+    // panel names an exit node selected at one moment against a status read at
+    // another, which is the fail-closed path reading from two moments at once.
+    void dropsAHalfFinishedPassWhenTheConnectionIsLost()
+    {
+        const QString first = nodeIdOf("status-idle.json", QStringLiteral("alpha"));
+        const QString stale = nodeIdOf("status-idle.json", QStringLiteral("beta"));
+        const QString current = nodeIdOf("status-idle.json", QStringLiteral("gamma"));
+        QVERIFY(!first.isEmpty() && !stale.isEmpty() && !current.isEmpty());
+        QVERIFY(first != stale && stale != current);
+
+        FakeSocketServer server(socketPath());
+        auto selected = std::make_shared<QString>(first);
+        auto statusFails = std::make_shared<bool>(false);
+        server.onRequest(
+                [selected, statusFails](const QByteArray &request) -> QByteArray {
+                    if (request.contains("/localapi/v0/watch-ipn-bus"))
+                        return QByteArrayLiteral("HTTP/1.1 200 OK\r\n\r\n");
+                    if (request.contains("/localapi/v0/suggest-exit-node"))
+                        return measured(fixture("suggest-exit-node.json"));
+                    if (request.contains("/localapi/v0/prefs"))
+                        return measured(prefsSelecting(*selected));
+                    if (*statusFails)
+                        return QByteArrayLiteral(
+                                "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n");
+                    // No ExitNodeStatus, so the id on the panel is the one
+                    // /prefs supplied and the pairing is what is being read.
+                    return chunked(fixture("status-idle.json"));
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // A retry base no test will wait out: the question is what the pass
+        // after the failure pairs, not when open() eventually repairs it.
+        LocalApiTailscaleBackend b(socketPath(), 20000);
+        QTRY_COMPARE(b.exitNodeId(), first);
+        QTRY_COMPARE(server.clientCount(), 1);
+
+        // The pass that fails. Its /prefs reply is held, so it lands AFTER
+        // the status failure rather than racing it.
+        server.holdNext("/localapi/v0/prefs ");
+        *statusFails = true;
+        *selected = stale;
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::NoState);
+        QTRY_COMPARE(server.heldCount(), 1);
+        QCOMPARE(server.completeHeld(measured(prefsSelecting(stale))), 1);
+
+        // The next pass, before the retry fires. Both of its reads answer.
+        // No wait between the two: the straggler and this notification race
+        // deliberately, because that race is the defect. A qWait here would
+        // let the straggler land between passes, where even a boolean turns
+        // it away, and the test would pass against the bug.
+        *statusFails = false;
+        *selected = current;
+        server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QCOMPARE(b.exitNodeId(), current);
+        QCOMPARE(b.exitNodeName(), displayNameOf("status-idle.json", QStringLiteral("gamma")));
     }
 
     // /suggest-exit-node is an optional feature endpoint, not a health probe,
