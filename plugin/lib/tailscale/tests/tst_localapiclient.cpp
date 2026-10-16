@@ -24,17 +24,29 @@ private slots:
         QVERIFY(dir->isValid());
     }
 
+    // The body is what Content-Length PROMISED and not what the socket held.
+    // The staging is deliberate and the assertion is exact: 11 declared over 13
+    // bytes on the wire, so anything after the body -- the two bytes here, and
+    // a pipelined second response on a live socket -- is the difference between
+    // a reply this client cut to its length and one it handed over whole.
+    //
+    // Asserting on .trimmed() is what this test used to do, and it erased
+    // exactly the two bytes the staging existed to produce: the truncation
+    // could be deleted outright with the suite green, and a /prefs reply with
+    // anything behind it would have reached parsePrefs() as trailing garbage --
+    // which QJsonDocument reads as an empty object, published as "no exit node
+    // selected" with every switch off, from a daemon that answered perfectly.
     void getReturnsTheBodyWithoutHeaders()
     {
         FakeSocketServer server(socketPath());
         server.onRequest([](const QByteArray &) {
-            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\n{\"ok\":true}\r\n");
+            return QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"ok\":true}\r\n");
         }, FakeSocketServer::CloseAfterReply, "\r\n\r\n");
         LocalApiClient c(socketPath());
         QSignalSpy replied(&c, &LocalApiClient::replied);
         c.get(QStringLiteral("/localapi/v0/status"));
         QVERIFY(replied.wait());
-        QCOMPARE(replied.first().at(1).toByteArray().trimmed(), QByteArrayLiteral("{\"ok\":true}"));
+        QCOMPARE(replied.first().at(1).toByteArray(), QByteArrayLiteral("{\"ok\":true}"));
     }
 
     void sendsAHostHeaderTailscaledAccepts()
