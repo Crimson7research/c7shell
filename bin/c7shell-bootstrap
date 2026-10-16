@@ -532,6 +532,40 @@ if getent group rfkill >/dev/null && ! id -nG | grep -qw rfkill; then
   add_note 'you were added to the rfkill group; log out and back in for airplane mode'
 fi
 
+# tailscaled authorises its local API by peer credentials, not polkit: it ships
+# no polkit actions at all. So unlike wifi and bluetooth -- which NetworkManager
+# delegates to polkit, and polkit grants to whoever holds the active seat --
+# there is no policy file to install for it. Write access is root, or the single
+# operator user named in tailscaled's own prefs, and naming that user is itself
+# a privileged write. It happens once, here; without it every change the shell's
+# tailscale panel makes comes back 403.
+#
+# Tailscale is not a dependency of c7shell. With no client installed, or no
+# daemon answering, there is nothing to configure and nothing worth saying.
+if have tailscale && ts_prefs=$(tailscale debug prefs 2>/dev/null); then
+  step 'naming the tailscale operator'
+  # OperatorUser is omitempty in those prefs, so an absent key is an operator
+  # that was never set.
+  ts_operator=$(sed -n 's/^[[:space:]]*"OperatorUser":[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$ts_prefs")
+  # Who logs in, not $USER: reached through sudo that would name root the
+  # operator and leave the desktop user exactly as locked out as before.
+  ts_user=$(id -un 2>/dev/null || true)
+  if [[ -z $ts_user ]]; then
+    warn 'cannot tell who logs in here, so the tailscale operator is left alone'
+  elif [[ $ts_operator == "$ts_user" ]]; then
+    info "already the operator: $ts_user"
+  elif [[ -n $ts_operator ]]; then
+    # Someone chose that; taking it over silently would break whatever they
+    # set it up for, and tailscaled keeps only one operator.
+    warn "tailscale's operator is \"$ts_operator\", not you; leaving it alone"
+    add_note "the tailscale panel stays read-only until you take it over: sudo tailscale set --operator=$ts_user"
+  else
+    info "naming $ts_user, so the tailscale panel can change tailnet state"
+    run_root tailscale set --operator="$ts_user" \
+      || warn 'could not name the tailscale operator; the tailscale panel stays read-only'
+  fi
+fi
+
 if ((${#units_todo[@]})); then
   step 'enabling system services'
   run_root systemctl enable "${units_todo[@]}"
