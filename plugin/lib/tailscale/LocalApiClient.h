@@ -69,8 +69,20 @@ public:
                             QObject *parent = nullptr);
     ~LocalApiClient() override;
 
-    // GET `path`, answered by replied() or failed().
-    void get(const QString &path);
+    // GET `path`, answered by replied() or failed(), each carrying `token`
+    // back unchanged.
+    //
+    // The token exists because a caller that assembles one view out of two
+    // endpoints has to know WHICH round of asking a reply belongs to, and a
+    // path cannot say: ask twice and both replies are "/localapi/v0/prefs".
+    // A caller that abandons a round -- because the other endpoint failed --
+    // then has no way to tell a straggler from that round apart from the
+    // answer to the round it has just started, and will pair the straggler
+    // with the new round's other half. This client cannot fix that for the
+    // caller, because only the caller knows what a round is; it can only hand
+    // back what it was told. Zero is the default and means "untagged", for a
+    // caller with one request in flight and nothing to disambiguate.
+    void get(const QString &path, quint64 token = 0);
 
     // Stream /localapi/v0/watch-ipn-bus: one event() per complete line, then
     // watchEnded() when the stream stops.
@@ -80,11 +92,12 @@ public:
     void stop();
 
 signals:
-    // The response body, headers stripped.
-    void replied(const QString &path, const QByteArray &body);
-    // Why a request ended badly. A watch that fails emits this first and
-    // watchEnded straight after, never one without the other.
-    void failed(const QString &path, const QString &reason);
+    // The response body, headers stripped, and the token its get() carried.
+    void replied(const QString &path, const QByteArray &body, quint64 token);
+    // Why a request ended badly, and the token its get() carried. A watch that
+    // fails emits this first and watchEnded straight after, never one without
+    // the other; a watch carries no token of its own and reports zero.
+    void failed(const QString &path, const QString &reason, quint64 token);
     // The watch's response headers arrived and were accepted: the stream is
     // up and notifications will follow. Emitted once per watch, before any
     // event(), and never for a get.
@@ -96,12 +109,19 @@ signals:
     void watchStarted();
     // One complete notification. Never a partial line: a line split across two
     // reads is held until the newline arrives.
+    //
+    // Deliberately untokened, with watchEnded and watchStarted: the watch is
+    // one long-lived stream rather than a round of asking, so there is no
+    // round for a notification to belong to. A notification is what makes a
+    // caller START a round.
     void event(const QByteArray &line);
     void watchEnded();
 
 private:
     struct Exchange {
         QString path;
+        // Handed back on this exchange's replied() or failed(), untouched.
+        quint64 token = 0;
         QByteArray buffer; // read, not yet unframed
         QByteArray body;   // unframed payload
         bool streaming = false;
@@ -118,7 +138,7 @@ private:
         QTimer *deadline = nullptr;
     };
 
-    void start(const QString &path, bool streaming);
+    void start(const QString &path, bool streaming, quint64 token);
     void read(QLocalSocket *socket);
     // Headers, framing, delivery -- each step able to end the exchange, after
     // which the ones behind it do nothing.
