@@ -60,7 +60,10 @@ working_paru() { printf '#!/bin/sh\ncase $1 in --version) echo "paru v2.1.0"; ex
 working_paru
 # root wrapper, so run_root has something to find in a non-dry run
 # A refresh through it is what brings STUB_NEW_AFTER_SYNC packages into view.
-printf '#!/bin/sh\necho "sudo $*" >> "$STUB_LOG"\ncase "$1 $2" in "pacman -Sy"*) : > "$STUB_LOG.synced" ;; esac\n' > "$bin/sudo"; chmod +x "$bin/sudo"
+# `tailscale set` is the one command it really runs, through the stub below:
+# the operator one run names has to be the operator the next run finds, or
+# running the bootstrap twice could not be tested at all.
+printf '#!/bin/sh\necho "sudo $*" >> "$STUB_LOG"\ncase "$1 $2" in "pacman -Sy"*) : > "$STUB_LOG.synced" ;; "tailscale set"*) exec "$@" ;; esac\n' > "$bin/sudo"; chmod +x "$bin/sudo"
 
 # plan <lspci line> [args...] -> the dry-run plan
 plan() {
@@ -72,6 +75,7 @@ plan() {
     STUB_INSTALLED="${STUB_INSTALLED:-linux}" \
     STUB_UNKNOWN="${STUB_UNKNOWN:-}" STUB_ENABLED="${STUB_ENABLED:-}" \
     STUB_NEW_AFTER_SYNC= STUB_NO_USER_MANAGER= STUB_NETCTL="${STUB_NETCTL:-}" \
+    STUB_TS_OPERATOR="${STUB_TS_OPERATOR:-}" STUB_TS_DOWN="${STUB_TS_DOWN:-}" \
     /usr/bin/bash "$bootstrap" --dry-run "$@" 2>&1
 }
 
@@ -371,6 +375,79 @@ echo linux-cachyos > "$tmp/root/usr/lib/modules/6.17.1-cachyos/pkgbase"
 out=$(plan "$NVIDIA")
 installs "$out" | grep -q '\blinux-cachyos-headers\b' || fail "a custom kernel got no headers for DKMS:\n$out"
 rm -rf "$tmp/root"
+
+# --- the tailscale operator -------------------------------------------------
+# tailscaled authorises its local API by peer credentials and ships no polkit
+# actions, so the shell's tailscale panel can change nothing until the desktop
+# user is named its operator -- a privileged write, which is why it is here.
+# Everything below answers out of a stub: no check may reach a real tailscaled
+# or run a real `tailscale set`.
+
+# Not installed is the ordinary case (tailscale is not a dependency of
+# c7shell), and it has to pass in silence rather than as a warning.
+out=$(plan "$AMD")
+grep -qi tailscale <<<"$out" && fail "nothing tailscale is installed, yet the run talks about it:\n$out"
+
+cat > "$bin/tailscale" <<'STUB'
+#!/bin/sh
+# The operator this stub reports is the one a previous `set` left behind, so
+# two runs in a row see what a real machine would.
+state=$STUB_LOG.operator
+case "$1 $2" in
+  'debug prefs')
+    [ -n "$STUB_TS_DOWN" ] && { echo 'failed to connect to local tailscaled' >&2; exit 1; }
+    op=$STUB_TS_OPERATOR
+    [ -f "$state" ] && op=$(cat "$state")
+    # OperatorUser is omitempty in tailscaled's prefs: unset is an absent key,
+    # not an empty string.
+    printf '{\n\t"WantRunning": true'
+    [ -n "$op" ] && printf ',\n\t"OperatorUser": "%s"' "$op"
+    printf '\n}\n' ;;
+  *)
+    echo "tailscale $*" >> "$STUB_LOG"
+    case $2 in --operator=*) printf '%s\n' "${2#--operator=}" > "$state" ;; esac ;;
+esac
+STUB
+chmod +x "$bin/tailscale"
+# id -un is how the bootstrap works out who logs in, here and for the groups.
+printf '#!/bin/sh\ncase "$1" in -un|-nG) echo tester ;; *) echo 1000 ;; esac\n' > "$bin/id.stub"
+mv "$bin/id" "$bin/id.real"; mv "$bin/id.stub" "$bin/id"; chmod +x "$bin/id"
+
+# A client with no daemon answering is the same no-op.
+out=$(STUB_TS_DOWN=1 plan "$AMD")
+grep -qi operator <<<"$out" && fail "tailscaled is not running, yet the operator was touched:\n$out"
+
+# No operator yet: name the user who logs in -- and not $USER, which is root
+# when the bootstrap is reached through sudo and would leave the desktop user
+# exactly as locked out as it was.
+rm -f "$log.operator"
+out=$(env -i PATH="$bin" HOME="$tmp" USER=root C7SHELL_ROOT="$tmp/root" \
+        STUB_LOG="$log" STUB_LSPCI="$AMD" STUB_INSTALLED=linux \
+        STUB_UNKNOWN= STUB_ENABLED= STUB_TS_OPERATOR= STUB_TS_DOWN= \
+        /usr/bin/bash "$bootstrap" --dry-run 2>&1)
+grep -q 'operator=root' <<<"$out" && fail "USER=root made root the tailscale operator:\n$out"
+grep -q 'would run (root): tailscale set --operator=tester' <<<"$out" \
+  || fail "the desktop user was not named as the operator:\n$out"
+
+# ...and a real (stubbed) run does it, once. The second run finds the operator
+# already named and must not write, which is also what keeps it from prompting
+# for a password on a machine that is already configured.
+out=$(yes_run -- --no-aur --no-upgrade)
+grep -q 'sudo tailscale set --operator=tester' "$log" \
+  || fail "a machine with no operator did not get one:\n$(cat "$log")\n$out"
+out=$(yes_run -- --no-aur --no-upgrade)
+grep -q 'tailscale set' "$log" \
+  && fail "the second run named the operator again:\n$(cat "$log")\n$out"
+grep -q 'already the operator: tester' <<<"$out" || fail "the operator already in place was not reported:\n$out"
+
+# Someone else's operator is their deliberate configuration, not ours to take.
+rm -f "$log.operator"
+out=$(yes_run STUB_TS_OPERATOR=other-user -- --no-aur --no-upgrade)
+grep -q 'tailscale set' "$log" \
+  && fail "another user's operator was overwritten:\n$(cat "$log")\n$out"
+grep -q 'operator is "other-user", not you' <<<"$out" || fail "an operator set to someone else was not reported:\n$out"
+
+rm -f "$bin/tailscale" "$bin/id" "$log.operator"; mv "$bin/id.real" "$bin/id"
 
 echo 'PASS: c7shell-bootstrap'
 
