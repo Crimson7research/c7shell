@@ -221,13 +221,18 @@ QtObject {
   property bool writable: true
   property string writeError: ""
 
-  // The read-back for the three write-backed switches, which is what a panel
+  // The read-back for the four write-backed switches, which is what a panel
   // binds a switch to. They are WRITTEN BY THE TEST and never by the actions
   // below -- the actions record and move nothing, as the contract specifies,
   // so moving one of these is the daemon having answered. That is the whole
   // distinction these properties exist to make: a switch bound to one follows
   // tailscaled, and a switch that latched its own click would show the
   // opposite of what the daemon holds the moment the two disagree.
+  //
+  // wantRunning is separate from `state` here exactly as it is on the
+  // contract: what tailscaled was TOLD, not what it is doing. The test drives
+  // the two apart, which a panel inferring one from the other cannot survive.
+  property bool wantRunning: false
   property bool exitNodeAllowLANAccess: false
   property bool acceptRoutes: false
   property bool acceptDns: false

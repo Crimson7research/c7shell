@@ -503,11 +503,12 @@ static QString nameOfPeer(const QList<Peer> &peers, const QString &nodeId)
 // What the snapshot takes from a /prefs reply, and nothing else is read.
 //
 // ExitNodeID is what says an exit node is SELECTED at all, which
-// ExitNodeStatus cannot while tailscaled is still resolving it. The three
-// bools are the read-back for the three write-backed switches: each one has an
-// action on the contract and, until they were published here, nothing to read
-// back from -- so a switch on screen drew what was last clicked on it rather
-// than what this daemon holds.
+// ExitNodeStatus cannot while tailscaled is still resolving it. The four bools
+// are the read-back for the four write-backed switches: each one has an action
+// on the contract and, until they were published here, nothing to read back
+// from -- so a switch on screen drew what was last clicked on it rather than
+// what this daemon holds, and the header's connect toggle, with nothing to
+// draw from at all, was shipped dead.
 //
 // A body that is not an object yields the defaults, which read as "nothing
 // selected" and three switches off -- the same reading as a daemon that has
@@ -522,6 +523,7 @@ LocalApiTailscaleBackend::Prefs LocalApiTailscaleBackend::parsePrefs(const QByte
     const QJsonObject prefs = QJsonDocument::fromJson(body).object();
     Prefs parsed;
     parsed.exitNodeId = prefs.value(QLatin1String("ExitNodeID")).toString();
+    parsed.wantRunning = prefs.value(QLatin1String("WantRunning")).toBool();
     parsed.exitNodeAllowLANAccess = prefs.value(QLatin1String("ExitNodeAllowLANAccess")).toBool();
     parsed.routeAll = prefs.value(QLatin1String("RouteAll")).toBool();
     parsed.corpDns = prefs.value(QLatin1String("CorpDNS")).toBool();
@@ -577,10 +579,16 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status, const Prefs &pr
 
     store(m_issues, reportableHealth(status.health), &TailscaleBackend::issuesChanged);
 
-    // The three switch prefs, stored with everything else and announced with
+    // The four switch prefs, stored with everything else and announced with
     // everything else: a panel reacting to one of these must not find half of
     // the next snapshot underneath it, and a switch bound straight to one is
     // relying on exactly that.
+    //
+    // WantRunning rides here rather than beside m_state deliberately. It is
+    // what tailscaled was TOLD, not what it is doing: the two disagree for as
+    // long as a machine is Starting, and indefinitely on a logged-out one
+    // that wants to be up.
+    store(m_wantRunning, prefs.wantRunning, &TailscaleBackend::wantRunningChanged);
     store(m_exitNodeAllowLANAccess, prefs.exitNodeAllowLANAccess,
           &TailscaleBackend::exitNodeAllowLANAccessChanged);
     store(m_acceptRoutes, prefs.routeAll, &TailscaleBackend::acceptRoutesChanged);

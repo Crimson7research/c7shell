@@ -189,14 +189,15 @@ QByteArray prefsSelecting(const QString &id)
     return QJsonDocument(prefs).toJson(QJsonDocument::Compact);
 }
 
-// The capture with the three switch prefs set, which is what the panel reads
-// its three write-backed switches back from. The capture itself has
-// ExitNodeAllowLANAccess false, RouteAll false and CorpDNS true, so a test
-// that only ever saw the fixture could not tell a published value from a
-// hardcoded default.
-QByteArray prefsWithSwitches(bool allowLanAccess, bool routeAll, bool corpDns)
+// The capture with the four switch prefs set, which is what the panel reads
+// its four write-backed switches back from. The capture itself has
+// WantRunning true, ExitNodeAllowLANAccess false, RouteAll false and CorpDNS
+// true, so a test that only ever saw the fixture could not tell a published
+// value from a hardcoded default.
+QByteArray prefsWithSwitches(bool wantRunning, bool allowLanAccess, bool routeAll, bool corpDns)
 {
     QJsonObject prefs = QJsonDocument::fromJson(fixture("prefs.json")).object();
+    prefs.insert(QLatin1String("WantRunning"), wantRunning);
     prefs.insert(QLatin1String("ExitNodeAllowLANAccess"), allowLanAccess);
     prefs.insert(QLatin1String("RouteAll"), routeAll);
     prefs.insert(QLatin1String("CorpDNS"), corpDns);
@@ -397,17 +398,19 @@ private slots:
         QVERIFY(b.exitNodeName().isEmpty());
     }
 
-    // The three prefs the panel's three switches ARE. Until these were
+    // The four prefs the panel's four switches ARE. Until these were
     // published, a switch drew what was last clicked on it in this session:
     // the LAN-access control opened off on a machine where LAN access was
     // already on, and no refusal could spring it back, because there was
-    // nothing on the contract for it to spring back TO.
+    // nothing on the contract for it to spring back TO. The connect toggle in
+    // the panel's header had it worse still -- it was drawn permanently dead,
+    // because there was nothing to draw it from.
     //
     // /prefs is already read on every pass, so this is a publishing gap and
     // not a new request. The values asserted are the opposite of the
-    // capture's on every one of the three, so a getter wired to a default
+    // capture's on every one of the four, so a getter wired to a default
     // rather than to the reply fails here.
-    void publishesTheThreeSwitchPrefsFromTheSamePrefsReadItAlreadyMakes()
+    void publishesTheSwitchPrefsFromTheSamePrefsReadItAlreadyMakes()
     {
         FakeSocketServer server(socketPath());
         server.onRequest(
@@ -417,12 +420,20 @@ private slots:
                     if (request.contains("/localapi/v0/suggest-exit-node"))
                         return measured(fixture("suggest-exit-node.json"));
                     if (request.contains("/localapi/v0/prefs"))
-                        return measured(prefsWithSwitches(true, true, false));
+                        return measured(prefsWithSwitches(false, true, true, false));
                     return chunked(fixture("status-idle.json"));
                 },
                 FakeSocketServer::KeepOpen, "\r\n\r\n");
         LocalApiTailscaleBackend b(socketPath());
         QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        // WantRunning is what the header's connect toggle IS, and it is a
+        // different question from `state`: a machine that is Starting, or
+        // NeedsLogin with WantRunning true, is one tailscale is meant to be
+        // up on. The status here says Running and the prefs say false, which
+        // is a pairing only a backend reading the pref can get right.
+        QVERIFY2(!b.wantRunning(),
+                 "WantRunning did not reach the contract, or reached it inferred from `state` "
+                 "rather than read from the prefs");
         QVERIFY2(b.exitNodeAllowLANAccess(),
                  "ExitNodeAllowLANAccess is in the prefs this backend already reads and did not "
                  "reach the contract");
@@ -449,25 +460,29 @@ private slots:
                     if (request.contains("/localapi/v0/suggest-exit-node"))
                         return measured(fixture("suggest-exit-node.json"));
                     if (request.contains("/localapi/v0/prefs"))
-                        return measured(prefsWithSwitches(*on, *on, *on));
+                        return measured(prefsWithSwitches(*on, *on, *on, *on));
                     return chunked(fixture("status-idle.json"));
                 },
                 FakeSocketServer::KeepOpen, "\r\n\r\n");
         LocalApiTailscaleBackend b(socketPath());
         QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
-        QVERIFY(!b.exitNodeAllowLANAccess() && !b.acceptRoutes() && !b.acceptDns());
+        QVERIFY(!b.wantRunning() && !b.exitNodeAllowLANAccess() && !b.acceptRoutes()
+                && !b.acceptDns());
         QTRY_COMPARE(server.clientCount(), 1);
 
         // Each has a NOTIFY of its own: a switch bound to one of these and
         // nothing else must still re-evaluate.
+        QSignalSpy running(&b, &TailscaleBackend::wantRunningChanged);
         QSignalSpy lan(&b, &TailscaleBackend::exitNodeAllowLANAccessChanged);
         QSignalSpy routes(&b, &TailscaleBackend::acceptRoutesChanged);
         QSignalSpy dns(&b, &TailscaleBackend::acceptDnsChanged);
         *on = true;
         server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
         QTRY_VERIFY(b.exitNodeAllowLANAccess());
+        QVERIFY(b.wantRunning());
         QVERIFY(b.acceptRoutes());
         QVERIFY(b.acceptDns());
+        QCOMPARE(running.count(), 1);
         QCOMPARE(lan.count(), 1);
         QCOMPARE(routes.count(), 1);
         QCOMPARE(dns.count(), 1);

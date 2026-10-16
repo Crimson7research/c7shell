@@ -136,11 +136,13 @@ private slots:
             QStringLiteral("peers"),           QStringLiteral("exitNodes"),
             QStringLiteral("recommendedExitNodeId"), QStringLiteral("writable"),
             QStringLiteral("writeError"),
-            // The read-back for the three write-backed switches. Every one of
+            // The read-back for the four write-backed switches. Every one of
             // them had an action and no property, so a switch drew what was
-            // last clicked on it rather than what tailscaled holds.
-            QStringLiteral("exitNodeAllowLANAccess"), QStringLiteral("acceptRoutes"),
-            QStringLiteral("acceptDns")};
+            // last clicked on it rather than what tailscaled holds -- and the
+            // header's connect toggle, with nothing to draw from at all, was
+            // shipped permanently dead.
+            QStringLiteral("wantRunning"), QStringLiteral("exitNodeAllowLANAccess"),
+            QStringLiteral("acceptRoutes"), QStringLiteral("acceptDns")};
         expected.sort();
         QCOMPARE(declaredProperties(ts), expected);
     }

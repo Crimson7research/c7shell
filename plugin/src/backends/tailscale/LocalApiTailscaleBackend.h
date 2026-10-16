@@ -108,8 +108,9 @@ public:
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
 
-    // The three switch prefs, read back out of the same /prefs reply the
+    // The four switch prefs, read back out of the same /prefs reply the
     // snapshot is already assembled from.
+    bool wantRunning() const override { return m_wantRunning; }
     bool exitNodeAllowLANAccess() const override { return m_exitNodeAllowLANAccess; }
     bool acceptRoutes() const override { return m_acceptRoutes; }
     bool acceptDns() const override { return m_acceptDns; }
@@ -208,6 +209,7 @@ private:
     // same reading as a daemon that has not answered.
     struct Prefs {
         QString exitNodeId;
+        bool wantRunning = false;
         bool exitNodeAllowLANAccess = false;
         bool routeAll = false;
         bool corpDns = false;
@@ -299,10 +301,12 @@ private:
     // panel gated on it with no way to make that click.
     bool m_writable = true;
     QString m_writeError;
-    // False until a /prefs has said otherwise. CorpDNS is true on a default
-    // tailscaled and this still starts false: a value this object has not
-    // heard is not a value to guess at, and a switch drawn on before the
-    // socket answers is the same lie in the other direction.
+    // False until a /prefs has said otherwise. CorpDNS and WantRunning are
+    // both true on a daemon in ordinary use and these still start false: a
+    // value this object has not heard is not a value to guess at, and a
+    // switch drawn on before the socket answers is the same lie in the other
+    // direction.
+    bool m_wantRunning = false;
     bool m_exitNodeAllowLANAccess = false;
     bool m_acceptRoutes = false;
     bool m_acceptDns = false;
