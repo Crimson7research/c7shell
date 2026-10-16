@@ -225,16 +225,32 @@ public:
     // Use the tailnet's DNS configuration, MagicDNS included.
     Q_INVOKABLE virtual void setAcceptDns(bool on) = 0;
 
-    // Whether the last change this backend asked for was accepted. FALSE
-    // UNTIL ONE HAS BEEN: nothing short of attempting a write tells this
-    // module whether tailscaled will permit one, so a backend that has not
-    // tried does not know and does not claim to.
+    // TRUE UNTIL A WRITE IS REFUSED, false from a refusal until one is
+    // accepted again. READ THE NAME CAREFULLY: it is not a precondition and
+    // not permission to try. It says only whether the last attempt was
+    // refused, so the honest reading of it is "not known to be refused", and
+    // a true here is a claim about the past rather than a promise about the
+    // next click.
     //
-    // It is an EXPLANATION, not a gate. A panel that disabled its controls on
-    // it would disable them on a machine where writing works perfectly and
-    // leave no way to make the first write that would clear it. What it is
-    // for is the moment after a refusal, when a toggle has sprung back to
-    // where it was and the panel has to say why.
+    // THE NAME IS THE TRAP, which is worth saying because it has already
+    // caused one: read as a precondition it invites gating a control on it,
+    // and a `writable` that began false would then disable every control on a
+    // machine where writing works perfectly -- with no way left to make the
+    // first write that would enable them. So it starts true and the first
+    // refusal is what moves it.
+    //
+    // Pre-checking is the alternative and is deliberately not taken.
+    // tailscaled can be asked (POST /localapi/v0/check-prefs is gated the same
+    // way and changes nothing), but that is a fourth endpoint in the connect
+    // sequence, and this module has already spent a fix round REMOVING an
+    // optional endpoint from that sequence because a failure there took the
+    // whole backend to NoState. The first click answers the question for
+    // free.
+    //
+    // What it is for is the moment after a refusal, when a toggle has sprung
+    // back to where it was and the panel has to say why. A control may
+    // reasonably go dead once this is false -- that is "disabled after a
+    // refusal", which is a different thing from disabled until proven.
     virtual bool writable() const = 0;
     // Why the last change failed, in the words of whatever refused it, or
     // empty after one that was accepted. Published rather than phrased: the

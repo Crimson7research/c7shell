@@ -29,10 +29,12 @@ private slots:
         QVERIFY(ts->peers());
         QVERIFY(ts->exitNodes());
         QVERIFY(ts->recommendedExitNodeId().isEmpty());
-        // Nothing short of attempting a write says whether tailscaled will
-        // take one, so a backend that has not tried reads as not known to be
-        // writable -- never as writable with nothing to show for it.
-        QVERIFY(!ts->writable());
+        // Not known to be REFUSED, which is what writable says: a backend
+        // that has not been turned down yet leaves its controls live, and the
+        // first click is what settles the question. Starting false would
+        // disable every control on a machine where writing works, with no way
+        // left to make the write that would enable them.
+        QVERIFY(ts->writable());
         QVERIFY(ts->writeError().isEmpty());
     }
 
@@ -101,22 +103,26 @@ private slots:
 
     // A refusal is ordinary -- tailscaled takes orders only from root or the
     // one user named as its operator -- so it reaches QML as state, with a
-    // signal, like everything else the panel draws.
+    // signal, like everything else the panel draws. And it RECOVERS: the flag
+    // follows the last attempt in both directions, so a machine that is
+    // bootstrapped while the panel is open stops explaining itself.
     void aRefusedWriteReachesQmlAsState()
     {
         FakeTailscaleBackend fake;
         TailscaleBackend *ts = &fake;
+        QVERIFY(ts->property("writable").toBool());
         QSignalSpy writable(&fake, &TailscaleBackend::writableChanged);
         QSignalSpy error(&fake, &TailscaleBackend::writeErrorChanged);
+        fake.setWritable(false);
         fake.setWriteError(QStringLiteral("/localapi/v0/prefs answered HTTP/1.1 403 Forbidden"));
+        QCOMPARE(writable.size(), 1);
         QCOMPARE(error.size(), 1);
         QVERIFY(!ts->property("writable").toBool());
         QVERIFY(ts->property("writeError").toString().contains(QStringLiteral("403")));
-        // And the other way: a write that is taken says so, so a panel can
-        // tell "refused" from "not tried yet" by the error beside it.
         fake.setWritable(true);
         fake.setWriteError(QString());
-        QCOMPARE(writable.size(), 1);
+        QCOMPARE(writable.size(), 2);
+        QCOMPARE(error.size(), 2);
         QVERIFY(ts->property("writable").toBool());
         QVERIFY(ts->writeError().isEmpty());
     }

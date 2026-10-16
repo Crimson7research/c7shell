@@ -1104,7 +1104,7 @@ private slots:
         LocalApiTailscaleBackend b(socketPath());
         TailscaleBackend *ts = &b;
         QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
-        QVERIFY2(!ts->writable(), "a backend that has never written claimed that it could");
+        QVERIFY2(ts->writable(), "a backend nothing has refused yet read as unwritable");
 
         QSignalSpy writable(&b, &TailscaleBackend::writableChanged);
         QSignalSpy error(&b, &TailscaleBackend::writeErrorChanged);
@@ -1112,7 +1112,8 @@ private slots:
         QTRY_VERIFY2(!ts->writeError().isEmpty(), "a refused write said nothing at all");
         QVERIFY2(ts->writeError().contains(QStringLiteral("403")), qPrintable(ts->writeError()));
         QCOMPARE(error.size(), 1);
-        QVERIFY(!ts->writable());
+        QVERIFY2(!ts->writable(), "a refused write left the panel saying writes work");
+        QCOMPARE(writable.size(), 1);
 
         // A PERMISSION SETTING IS NOT A DAEMON THAT HAS GONE. Every other
         // failure on this socket routes to lostTailscaled(), which publishes
@@ -1122,12 +1123,14 @@ private slots:
         QCOMPARE(b.state(), TailscaleBackend::State::Running);
         QCOMPARE(b.peers()->rowCount(), 20);
 
-        // Not a constant: the same backend reads as writable the moment a
-        // write is taken, which is what makes the false above mean something.
+        // And it RECOVERS: a machine bootstrapped while the panel is open
+        // stops explaining itself at the next write, so the flag follows the
+        // last attempt in both directions rather than latching on the first
+        // refusal.
         daemon.patchReply = measured(fixture("prefs-patched.json"));
         ts->setAcceptRoutes(true);
         QTRY_VERIFY(ts->writable());
-        QCOMPARE(writable.size(), 1);
+        QCOMPARE(writable.size(), 2);
         QVERIFY2(ts->writeError().isEmpty(), qPrintable(ts->writeError()));
     }
 
@@ -1164,7 +1167,13 @@ private slots:
 
         // tailscaled took the write and ended up somewhere else.
         daemon.prefs = prefsSelecting(imposed);
-        QTRY_VERIFY(ts->writable());
+        QTRY_COMPARE(writes(server).size(), 1);
+        // The write has gone out and been answered, and STILL nothing has
+        // moved. Proving that negative needs a bounded wait, as it does
+        // everywhere else here; writable() cannot serve as the probe, because
+        // it starts true and says nothing about a write having round-tripped.
+        QTest::qWait(50);
+        QVERIFY2(ts->writeError().isEmpty(), qPrintable(ts->writeError()));
         QCOMPARE(ts->exitNodeId(), QString());
         server.pushLine(QByteArrayLiteral("{\"Prefs\":{}}"));
 

@@ -97,9 +97,22 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     // Accepted: say so, and publish NOTHING FROM THE REPLY. It carries the
     // prefs tailscaled ended up with, and reading them here would be this
     // module learning its own state from its own request -- the one source
-    // that cannot contradict what was asked for. tailscaled sends every
-    // watcher a notification for an accepted prefs change, and that
-    // notification is what starts the pass that publishes it.
+    // that cannot contradict what was asked for. The bus is what publishes
+    // it, as it publishes everything else here.
+    //
+    // NOTHING REFRESHES HERE, AND THE MEASUREMENT IS WHY. The doubt is
+    // reasonable -- a write whose result never arrives would leave the panel
+    // stale forever -- so it was settled on a VM with the operator set, by
+    // watching the bus across a real write:
+    //
+    //   t+0.0s  notification: ['SessionID', 'State']   the subscribe echo
+    //   t+3.0s  notification: ['Prefs']                the PATCH, http=200
+    //
+    // tailscaled puts a Prefs notification on the bus for an accepted change,
+    // Prefs is not in ignoredNotifyFields(), so worthRefreshing() says yes
+    // and the next pass publishes what tailscaled ACTUALLY did. A refresh()
+    // added here would re-read the same thing a moment earlier and buy
+    // nothing but a second source for state that has exactly one.
     connect(&m_writer, &LocalApiClient::replied, this,
             [this](const QString &, const QByteArray &, quint64) { noteWriteOutcome(true, {}); });
     // Refused: say why, and do nothing else. 403 "prefs write access denied"
