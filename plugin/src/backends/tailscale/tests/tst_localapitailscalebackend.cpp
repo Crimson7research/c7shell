@@ -1313,6 +1313,71 @@ private slots:
         QVERIFY2(ts->writeError().isEmpty(), qPrintable(ts->writeError()));
     }
 
+    // A WRITE THAT WENT WRONG IS NOT A PERMISSION PROBLEM, and the difference
+    // is a lockout. All five actions gate on `writable` twice, the only path
+    // back to true is a write that succeeds, which needs a live control, and
+    // neither open() nor a reconnect resets it -- so reporting a transient as
+    // a refusal left every control on the panel dead for the life of the shell
+    // process, under a message telling the user to run c7shell-bootstrap.
+    //
+    // Trigger, measured in shape: upgrade the tailscale package with the panel
+    // open and click a switch during the two-second restart. The write fails
+    // with the connection closed before the response headers; the read side
+    // reconnects and the panel shows a healthy tailnet with every control on
+    // it permanently dead.
+    void keepsTheControlsLiveWhenAWriteFailsWithoutBeingRefused()
+    {
+        Daemon daemon{measured(fixture("prefs-patched.json")), fixture("prefs.json")};
+        auto server = std::make_unique<FakeSocketServer>(socketPath());
+        QVERIFY2(server->isListening(), qPrintable(server->error()));
+        serveWritableDaemon(*server, &daemon);
+        // A base no test will wait out: the question is what the failure
+        // publishes, not when the read side comes back.
+        LocalApiTailscaleBackend b(socketPath(), 20000);
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QVERIFY(ts->writable());
+
+        QSignalSpy writable(&b, &TailscaleBackend::writableChanged);
+        // The write goes out and is never answered: tailscaled goes away with
+        // it in flight.
+        server->holdNext("PATCH");
+        ts->setAcceptDns(true);
+        QTRY_COMPARE(server->heldCount(), 1);
+        server.reset();
+
+        QTRY_VERIFY2(!ts->writeError().isEmpty(),
+                     "a write lost with the daemon said nothing at all");
+        QVERIFY2(ts->writable(),
+                 "a write that was never answered was published as a permission refusal, which "
+                 "leaves every control on the panel dead for the life of the shell process");
+        QCOMPARE(writable.count(), 0);
+    }
+
+    // The flag does not come back either: a transient is not evidence in
+    // EITHER direction, so one arriving after a 403 must not resurrect
+    // controls tailscaled has refused to take orders from.
+    void aTransientFailureAfterARefusalDoesNotReviveTheControls()
+    {
+        Daemon daemon{refused(), fixture("prefs.json")};
+        auto server = std::make_unique<FakeSocketServer>(socketPath());
+        QVERIFY2(server->isListening(), qPrintable(server->error()));
+        serveWritableDaemon(*server, &daemon);
+        LocalApiTailscaleBackend b(socketPath(), 20000);
+        TailscaleBackend *ts = &b;
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+
+        ts->setAcceptRoutes(true);
+        QTRY_VERIFY(!ts->writable());
+
+        server->holdNext("PATCH");
+        ts->setAcceptRoutes(true);
+        QTRY_COMPARE(server->heldCount(), 1);
+        server.reset();
+        QTRY_VERIFY(ts->writeError().contains(QStringLiteral("connection closed")));
+        QVERIFY2(!ts->writable(), "a lost write re-enabled controls a 403 had taken away");
+    }
+
     // THE BUS IS THE AUTHORITY. A write is a request; what this module
     // publishes is what tailscaled then says, even when that is not what was
     // asked for -- another process selecting a different exit node a moment

@@ -43,17 +43,20 @@ Column {
   readonly property bool routes: Tailscale.acceptRoutes
   readonly property bool dns: Tailscale.acceptDns
 
-  // -- why everything below is dead -------------------------------------------
-  // Only after a refusal, which is the one moment the flag is for. The wording
-  // is presentation and so lives here: the contract publishes what refused the
-  // write and deliberately does not phrase it.
+  // -- what the last change did -----------------------------------------------
+  // Two different things, and TailscaleWriteNote is where the difference is
+  // phrased: a refusal means these controls are dead and c7shell-bootstrap is
+  // the answer, while a write that merely went wrong leaves them live and the
+  // answer is to click again. It says nothing after a write that was taken.
+  TailscaleWriteNote { id: writeNote }
+
   Text {
     objectName: "ts-settings-write-error"
     width: root.width
-    visible: root.refused
+    visible: writeNote.message !== ""
     leftPadding: 8
     rightPadding: 8
-    text: qsTr("tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (%1)").arg(Tailscale.writeError)
+    text: writeNote.message
     // The daemon's own answer, verbatim, which makes it daemon-supplied text.
     textFormat: Text.PlainText
     wrapMode: Text.WordWrap

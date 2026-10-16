@@ -19,6 +19,12 @@ using c7::tailscale::StatusParser;
 
 namespace {
 
+// The one HTTP status that is a statement about this process's PERMISSION
+// rather than about one attempt. Measured against a live tailscaled 1.104.1:
+// 403 "prefs write access denied" for anyone who is not its operator, on a
+// socket that serves that same user's reads perfectly.
+constexpr int kForbidden = 403;
+
 const QString kStatusPath = QStringLiteral("/localapi/v0/status");
 const QString kPrefsPath = QStringLiteral("/localapi/v0/prefs");
 const QString kSuggestPath = QStringLiteral("/localapi/v0/suggest-exit-node");
@@ -114,7 +120,9 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     // added here would re-read the same thing a moment earlier and buy
     // nothing but a second source for state that has exactly one.
     connect(&m_writer, &LocalApiClient::replied, this,
-            [this](const QString &, const QByteArray &, quint64) { noteWriteOutcome(true, {}); });
+            [this](const QString &, const QByteArray &, quint64) {
+                noteWriteOutcome(WriteOutcome::Accepted, {});
+            });
     // Refused: say why, and do nothing else. 403 "prefs write access denied"
     // is the ORDINARY answer here -- the desktop user is not tailscaled's
     // operator, which c7shell-bootstrap names once -- and it says nothing
@@ -122,9 +130,16 @@ LocalApiTailscaleBackend::LocalApiTailscaleBackend(QString socketPath, int retry
     // on the same socket. Reaching lostTailscaled() from here would publish
     // NoState for a permission setting and take away the panel that was about
     // to explain it.
+    //
+    // AND ONLY A 403 IS A REFUSAL. The status is what says so -- carried out of
+    // LocalApiClient beside the reason rather than matched for in the prose --
+    // because every other ending here is one attempt that went wrong and says
+    // nothing whatever about permission. See WriteOutcome.
     connect(&m_writer, &LocalApiClient::failed, this,
-            [this](const QString &, const QString &reason, quint64) {
-                noteWriteOutcome(false, reason);
+            [this](const QString &, const QString &reason, quint64, int status, bool) {
+                noteWriteOutcome(status == kForbidden ? WriteOutcome::Refused
+                                                      : WriteOutcome::Failed,
+                                 reason);
             });
 
     m_retry.setSingleShot(true);
@@ -179,14 +194,21 @@ void LocalApiTailscaleBackend::writePref(const QString &field, const QJsonValue 
     m_writer.patch(kPrefsPath, QJsonDocument(masked).toJson(QJsonDocument::Compact));
 }
 
-void LocalApiTailscaleBackend::noteWriteOutcome(bool accepted, const QString &reason)
+void LocalApiTailscaleBackend::noteWriteOutcome(WriteOutcome outcome, const QString &reason)
 {
     // Both members before either signal, as everywhere else here: a panel
     // reacting to writableChanged must not read the previous error underneath
     // it.
-    const bool writableMoved = m_writable != accepted;
+    //
+    // A Failed write leaves m_writable ALONE rather than setting it true: it is
+    // not evidence either way, so it must neither kill a live control nor
+    // resurrect one a 403 has already taken away.
+    const bool refusal = outcome != WriteOutcome::Failed;
+    const bool writable = outcome == WriteOutcome::Accepted;
+    const bool writableMoved = refusal && m_writable != writable;
     const bool errorMoved = m_writeError != reason;
-    m_writable = accepted;
+    if (refusal)
+        m_writable = writable;
     m_writeError = reason;
     if (writableMoved)
         emit writableChanged();
