@@ -14,9 +14,10 @@ import qs.Common
 // quiet exactly when the daemon behind it dies. Drawing that snapshot anyway
 // would render a healthy tailnet served by nothing.
 //
-// v1 is read-only. `tailscale set` refuses for a non-root, non-operator user,
-// so the connect toggle and the exit-node rows render disabled rather than
-// offering an action that would fail.
+// The exit-node view writes; the connect toggle here does not yet. The
+// contract publishes setWantRunning, so nothing stands in its way but the
+// wiring -- until then it renders disabled rather than offering an action
+// nothing is behind.
 GlassPopover {
   id: root
 

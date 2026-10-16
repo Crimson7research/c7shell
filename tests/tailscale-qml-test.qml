@@ -41,6 +41,26 @@ Window {
   StatusPill { id: pill }
   TailscalePopover { id: pop }
 
+  // Every action the panel has asked of the contract, in order. An action is a
+  // REQUEST and moves nothing on the singleton -- so a control that is merely
+  // enabled proves nothing about what it does, and the recorded call is the
+  // only evidence there is that a row asked for the node it is drawn as.
+  property var calls: []
+
+  Connections {
+    target: Tailscale
+    function onCalled(call) { root.calls.push(call) }
+  }
+
+  // Read and cleared together: every assertion below is about what ONE press
+  // asked for, so a leftover from the press before it would pass the next
+  // check for the wrong reason.
+  function tookCalls() {
+    const taken = root.calls
+    root.calls = []
+    return taken.join(" ")
+  }
+
   // Every visual descendant, flattened. The slot has no id reachable from
   // out here, and giving each badge its own hook would mean writing the
   // design into the test twice -- so the test looks for what the design
@@ -281,6 +301,7 @@ Window {
 
     // -- the panel behind the slot ------------------------------------------
     root.panelChecks()
+    root.exitNodeControlChecks()
     root.delegateIdentityChecks()
   }
 
@@ -695,11 +716,13 @@ Window {
     }), "an exit-node row stayed checked with no exit node selected")
     Tailscale.exitNodes.remove(2)
     root.layout()
-    // v1 cannot write prefs, so a row that looked choosable would be a lie.
-    root.check(all.every(o => `${o.titleColor}` === `${Theme.textDisabled}`),
-      "an exit node row is drawn as selectable, and selecting it is a write v1 does not have")
-    root.check(root.panelOne("ts-exit-all-label").text.indexOf("(read-only)") >= 0,
-      `the heading does not say the list is read-only: "${root.panelOne("ts-exit-all-label").text}"`)
+    // The contract can write, and nothing has been refused, so a row is an
+    // offer and is drawn as one. v1 dimmed every row here; the list that
+    // explains itself as read-only is the one below, after a refusal.
+    root.check(all.every(o => `${o.titleColor}` !== `${Theme.textDisabled}`),
+      "an exit node row is drawn dead although no write has been refused")
+    root.check(root.panelOne("ts-exit-all-label").text.indexOf("read-only") < 0,
+      `the heading calls a writable list read-only: "${root.panelOne("ts-exit-all-label").text}"`)
     root.everyTextIsPlain(all[0], "an exit node row")
 
     // `none` is the reading of current state, not an offer, so it is the one
@@ -720,6 +743,222 @@ Window {
     root.layout()
     root.check(root.panelShown("ts-exit-recommended-label").length === 1,
       "the RECOMMENDED heading did not come back when the recommendation did")
+  }
+
+  // ==========================================================================
+  // The exit-node view as a CONTROL
+  // ==========================================================================
+  //
+  // v1 drew this list and could not act on it. The contract can write now, so
+  // every row here is an offer -- and the one thing that cannot be read off a
+  // screenshot is whether pressing it asks tailscaled for the node that row
+  // names. The stub reports each action through `called`, so every check below
+  // is on the recorded request and never on the control looking alive.
+  //
+  // The gate is `writable`, read the way TailscaleBackend.h spells it out: it
+  // starts TRUE and goes false only once a write has been refused. So the
+  // panel opens live, and "disabled when !writable" means disabled AFTER a
+  // refusal -- the opposite reading would open every control dead on a machine
+  // where writing works perfectly, with no way left to make the first write.
+  function exitNodeControlChecks() {
+    root.connected()
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    Tailscale.exitNodeActive = false
+    Tailscale.exitNodeId = ""
+    Tailscale.exitNodeName = ""
+    root.seedExitNodes()
+    pop.view = "exit"
+    root.layout()
+
+    // -- live before the first write ----------------------------------------
+    const rows = root.panelShown("ts-exit-row")
+    root.check(rows.length === 3, `the exit list drew ${rows.length} of 3 rows`)
+    root.check(rows.every(o => `${o.titleColor}` !== `${Theme.textDisabled}`),
+      "the exit-node rows opened disabled with nothing refused yet: `writable` is a claim"
+      + " about the last attempt, not permission to make the first")
+    root.check(rows.every(o => o.hoverable),
+      "a selectable row does not light up under the pointer, so it reads as dead")
+    root.check(root.panelShown("ts-exit-write-error").length === 0,
+      "the panel explained a refusal that has not happened")
+
+    // -- a row asks for ITS OWN node, by id ---------------------------------
+    // The list carries two rows under one display name, as a tailnet may:
+    // nothing stops two machines enrolling under the same hostname. A click
+    // joined on the name would send either one of them.
+    root.tookCalls()
+    const twin = rows.find(o => o.nodeId === "nFFF1CNTRL")
+    root.check(twin !== undefined,
+      "no row for the second node sharing a hostname, so the id check below proves nothing")
+    twin.clicked()
+    root.check(root.tookCalls() === "setExitNode(nFFF1CNTRL)",
+      "clicking an exit-node row did not ask for that row's own node id")
+
+    // The click is a REQUEST: nothing moves on the contract until the daemon
+    // says so, and the panel must not draw it as selected on its own.
+    root.layout()
+    root.check(root.panelShown("ts-exit-row").every(o => {
+      const glyph = root.descendants(o).find(c => c.tint !== undefined)
+      return glyph === undefined || !glyph.visible
+    }), "a row checked itself on the click rather than on what the daemon then reported")
+
+    // -- `none` clears it ---------------------------------------------------
+    root.panelOne("ts-exit-none").clicked()
+    root.check(root.tookCalls() === "setExitNode()",
+      "the `none` row does not ask for an empty node id, which is how egress is unrouted")
+
+    // -- the recommended row is a control too -------------------------------
+    const suggested = root.panelShown("ts-exit-recommended")
+    root.check(suggested.length === 1, `${suggested.length} rows under RECOMMENDED`)
+    suggested[0].clicked()
+    root.check(root.tookCalls() === "setExitNode(nCCC1CNTRL)",
+      "the recommended row does not ask for the node suggest-exit-node named")
+
+    // -- allow local network access -----------------------------------------
+    // The control that matters when an exit node is blackholing the LAN: with
+    // it off, a node that stops answering takes the printer and the router's
+    // own web UI with it.
+    const lan = root.panelOne("ts-exit-lan")
+    const lanSwitch = root.panelOne("ts-exit-lan-switch")
+    root.check(!lanSwitch.checked, "the LAN switch starts on")
+    lan.clicked()
+    root.check(root.tookCalls() === "setExitNodeAllowLANAccess(true)",
+      "the LAN row does not ask for local network access")
+    root.layout()
+    root.check(lanSwitch.checked,
+      "the switch did not draw the value it just asked for, so a press does nothing visible")
+    lan.clicked()
+    root.check(root.tookCalls() === "setExitNodeAllowLANAccess(false)",
+      "the LAN control asks for the same value twice, so it is not a switch")
+    root.layout()
+    root.check(!lanSwitch.checked, "the switch did not come back off")
+
+    // -- use this device as an exit node… -----------------------------------
+    // The contract has no action for advertising this machine as an exit node
+    // -- the five it publishes are WantRunning, ExitNodeID,
+    // ExitNodeAllowLANAccess, RouteAll and CorpDNS. The row the mock drew is
+    // kept, drawn dead and saying why, rather than wired to nothing.
+    const advertise = root.panelOne("ts-exit-advertise")
+    root.check(advertise.visible, "the row the mock drew for this is simply gone")
+    root.check(`${advertise.titleColor}` === `${Theme.textDisabled}`,
+      "the row offers an action the contract has none for")
+    root.check(advertise.subtitle !== "", "a dead row with no reason on it")
+    advertise.clicked()
+    root.check(root.tookCalls() === "",
+      "the advertise row asked the contract for something")
+
+    // -- search -------------------------------------------------------------
+    const search = root.panelOne("ts-exit-search-input")
+    search.text = "HOST"
+    root.layout()
+    const hits = root.panelShown("ts-exit-row")
+    root.check(hits.length === 1 && hits[0].title === "host-5",
+      `searching "HOST" left ${hits.length} rows: ${hits.map(o => o.title).join(", ")}`)
+    root.check(root.panelShown("ts-exit-recommended").length === 0,
+      "the recommended row ignored the search, so a filtered list still shows a node twice")
+    root.check(root.panelShown("ts-exit-no-match").length === 0,
+      "a search that DID match said it matched nothing")
+    root.check(root.panelOne("ts-exit-none").visible,
+      "`none` was filtered away: it is the reading of current state, not a search result")
+
+    // A query nobody answers to. The distinction this makes is the whole
+    // point: an empty list that reads as an empty tailnet is a panel that
+    // looks broken.
+    search.text = "no-node-answers-to-this"
+    root.layout()
+    root.check(root.panelShown("ts-exit-row").length === 0,
+      "a query matching nothing still drew rows")
+    const noMatch = root.panelShown("ts-exit-no-match")
+    root.check(noMatch.length === 1, "a query matching nothing said nothing at all")
+    root.check(noMatch[0].title === "no matches",
+      `an unmatched query reads "${noMatch[0].title}"`)
+    root.check(root.panelShown("ts-exit-empty").length === 0,
+      "a query that matched nothing reads as a tailnet with no exit nodes on it")
+
+    search.text = ""
+    root.layout()
+    root.check(root.panelShown("ts-exit-row").length === 3,
+      "clearing the search did not bring the list back")
+    root.check(root.panelShown("ts-exit-no-match").length === 0,
+      "the no-match row stayed up over a list with rows in it")
+
+    // The other half of the same distinction: a tailnet with no exit nodes
+    // offers none, and says THAT rather than "no matches".
+    Tailscale.exitNodes.clear()
+    root.layout()
+    root.check(root.panelShown("ts-exit-empty").length === 1,
+      "a tailnet with no exit nodes on it says nothing about why the list is empty")
+    root.check(root.panelShown("ts-exit-no-match").length === 0,
+      "an empty tailnet reads as a failed search")
+    root.seedExitNodes()
+    root.layout()
+    root.check(root.panelShown("ts-exit-row").length === 3,
+      "the list did not come back when the exit nodes did")
+
+    // -- after a refusal, and only after one --------------------------------
+    // 403 "prefs write access denied" is what an un-bootstrapped machine
+    // answers every write with. The panel may not pretend that took.
+    const refusal = "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden"
+    Tailscale.writable = false
+    Tailscale.writeError = refusal
+    root.layout()
+
+    const why = root.panelShown("ts-exit-write-error")
+    root.check(why.length === 1, "a refused write left the panel silent")
+    root.check(why[0].text.indexOf(refusal) >= 0,
+      `the explanation does not carry what refused it: "${why[0].text}"`)
+    root.check(why[0].textFormat === Text.PlainText,
+      "the refusal is daemon-supplied text in a markup-parsing element")
+    root.check(root.panelOne("ts-exit-all-label").text.indexOf("read-only") >= 0,
+      `a list that cannot be written reads "${root.panelOne("ts-exit-all-label").text}"`)
+
+    const dead = root.panelShown("ts-exit-row")
+    root.check(dead.length === 3, `${dead.length} rows after a refusal`)
+    root.check(dead.every(o => `${o.titleColor}` === `${Theme.textDisabled}`),
+      "a row kept its live colour after tailscaled refused to change anything")
+    root.check(dead.every(o => !o.hoverable),
+      "a dead row still lights up under the pointer, which is a promise")
+    root.check(root.panelOne("ts-exit-lan-switch").enabled === false,
+      "the LAN switch is still live after a refusal")
+
+    root.tookCalls()
+    dead[0].clicked()
+    root.panelOne("ts-exit-none").clicked()
+    root.panelOne("ts-exit-lan").clicked()
+    root.check(root.tookCalls() === "",
+      "a control disabled after a refusal still asked tailscaled to change something")
+
+    // And back. `writable` follows the LAST attempt rather than latching, so
+    // an operator named while the panel is open brings the controls back.
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    root.layout()
+    root.check(root.panelShown("ts-exit-write-error").length === 0,
+      "the refusal is still explained after a write was accepted")
+    root.panelShown("ts-exit-row")[0].clicked()
+    root.check(root.tookCalls() !== "",
+      "the controls stayed dead after `writable` came back, so the flag latched")
+
+    // Every row the controls added, not only the node rows the earlier section
+    // covers: all of them put their strings through ListRow's two Texts, which
+    // default to Text.AutoText and would fetch a remote <img src>.
+    root.everyTextIsPlain(root.panelOne("ts-exit-lan"), "the LAN access row")
+    root.everyTextIsPlain(root.panelOne("ts-exit-advertise"), "the advertise row")
+    root.everyTextIsPlain(root.panelOne("ts-exit-no-match"), "the no-match row")
+  }
+
+  // The tailnet's exit nodes, twice over the same display name: `host-5` is
+  // the cloud instance whose OS hostname is its own private address, and the
+  // two `pentest-exit-node` rows are the pair nothing on a tailnet prevents.
+  function seedExitNodes() {
+    Tailscale.exitNodes.clear()
+    Tailscale.exitNodes.append({ hostName: "ip-172-31-0-10", displayName: "host-5",
+                                 nodeId: "nEEE1CNTRL" })
+    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", displayName: "pentest-exit-node",
+                                 nodeId: "nCCC1CNTRL" })
+    Tailscale.exitNodes.append({ hostName: "pentest-exit-node", displayName: "pentest-exit-node",
+                                 nodeId: "nFFF1CNTRL" })
+    Tailscale.recommendedExitNodeId = "nCCC1CNTRL"
   }
 
   // ==========================================================================
