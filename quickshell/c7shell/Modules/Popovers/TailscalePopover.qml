@@ -5,10 +5,10 @@ import qs.Theme
 import qs.Common
 
 // The panel behind the bar's Tailscale slot: who this machine is on the
-// tailnet, what tailscaled says about it, and the two chevrons the mock puts
-// the device list and the exit nodes behind.
+// tailnet, what tailscaled says about it, and the chevrons the mock puts the
+// device list, the exit nodes and the tailnet settings behind.
 //
-// Those two open as SUB-CARDS folded out of this one, the way the macOS menu
+// Those open as SUB-CARDS folded out of this one, the way the macOS menu
 // grows its submenus -- the root rows stay where they were and the card gets
 // taller. v1 swapped the panel's contents for them and offered a `‹` back,
 // which loses the state the person opened the panel to read (what this machine
@@ -37,9 +37,9 @@ GlassPopover {
   panelWidth: 320
   gap: 10
 
-  // "" | "devices" | "exit" -- which sub-card is folded out, and only ever
-  // one: two open at once is a popover taller than the screen, and the macOS
-  // menu does not do it either.
+  // "" | "devices" | "exit" | "settings" -- which sub-card is folded out, and
+  // only ever one: two open at once is a popover taller than the screen, and
+  // the macOS menu does not do it either.
   property string expanded: ""
 
   // Where this popover's height is decided. A sub-card's list is capped at
@@ -104,21 +104,19 @@ GlassPopover {
   // The row that opened a sub-card is the row that closes it -- there is no
   // back chevron any more, so the chevron on the row has to work both ways.
   function fold(which) {
-    if (root.expanded === which) {
-      root.expanded = ""
-      // Hand focus back to something still on screen, or esc stops closing the
-      // popup: the field that held it is inside the card being folded away.
-      // Common/PskField.collapse() does the same, for the same reason.
-      root.panel.forceActiveFocus()
-      return
-    }
-    root.expanded = which
+    root.expanded = root.expanded === which ? "" : which
     // Focused as it grows, which is the order Common/PskField.ask() uses and
     // the only one in this shell proven to take keystrokes under the popover's
     // Hyprland focus grab. See Common/SearchField for what the keys travel
     // through to get here.
-    if (which === "devices") deviceSearch.focusInput()
-    else if (which === "exit") exitList.focusSearch()
+    if (root.expanded === "devices") deviceSearch.focusInput()
+    else if (root.expanded === "exit") exitList.focusSearch()
+    // Nothing on the settings card takes the keyboard, and nothing is on
+    // screen at all once a card folds shut -- so focus goes back to the panel,
+    // or esc stops closing the popup, the field that held it having just been
+    // folded away. Common/PskField.collapse() does the same, for the same
+    // reason.
+    else root.panel.forceActiveFocus()
   }
 
   // -- filtering the device list ---------------------------------------------
@@ -473,9 +471,15 @@ GlassPopover {
 
       onClicked: root.fold("devices")
 
+      // WHAT THE LIST IS SHOWING, which is the tailnet's own total only while
+      // nothing is filtering it. The search lives inside the card this row
+      // opens, so with a query running the tailnet count sits above a list of
+      // one and reads as a lie -- and this number is the only thing on screen
+      // that says how many devices the query left standing.
       Text {
+        objectName: "ts-devices-count"
         anchors.verticalCenter: parent.verticalCenter
-        text: peerList.count
+        text: root.deviceQuery === "" ? peerList.count : root.deviceMatchCount
         font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
         color: Theme.text3
       }
@@ -673,6 +677,43 @@ GlassPopover {
         id: exitList
         width: parent.width
         maxListHeight: root.subListCap
+      }
+    }
+
+    ListRow {
+      objectName: "ts-settings-row"
+      width: parent.width
+      implicitHeight: 30
+      radius: Theme.radiusMenuRow
+      inset: 8
+      titleSize: 11
+      titleWeight: 500
+      title: qsTr("settings")
+
+      onClicked: root.fold("settings")
+
+      FoldChevron {
+        objectName: "ts-settings-chevron"
+        anchors.verticalCenter: parent.verticalCenter
+        open: root.expanded === "settings"
+      }
+    }
+
+    // -- settings -----------------------------------------------------------
+    // Last, and deliberately: the rows above are this machine on the tailnet
+    // and what its traffic is doing, which is what the panel is opened for.
+    // These two are the tailnet's own settings and are changed once.
+    //
+    // No cap and no Flickable, unlike the other two: this card holds two rows
+    // and a paragraph, and all three are known at build time rather than
+    // coming from a tailnet that may have a hundred of anything.
+    SubCard {
+      objectName: "ts-settings-card"
+      width: parent.width
+      visible: root.live && root.expanded === "settings"
+
+      TailscaleSettings {
+        width: parent.width
       }
     }
   }

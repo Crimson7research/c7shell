@@ -237,7 +237,7 @@ void LocalApiTailscaleBackend::open()
     // A reply from the attempt just dropped is not half of this attempt's
     // snapshot: whichever half arrived goes with the attempt it belonged to.
     m_pendingStatus.reset();
-    m_pendingExitNodeId.reset();
+    m_pendingPrefs.reset();
     m_openingReads = 0;
     m_attemptFailed = false;
     m_established = false;
@@ -357,16 +357,7 @@ void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &
         return;
 
     if (path == kPrefsPath) {
-        // ExitNodeID is the only field read: it is what says an exit node is
-        // selected at all, which ExitNodeStatus cannot while it is still
-        // being resolved. A body that is not an object yields an empty id,
-        // which is the same reading as "nothing selected" -- and a /prefs
-        // that is not a prefs object is not something tailscaled sends with a
-        // 2xx, which LocalApiClient has already filtered anything else out of.
-        m_pendingExitNodeId = QJsonDocument::fromJson(body)
-                                      .object()
-                                      .value(QLatin1String("ExitNodeID"))
-                                      .toString();
+        m_pendingPrefs = parsePrefs(body);
         m_openingReads |= PrefsRead;
         noteEstablished();
         applySnapshotWhenWhole();
@@ -392,13 +383,13 @@ void LocalApiTailscaleBackend::applySnapshotWhenWhole()
     // Half a pass publishes nothing: the exit-node reading is assembled from
     // both replies, and either alone is the fail-closed flag computed from
     // half of one pass and half of the next.
-    if (!m_pendingStatus || !m_pendingExitNodeId)
+    if (!m_pendingStatus || !m_pendingPrefs)
         return;
     const Status status = *std::exchange(m_pendingStatus, std::nullopt);
-    const QString exitNodeId = *std::exchange(m_pendingExitNodeId, std::nullopt);
+    const Prefs prefs = *std::exchange(m_pendingPrefs, std::nullopt);
 
     m_openPass = 0;
-    applyStatus(status, exitNodeId);
+    applyStatus(status, prefs);
     // Deliberately after applyStatus and deliberately not a reset of its own:
     // a good snapshot is one of the things this attempt needs, never the whole
     // of it.
@@ -461,7 +452,7 @@ void LocalApiTailscaleBackend::lostTailscaled()
     // be paired with the other half of the next.
     m_openPass = 0;
     m_pendingStatus.reset();
-    m_pendingExitNodeId.reset();
+    m_pendingPrefs.reset();
     // State alone, because state is the only thing that is certainly wrong
     // when tailscaled stops answering. The rest of the snapshot is the last
     // thing it said, and blanking it would set exitNodeActive to false -- the
@@ -509,14 +500,42 @@ static QString nameOfPeer(const QList<Peer> &peers, const QString &nodeId)
     return nodeId;
 }
 
-void LocalApiTailscaleBackend::applyStatus(const Status &status, const QString &prefsExitNodeId)
+// What the snapshot takes from a /prefs reply, and nothing else is read.
+//
+// ExitNodeID is what says an exit node is SELECTED at all, which
+// ExitNodeStatus cannot while tailscaled is still resolving it. The three
+// bools are the read-back for the three write-backed switches: each one has an
+// action on the contract and, until they were published here, nothing to read
+// back from -- so a switch on screen drew what was last clicked on it rather
+// than what this daemon holds.
+//
+// A body that is not an object yields the defaults, which read as "nothing
+// selected" and three switches off -- the same reading as a daemon that has
+// not answered. A /prefs that is not a prefs object is not something
+// tailscaled sends with a 2xx, and LocalApiClient has already filtered
+// everything else out.
+//
+// toBool() with no argument defaults to false, so a field this build of
+// tailscaled does not send is off rather than undefined.
+LocalApiTailscaleBackend::Prefs LocalApiTailscaleBackend::parsePrefs(const QByteArray &body)
+{
+    const QJsonObject prefs = QJsonDocument::fromJson(body).object();
+    Prefs parsed;
+    parsed.exitNodeId = prefs.value(QLatin1String("ExitNodeID")).toString();
+    parsed.exitNodeAllowLANAccess = prefs.value(QLatin1String("ExitNodeAllowLANAccess")).toBool();
+    parsed.routeAll = prefs.value(QLatin1String("RouteAll")).toBool();
+    parsed.corpDns = prefs.value(QLatin1String("CorpDNS")).toBool();
+    return parsed;
+}
+
+void LocalApiTailscaleBackend::applyStatus(const Status &status, const Prefs &prefs)
 {
     // Every member moves before any signal does, and the signals go out
     // together at the end. The contract derives exitNodeBlocked from two of
     // these and announces it off either one, synchronously: emitting as each
     // member lands would hand QML a flag computed from a half-applied status.
     using Signal = void (TailscaleBackend::*)();
-    QVarLengthArray<Signal, 12> moved;
+    QVarLengthArray<Signal, 16> moved;
     auto store = [&moved](auto &slot, const auto &value, Signal changed) {
         if (slot == value)
             return;
@@ -540,7 +559,7 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status, const QString &
     // fail-closed reading -- and it is the reading for exactly the window in
     // which egress is most likely to be dropped on the floor.
     const bool resolved = status.exitNode.has_value();
-    const bool active = resolved || !prefsExitNodeId.isEmpty();
+    const bool active = resolved || !prefs.exitNodeId.isEmpty();
     store(m_exitNodeActive, active, &TailscaleBackend::exitNodeActiveChanged);
     // ExitNodeStatus.Online, never the peer's: the selected peer reads
     // Online: true while the exit node itself is unreachable. Unresolved or
@@ -548,15 +567,24 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status, const QString &
     // and, with active true, is what makes exitNodeBlocked fail closed.
     store(m_exitNodeOnline, resolved && status.exitNode->online,
           &TailscaleBackend::exitNodeOnlineChanged);
-    const QString exitNodeId = resolved ? status.exitNode->id : prefsExitNodeId;
+    const QString exitNodeId = resolved ? status.exitNode->id : prefs.exitNodeId;
     store(m_exitNodeId, active ? exitNodeId : QString(),
           &TailscaleBackend::exitNodeIdChanged);
     const QString exitNodeName =
-            resolved ? status.exitNode->name : nameOfPeer(status.peers, prefsExitNodeId);
+            resolved ? status.exitNode->name : nameOfPeer(status.peers, prefs.exitNodeId);
     store(m_exitNodeName, active ? exitNodeName : QString(),
           &TailscaleBackend::exitNodeNameChanged);
 
     store(m_issues, reportableHealth(status.health), &TailscaleBackend::issuesChanged);
+
+    // The three switch prefs, stored with everything else and announced with
+    // everything else: a panel reacting to one of these must not find half of
+    // the next snapshot underneath it, and a switch bound straight to one is
+    // relying on exactly that.
+    store(m_exitNodeAllowLANAccess, prefs.exitNodeAllowLANAccess,
+          &TailscaleBackend::exitNodeAllowLANAccessChanged);
+    store(m_acceptRoutes, prefs.routeAll, &TailscaleBackend::acceptRoutesChanged);
+    store(m_acceptDns, prefs.corpDns, &TailscaleBackend::acceptDnsChanged);
 
     // The models diff themselves and emit their own row signals, so they are
     // filled here with the members rather than after them: a view reacting to

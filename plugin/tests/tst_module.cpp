@@ -135,7 +135,12 @@ private slots:
             QStringLiteral("issues"),          QStringLiteral("issueCount"),
             QStringLiteral("peers"),           QStringLiteral("exitNodes"),
             QStringLiteral("recommendedExitNodeId"), QStringLiteral("writable"),
-            QStringLiteral("writeError")};
+            QStringLiteral("writeError"),
+            // The read-back for the three write-backed switches. Every one of
+            // them had an action and no property, so a switch drew what was
+            // last clicked on it rather than what tailscaled holds.
+            QStringLiteral("exitNodeAllowLANAccess"), QStringLiteral("acceptRoutes"),
+            QStringLiteral("acceptDns")};
         expected.sort();
         QCOMPARE(declaredProperties(ts), expected);
     }

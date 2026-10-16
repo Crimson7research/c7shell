@@ -108,6 +108,12 @@ public:
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
 
+    // The three switch prefs, read back out of the same /prefs reply the
+    // snapshot is already assembled from.
+    bool exitNodeAllowLANAccess() const override { return m_exitNodeAllowLANAccess; }
+    bool acceptRoutes() const override { return m_acceptRoutes; }
+    bool acceptDns() const override { return m_acceptDns; }
+
     // Each one PATCHes the single pref behind it and publishes nothing: see
     // the note on writePref, and on the contract, for why the bus and not the
     // reply is what moves the properties these change.
@@ -192,9 +198,25 @@ private:
     // previous error beneath it.
     void noteWriteOutcome(bool accepted, const QString &reason);
 
+    // What this backend reads out of a /prefs reply. ONE STRUCT RATHER THAN
+    // FOUR OPTIONALS, because all four are halves of the same pass: a pass
+    // pairs when its status and its prefs have both landed, and four
+    // separately-held fields would be four chances to pair one read's exit
+    // node with another read's switches.
+    //
+    // Defaults are what a body that is not a prefs object yields, which is the
+    // same reading as a daemon that has not answered.
+    struct Prefs {
+        QString exitNodeId;
+        bool exitNodeAllowLANAccess = false;
+        bool routeAll = false;
+        bool corpDns = false;
+    };
+    static Prefs parsePrefs(const QByteArray &body);
+
     // Publish the pass once both its replies are in; do nothing until then.
     void applySnapshotWhenWhole();
-    void applyStatus(const c7::tailscale::Status &status, const QString &prefsExitNodeId);
+    void applyStatus(const c7::tailscale::Status &status, const Prefs &prefs);
     void applySuggestion(const QByteArray &body);
 
     State m_state = State::NoState;
@@ -266,7 +288,7 @@ private:
     // file -- and open() drops whichever arrived, because a reply from the
     // previous attempt is not half of this one's answer.
     std::optional<c7::tailscale::Status> m_pendingStatus;
-    std::optional<QString> m_pendingExitNodeId;
+    std::optional<Prefs> m_pendingPrefs;
     // Reset by open(), so each attempt is judged on its own.
     int m_openingReads = 0;
     bool m_attemptFailed = false;
@@ -277,4 +299,11 @@ private:
     // panel gated on it with no way to make that click.
     bool m_writable = true;
     QString m_writeError;
+    // False until a /prefs has said otherwise. CorpDNS is true on a default
+    // tailscaled and this still starts false: a value this object has not
+    // heard is not a value to guess at, and a switch drawn on before the
+    // socket answers is the same lie in the other direction.
+    bool m_exitNodeAllowLANAccess = false;
+    bool m_acceptRoutes = false;
+    bool m_acceptDns = false;
 };

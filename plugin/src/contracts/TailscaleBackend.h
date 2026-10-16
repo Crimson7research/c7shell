@@ -76,6 +76,10 @@ class TailscaleBackend : public QObject {
                    recommendedExitNodeIdChanged)
     Q_PROPERTY(bool writable READ writable NOTIFY writableChanged)
     Q_PROPERTY(QString writeError READ writeError NOTIFY writeErrorChanged)
+    Q_PROPERTY(bool exitNodeAllowLANAccess READ exitNodeAllowLANAccess NOTIFY
+                   exitNodeAllowLANAccessChanged)
+    Q_PROPERTY(bool acceptRoutes READ acceptRoutes NOTIFY acceptRoutesChanged)
+    Q_PROPERTY(bool acceptDns READ acceptDns NOTIFY acceptDnsChanged)
 
 public:
     // The six values tailscaled's BackendState actually reports. The macOS
@@ -172,6 +176,37 @@ public:
     // endpoints all share -- NodeID is a number nothing joins on, and a public
     // key changes under a node that re-keys.
     virtual QString recommendedExitNodeId() const = 0;
+
+    // ---- The three prefs a switch on screen reads itself back from ----
+    //
+    // Each of these is the READ side of one of the actions below, and each
+    // exists because the action alone was not enough. An action is a request
+    // and publishes nothing, so a switch with no property under it can only
+    // draw what was last clicked on it in this session: it opens at a default
+    // on a machine that holds the opposite, it never hears a change made with
+    // `tailscale set` elsewhere, and -- the one that matters -- a refused
+    // write cannot spring it back, because there is nothing for it to spring
+    // back to. That is a control that misreports the state it controls.
+    //
+    // They are ordinary published state like everything else above: the
+    // backend reads them from the same /prefs it already fetches on every
+    // pass, and the bus is what moves them. A UI binds a switch STRAIGHT to
+    // one of these -- an accepted write puts a Prefs notification on the bus
+    // within milliseconds and the re-read settles the value, which is both
+    // faster than a person can see and the only reading that is true.
+    //
+    // No signal is shared and none is derived: a backend owns all three and
+    // emits each as it moves.
+
+    // prefs.ExitNodeAllowLANAccess -- setExitNodeAllowLANAccess reads back
+    // here.
+    virtual bool exitNodeAllowLANAccess() const = 0;
+    // prefs.RouteAll -- setAcceptRoutes reads back here. Also the pref behind
+    // the one health warning this module suppresses, so a UI that offers this
+    // switch is the UI that can explain the suppression.
+    virtual bool acceptRoutes() const = 0;
+    // prefs.CorpDNS -- setAcceptDns reads back here.
+    virtual bool acceptDns() const = 0;
 
     // ---- What this contract can change ----
     //
@@ -281,6 +316,9 @@ signals:
     void recommendedExitNodeIdChanged();
     void writableChanged();
     void writeErrorChanged();
+    void exitNodeAllowLANAccessChanged();
+    void acceptRoutesChanged();
+    void acceptDnsChanged();
 
 protected:
     // What tailscaled gave for Self's DNSName, root dot and all. A backend

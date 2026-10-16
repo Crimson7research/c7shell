@@ -67,14 +67,20 @@ Column {
     Tailscale.setExitNode(nodeId)
   }
 
-  // THE ONE CONTROL ON THIS PANEL WITH NOWHERE TO READ ITSELF BACK FROM. The
-  // contract publishes setExitNodeAllowLANAccess but no matching property, so
-  // this is what was last asked for here and not what tailscaled holds: a
-  // value changed by `tailscale set` elsewhere does not reach the switch, and
-  // a panel opened on a machine with LAN access already on draws it off. The
-  // pref is `ExitNodeAllowLANAccess`, beside RouteAll and CorpDNS, which Task
-  // 7 gives read-back properties; this wants one in the same round.
-  property bool lanAccess: false
+  // WHAT TAILSCALED HOLDS, not what was last clicked here. Task 5 shipped this
+  // as a local bool because the contract had the action and no property to
+  // read back from, and that switch lied in three ways: it opened off on a
+  // machine where LAN access was already on, it never heard a change made with
+  // `tailscale set` elsewhere, and a refused write could not spring it back.
+  //
+  // A plain binding, with no optimistic latch over it. tailscaled puts a Prefs
+  // notification on the bus for an accepted write -- measured at t+3.0s on a
+  // first write and in milliseconds thereafter -- and the backend re-reads
+  // /prefs on it, so the round trip is already faster than the eye and the
+  // value on screen is the daemon's. A latch would buy nothing and would make
+  // a refused write indistinguishable from an accepted one, which is the one
+  // outcome TailscaleBackend.h says this module may not produce.
+  readonly property bool lanAccess: Tailscale.exitNodeAllowLANAccess
 
   // -- why everything below is dead -------------------------------------------
   // Only after a refusal, which is the one moment the flag is for. The wording
@@ -283,10 +289,12 @@ Column {
     titleColor: root.refused ? Theme.textDisabled : Theme.alpha(Theme.text, 0.85)
     title: qsTr("allow local network access")
 
+    // The OPPOSITE of what tailscaled holds, which is what a switch asks for.
+    // Nothing is assigned here: the request goes out and the bus settles what
+    // the pill draws.
     onClicked: {
       if (root.refused) return
-      root.lanAccess = !root.lanAccess
-      Tailscale.setExitNodeAllowLANAccess(root.lanAccess)
+      Tailscale.setExitNodeAllowLANAccess(!root.lanAccess)
     }
 
     TogglePill {
