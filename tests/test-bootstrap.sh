@@ -85,11 +85,11 @@ QEMU='00:01.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio GPU [1af4:1
 out=$(plan "$AMD")
 for pkg in qt6-wayland xdg-utils polkit pipewire pipewire-pulse wireplumber \
            ttf-jetbrains-mono noto-fonts hicolor-icon-theme breeze-icons \
-           sddm networkmanager bluez kitty dolphin ddcutil brightnessctl playerctl; do
+           greetd cage networkmanager bluez kitty dolphin ddcutil brightnessctl playerctl; do
   grep -q "\b$pkg\b" <<<"$out" || fail "$pkg is not in the plan:\n$out"
 done
 grep -q 'pipewire.socket' <<<"$out" || fail "the pipewire user units are not enabled:\n$out"
-grep -q 'enable: .*sddm.service' <<<"$out" || fail "sddm.service is not enabled:\n$out"
+grep -q 'enable: .*greetd.service' <<<"$out" || fail "greetd.service is not enabled:\n$out"
 grep -q 'enable: .*NetworkManager.service' <<<"$out" || fail "NetworkManager is not enabled:\n$out"
 grep -q 'enable: .*bluetooth.service' <<<"$out" || fail "bluetooth is not enabled:\n$out"
 
@@ -161,14 +161,14 @@ grep -q 'nvidia-open-dkms' <<<"$out" && fail "--no-drivers still installed a dri
 # --- conflicts, which are the difference between working and no login -----
 STUB_ENABLED='gdm.service' out=$(plan "$AMD")
 grep -q 'gdm.service is already enabled' <<<"$out" || fail "an enabled gdm was not noticed:\n$out"
-grep -q 'enable: .*sddm.service' <<<"$out" && fail "sddm was enabled alongside gdm:\n$out"
+grep -q 'enable: .*greetd.service' <<<"$out" && fail "greetd was enabled alongside gdm:\n$out"
 
 STUB_ENABLED='systemd-networkd.service' out=$(plan "$AMD")
 grep -q 'not enabling NetworkManager' <<<"$out" || fail "systemd-networkd was not noticed:\n$out"
 grep -q 'enable: .*NetworkManager.service' <<<"$out" && fail "NetworkManager enabled over systemd-networkd:\n$out"
 
 # already-enabled units are not enabled again
-STUB_ENABLED='sddm.service NetworkManager.service bluetooth.service' out=$(plan "$AMD")
+STUB_ENABLED='greetd.service NetworkManager.service bluetooth.service' out=$(plan "$AMD")
 grep -q 'no system units to enable' <<<"$out" || fail "re-enabled units that were already enabled:\n$out"
 
 # --- the update flow's dependencies ----------------------------------------
@@ -193,7 +193,7 @@ grep -q '\bpacman-contrib\b' <<<"$out" \
 
 # --- opting out ------------------------------------------------------------
 out=$(plan "$AMD" --no-greeter)
-grep -q '\bsddm\b' <<<"$out" && fail "--no-greeter still installed sddm:\n$out"
+grep -q '\bgreetd\b' <<<"$out" && fail "--no-greeter still installed greetd:\n$out"
 out=$(plan "$AMD" --no-extras)
 grep -q '\bkitty\b' <<<"$out" && fail "--no-extras still installed kitty:\n$out"
 out=$(plan "$AMD" --no-aur)
@@ -242,40 +242,47 @@ working_paru
 out=$(plan "$AMD")
 grep -q 'already installed' <<<"$out" || fail "a working paru was rebuilt anyway:\n$out"
 
-# --- the greeter theme ----------------------------------------------------
-# The theme files ship with the package; selecting them is a write to
-# /etc/sddm.conf.d, which only the bootstrap does.
-dropin='/etc/sddm.conf.d/10-c7shell.conf'
+# --- the greeter -----------------------------------------------------------
+# The greeter binary and its QML ship with the package; which greeter greetd
+# runs is a write to /etc/greetd/config.toml, which only the bootstrap does.
+greetd_conf='/etc/greetd/config.toml'
 
 out=$(plan "$AMD")
-grep -q "$dropin" <<<"$out" || fail "the sddm theme drop-in is not in the plan:\n$out"
-grep -q 'Current=c7shell' <<<"$out" || fail "the drop-in does not select the c7shell theme:\n$out"
-# Without it the greeter's kernel/battery line is silently empty, so the
-# drop-in has to carry it.
-grep -q 'GreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1' <<<"$out" \
-  || fail "the drop-in does not let the greeter read /proc:\n$out"
+grep -q "$greetd_conf" <<<"$out" || fail "the greetd config is not in the plan:\n$out"
+grep -q 'c7shell-greeter' <<<"$out" || fail "the config does not run the c7shell greeter:\n$out"
+# Without it the greeter's kernel/battery line is silently empty.
+grep -q 'QML_XHR_ALLOW_FILE_READ=1' <<<"$out" \
+  || fail "the config does not let the greeter read /proc:\n$out"
+# cage is the compositor greetd runs the greeter inside; without it there is
+# no login screen at all.
+grep -q '\bcage\b' <<<"$out" || fail "cage is not in the plan:\n$out"
+# The greeter redirects its stderr into /var/log/c7greeter.log as user
+# `greeter`, and /var/log is root-owned -- so the file has to exist first.
+# Without it the redirect fails before cage is exec'd, greetd sees a greeter
+# that never created a session, and after five tries systemd gives up: a login
+# screen that never draws, with the reason nowhere near the symptom.
+# Match the install, not the path: the path also appears inside the config
+# body as the redirect target, so grepping for it alone passes even with the
+# creation removed -- which is exactly how this shipped broken the first time.
+grep -qE 'would run \(root\): install .*/var/log/c7greeter.log' <<<"$out" \
+  || fail "the greeter's log is not created, so greetd will not start:\n$out"
+grep -qE 'would run \(root\): install .*-o greeter .*-g greeter .*/var/log/c7greeter.log' <<<"$out" \
+  || fail "the greeter's log is not owned by greeter, so the redirect still fails:\n$out"
 
-# --no-greeter-theme: sddm still installed and enabled, theme left alone
+# --no-greeter-theme: greetd still installed and enabled, config left alone
 out=$(plan "$AMD" --no-greeter-theme)
-grep -q '\bsddm\b' <<<"$out" || fail "--no-greeter-theme dropped sddm itself:\n$out"
-grep -q "$dropin" <<<"$out" && fail "--no-greeter-theme still wrote the drop-in:\n$out"
+grep -q '\bgreetd\b' <<<"$out" || fail "--no-greeter-theme dropped greetd itself:\n$out"
+grep -q "$greetd_conf" <<<"$out" && fail "--no-greeter-theme still wrote the config:\n$out"
 
-# --no-greeter takes the theme with it
+# --no-greeter takes the config with it
 out=$(plan "$AMD" --no-greeter)
-grep -q "$dropin" <<<"$out" && fail "--no-greeter still wrote the drop-in:\n$out"
+grep -q "$greetd_conf" <<<"$out" && fail "--no-greeter still wrote the config:\n$out"
 
-# A machine that already selected another theme is warned before it is replaced
-mkdir -p "$tmp/root/etc/sddm.conf.d"
-printf '[Theme]\nCurrent=breeze\n' > "$tmp/root/etc/sddm.conf"
+# Once greetd already runs our greeter there is nothing left to do
+mkdir -p "$tmp/root/etc/greetd"
+printf 'command = "cage -s -- /usr/bin/c7shell-greeter"\n' > "$tmp/root$greetd_conf"
 out=$(plan "$AMD")
-grep -q 'currently "breeze"' <<<"$out" || fail "replacing an existing theme was not reported:\n$out"
-grep -q "$dropin" <<<"$out" || fail "the drop-in is not planned over an existing theme:\n$out"
-
-# ...and once it is ours, there is nothing left to do
-printf '[Theme]\nCurrent=c7shell\n' > "$tmp/root$dropin"
-rm -f "$tmp/root/etc/sddm.conf"
-out=$(plan "$AMD")
-grep -q "$dropin" <<<"$out" && fail "the drop-in was rewritten when it was already correct:\n$out"
+grep -q "$greetd_conf" <<<"$out" && fail "the config was rewritten when it was already correct:\n$out"
 rm -rf "$tmp/root"
 
 # Fingerprint: with fprintd installed, the vendor polkit service is copied to

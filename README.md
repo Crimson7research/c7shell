@@ -32,7 +32,7 @@ anything:
 1. **build tools** — `base-devel`, because `makepkg` will not start without
    them (see below).
 2. **`c7shell-bootstrap`** — what a fresh Arch box is missing underneath the
-   session: GPU driver, SDDM, the pipewire daemons, fonts, an icon theme,
+   session: GPU driver, greetd, the pipewire daemons, fonts, an icon theme,
    `xdg-utils`, and the enabled system services. It prints the whole plan and
    waits for a `y` first. `./install.sh --dry-run` shows that plan and stops.
 3. **`makepkg -sif`** — builds and installs the package itself. The `-f`
@@ -46,8 +46,8 @@ What the bootstrap decides for you, and how to override it:
 | Area | What it does |
 | --- | --- |
 | GPU | `lspci` detection → `mesa` plus `vulkan-intel` / `vulkan-radeon`, or `nvidia-open-dkms` + `nvidia-utils` + the headers of every installed kernel, and `/etc/modprobe.d/c7shell-nvidia.conf` setting `nvidia_drm modeset=1`. A pre-Turing card (GTX 10xx and older) is reported, not guessed at — `nvidia-open-dkms` does not support it. `--no-drivers` opts out. |
-| Greeter | `sddm`, enabled but not started, so it takes over at the next boot. If gdm/lightdm/greetd is already enabled it says so and enables nothing — two display managers fight over the seat and neither comes up. `--no-greeter` opts out. |
-| Greeter theme | `/etc/sddm.conf.d/10-c7shell.conf` selecting the `c7shell` theme (and letting the greeter read `/proc` for its kernel and battery readout). The theme's QML ships with the package; only the selection is a write to `/etc`, which is why it lives here. An existing theme is named in the plan before it is replaced; `--no-greeter-theme` keeps it. |
+| Greeter | `greetd` and `cage`, greetd enabled but not started, so it takes over at the next boot. If gdm/lightdm/sddm/lxdm is already enabled it says so and enables nothing — two display managers fight over the seat and neither comes up. `--no-greeter` opts out. |
+| Greeter config | `/etc/greetd/config.toml` running `c7shell-greeter` inside `cage` as the `greeter` user (and letting the greeter read `/proc` for its kernel and battery readout), plus the greeter's log and state paths owned by `greeter`. The greeter ships with the package; only the config is a write to `/etc`, which is why it lives here. `--no-greeter-theme` leaves an existing greetd config alone. |
 | Audio | `pipewire`, `pipewire-pulse`, `pipewire-alsa`, `wireplumber` + the user units. `wireplumber` is a session manager, not a sound server: without the daemons under it the volume keys do nothing. |
 | Network | `NetworkManager` and `bluetooth` enabled — unless `systemd-networkd` or `iwd` is already driving the network, in which case it warns instead of stacking two managers on one link. |
 | Fonts, icons | `ttf-jetbrains-mono` (`Theme.fontMono`), `noto-fonts`, `noto-fonts-emoji`, `hicolor`/`adwaita`/`breeze` icon themes for the launcher's real app icons. |
@@ -302,7 +302,8 @@ If a lock screen ever does come up wrong, `Ctrl+Alt+F2` to a TTY and
 
 ## Greeter
 
-The login screen is an SDDM Qt/QML theme in `sddm/themes/c7shell`, drawn from
+The login screen is `c7shell-greeter`, a Qt/QML greetd greeter running inside
+the `cage` kiosk compositor. Its QML lives in `sddm/themes/c7shell`, drawn from
 the same tokens as the shell: near-black ground with two crimson glows and a
 56px grid, one glass card with the avatar, the password field and a caps-lock
 line, a user list and a session picker as side panels, and the shell's pill bar
@@ -314,7 +315,7 @@ keyboard layout, `Esc` clears the field. Three failed attempts add a 30-second
 cooldown.
 
 The network pill needs a hand: the greeter is QML with no D-Bus binding,
-running as the `sddm` user before any session exists, so it cannot ask
+running as the `greeter` user before any session exists, so it cannot ask
 NetworkManager what it is connected to. The package installs
 `/usr/lib/NetworkManager/dispatcher.d/50-c7shell-greeter`, which NetworkManager
 runs as root on every connection change — including before login — to publish
@@ -324,31 +325,28 @@ and nothing is exposed that `nmcli dev` would not already tell any local user.
 The name is NetworkManager's profile name, which for a wifi network added the
 usual way is its SSID.
 
-It is installed to `/usr/share/sddm/themes/c7shell` by the package — not copied
-into `~/.config`, because the greeter runs as the `sddm` user before any session
-exists and cannot read your home directory. Selecting it is a line in
-`/etc/sddm.conf.d`, written by `c7shell-bootstrap` on a fresh machine and by
-`c7shell-upgrade` on an existing one. `c7shell-upgrade` leaves another theme
-alone if one is already configured and says so; `c7shell-doctor` reports which
-theme is selected either way.
+The binary is `/usr/bin/c7shell-greeter` and its QML is installed to
+`/usr/share/c7shell/greeter` by the package — not copied into `~/.config`,
+because the greeter runs as the `greeter` user before any session exists and
+cannot read your home directory. Pointing greetd at it is a write to
+`/etc/greetd/config.toml`, done by `c7shell-bootstrap` on a fresh machine and by
+`c7shell-upgrade` on an existing one; `c7shell-doctor` reports which display
+manager the machine uses and whether greetd runs the c7shell greeter.
 
-One trap worth knowing if you fork the theme: `metadata.desktop` must declare
-`QtVersion=6`. sddm builds the greeter path as `/usr/bin/sddm-greeter` +
-`-qt<n>` from that key, so without it the theme is handed to the *Qt5* greeter —
-which Arch ships, but whose Qt5 libraries are only an optdepend of sddm. It
-exits 127 and the login screen is a black rectangle, with the reason only in
-`journalctl -u sddm`. `tests/test-greeter.sh` asserts the key, and
-`c7shell-doctor` checks the binary the selected theme implies can actually load.
+The greeter writes its stderr to `/var/log/c7greeter.log`, and remembers the
+last account in `/var/lib/c7shell-greeter`. Set `C7_GREETER_DEBUG=1` in the
+greetd command to add a trace of the greetd conversation (message types only,
+never a secret). Keyboard layout switching does not work under cage: the layout
+pill shows the `KEYMAP` from `/etc/vconsole.conf`, for display only.
 
-Per-machine settings live in `theme.conf` (or any `[Theme]`-adjacent drop-in in
-`/etc/sddm.conf.d`):
+Per-machine settings live in `/usr/share/c7shell/greeter/theme.conf`:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `background` | *(empty)* | Wallpaper behind the card. Empty means the generated backdrop. Point it at the file hyprpaper uses for a continuous boot → desktop image — it has to be readable by the `sddm` user, so under `/usr/share`, not in `$HOME`. |
+| `background` | *(empty)* | Wallpaper behind the card. Empty means the generated backdrop. Point it at the file hyprpaper uses for a continuous boot → desktop image — it has to be readable by the `greeter` user, so under `/usr/share`, not in `$HOME`. |
 | `grid` | `true` | The 56px grid. Ignored when a wallpaper is set. |
 | `userList` | `auto` | `auto` shows the user panel on a multi-account machine, `always` always, `never` only when you click "switch user". |
-| `allowManualLogin` | `false` | An "other…" row for an account SDDM does not list. |
+| `allowManualLogin` | `true` | An "other…" row for an account the greeter does not list — the only way in for a directory user who has not signed in on this machine before. |
 | `maxAttempts`, `cooldownSeconds` | `3`, `30` | The greeter's own lockout, separate from and looser than `pam_faillock`'s. |
 
 To see it without logging out:
@@ -359,11 +357,11 @@ qml6 tests/greeter-preview.qml -- --failed --sessions # failed auth, picker open
 qml6 tests/greeter-preview.qml -- --typed 7            # the dot row and caret
 ```
 
-The theme keeps SDDM's context objects out of everything but `Main.qml`, so
-`Greeter.qml` takes plain properties and the preview can feed it mock models.
-`tests/test-greeter.sh` renders every state offscreen and fails on any QML
-warning — SDDM's own greeter swallows them, so a broken binding there is
-invisible until someone tries to log in.
+The greeter keeps the display manager's objects out of everything but
+`Main.qml` (`greetd-greeter/Main.qml`), so `Greeter.qml` takes plain properties
+and the preview can feed it mock models. `tests/test-greeter.sh` renders every
+state offscreen and fails on any QML warning — the greeter's own log is easy to
+miss, so a broken binding there is invisible until someone tries to log in.
 
 ## Updating
 
@@ -419,7 +417,8 @@ and 4 when it copied only some parts.
 | `quickshell/c7shell/scripts/c7shell-appmenud.py` | `com.canonical.AppMenu.Registrar` for the global menu |
 | `~/.config/hypr/shell.json` | shell preferences the settings app writes (global menu) |
 | `~/.config/hypr/hyprlock-palette.conf` | generated: the lock screen's colours, from `appearance.json` |
-| `sddm/themes/c7shell/` | the greeter theme; `Main.qml` wires SDDM's models into `Greeter.qml` |
+| `greetd-greeter/` | `c7shell-greeter`: the greetd client, models and the `Main.qml` that wires them into `Greeter.qml` |
+| `sddm/themes/c7shell/` | the greeter's shared QML (`Greeter.qml` and its components) |
 | `sddm/themes/c7shell/theme.conf` | greeter settings (wallpaper, user list, lockout) |
 | `share/c7shell-network-dispatcher` | NetworkManager dispatcher script; publishes the connection for the greeter's network pill |
 | `bin/c7-authd` | the password prompt's backend: polkit agent + the `sudo -A` askpass socket |
@@ -429,7 +428,7 @@ and 4 when it copied only some parts.
 | `bin/c7up-root` | the only part of it that runs as root; takes a fixed verb, never a command line |
 | `share/polkit-1/actions/io.crimson7.c7shell.policy` | the polkit action that authorises it |
 | `quickshell/c7shell/Modules/Updates/` | the update dropdown's run view, the wizard, the toast, the pacnew and orphan cards |
-| `/etc/sddm.conf.d/10-c7shell.conf` | selects the theme; written by bootstrap/upgrade, not by the package |
+| `/etc/greetd/config.toml` | runs the c7shell greeter; written by bootstrap/upgrade, not by the package |
 
 ## Password prompts
 

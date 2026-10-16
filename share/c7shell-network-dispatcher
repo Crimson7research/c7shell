@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # NetworkManager dispatcher script: publish the current connection where the
-# sddm greeter can read it.
+# login greeter can read it.
 #
 # The greeter's bottom bar names the network the machine is on, the way the
 # shell's bar does -- but the greeter is QML with no D-Bus binding, running as
-# the sddm user before any session exists, so it cannot ask NetworkManager
+# the greeter user before any session exists, so it cannot ask NetworkManager
 # anything. It can read a file. NetworkManager runs this as root on every
 # connection change, including before anyone logs in, so what the greeter reads
 # is live rather than a leftover from the last session.

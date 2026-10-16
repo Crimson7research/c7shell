@@ -78,7 +78,7 @@ Each run has its own directory, `$C7VT_CACHE/runs/<timestamp>-<branch>/`. It hol
 
 QMP is QEMU's JSON control socket. `lib/qmp.sh` opens a fresh `socat` connection per command. It sends `{"execute":"qmp_capabilities"}` and then the command. It counts the command as successful only if two `"return"` replies come back and no line starts with `{"error"`.
 
-- **Before login.** `qmp_screendump <sock> <file.png>` sends `{"execute":"screendump","arguments":{"filename":…,"format":"png"}}`, and QEMU writes the PNG on the laptop. That's how the harness sees the SDDM greeter, and how a failed phase captures `screens/<phase>-fail.png`.
+- **Before login.** `qmp_screendump <sock> <file.png>` sends `{"execute":"screendump","arguments":{"filename":…,"format":"png"}}`, and QEMU writes the PNG on the laptop. That's how the harness sees the greetd greeter, and how a failed phase captures `screens/<phase>-fail.png`.
 - **After login.** `grim /tmp/c7vt-shot.png` runs inside the session. The harness copies the PNG out with `vm_ssh … cat` into `screens/session.png`.
 - **Typing at the greeter.** `qmp_type` sends one `send-key` chord per character, with an uppercase letter sent as `shift` plus the lowercase key. Then `qmp_key ret` presses Return. This is a real keyboard login; no autologin is configured.
 - **Seeing a screenshot yourself.** Copy the PNG with `scp` from the laptop to your scratchpad and open it. To see a VM at any moment, call `qmp_screendump` on its `qmp.sock` from the laptop. A screendump like that once showed a stuck VM sitting at the `c7test login:` prompt.

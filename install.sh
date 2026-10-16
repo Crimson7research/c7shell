@@ -35,7 +35,7 @@ usage: ./install.sh [options] [makepkg options...]
 
 Takes a bare Arch install to a working c7shell session:
   1. installs the base-devel tools makepkg needs (fakeroot, debugedit, ...)
-  2. runs c7shell-bootstrap: GPU driver, SDDM, pipewire, fonts, services
+  2. runs c7shell-bootstrap: GPU driver, greetd, pipewire, fonts, services
   3. runs makepkg -sif to build and install the package
   4. runs c7shell-doctor to check the result and offer the optional programs
 

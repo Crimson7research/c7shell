@@ -1,4 +1,23 @@
+# The greeter writes its log and its remembered account as user `greeter`,
+# into directories root owns -- so both have to exist, owned by it, before
+# greetd ever starts. Without the log the redirect fails before cage is exec'd
+# and the login screen never draws; without the state directory the greeter
+# runs but never preselects an account.
+#
+# Not tmpfiles: `greeter` is created by greetd's package, and an entry naming a
+# user that has not resolved yet fails the pacman hook outright. A guarded
+# scriptlet simply does nothing instead, which also covers a machine where
+# greetd was removed.
+_greeter_paths() {
+  getent passwd greeter >/dev/null 2>&1 || return 0
+  install -dm755 -o greeter -g greeter /var/lib/c7shell-greeter 2>/dev/null || true
+  [ -e /var/log/c7greeter.log ] \
+    || install -Dm600 -o greeter -g greeter /dev/null /var/log/c7greeter.log 2>/dev/null \
+    || true
+}
+
 post_install() {
+  _greeter_paths
   cat <<'MSG'
 
 c7shell installed. To put the configs in your home directory, run as your
@@ -8,12 +27,11 @@ own user (not root):
 
 Then log out and pick the "c7shell" session in your display manager.
 
-The sddm greeter theme is installed to /usr/share/sddm/themes/c7shell, but
+The c7shell greeter is installed to /usr/bin/c7shell-greeter, but
 selecting it is a write to /etc that a package must not make. c7shell-bootstrap
 does it (see below), or by hand:
 
-    sudo mkdir -p /etc/sddm.conf.d
-    printf '[Theme]\nCurrent=c7shell\n' | sudo tee /etc/sddm.conf.d/10-c7shell.conf
+    sudo c7shell-bootstrap     # writes /etc/greetd/config.toml
 
 If the session does not come up, run:
 
@@ -27,7 +45,7 @@ keys, ...) at any time:
 
     c7shell-doctor --optional
 
-And to (re)configure the system side -- GPU driver, SDDM, pipewire, fonts,
+And to (re)configure the system side -- GPU driver, greetd, pipewire, fonts,
 services -- on a machine that was never bootstrapped:
 
     c7shell-bootstrap --dry-run     # show the plan
@@ -36,17 +54,18 @@ MSG
 }
 
 post_upgrade() {
+  _greeter_paths
   # The greeter theme selection is a write to /etc that a package must not make,
   # so c7shell-upgrade does it -- but the step shipped in this version, which
   # means the c7shell-upgrade that just ran predates it and skipped it. Later
   # versions hand over to the newly installed script for exactly this reason;
   # this one transition needs saying out loud.
-  if [ -d /usr/share/sddm/themes/c7shell ] \
-     && [ ! -e /etc/sddm.conf.d/10-c7shell.conf ] \
-     && [ -x /usr/bin/sddm ]; then
+  if [ -x /usr/bin/c7shell-greeter ] \
+     && [ -x /usr/bin/greetd ] \
+     && ! grep -q c7shell-greeter /etc/greetd/config.toml 2>/dev/null; then
     cat <<'MSG'
 
-The sddm greeter theme is installed but not selected yet. One more run picks it
+The c7shell greeter is installed but greetd is not pointed at it yet. One more run does it
 up (nothing else is rebuilt):
 
     c7shell-upgrade --config-only
@@ -65,7 +84,7 @@ or, to replace your copies outright:
 
     c7shell-setup --force           # backs up ~/.config/{hypr,quickshell} first
 
-c7shell-upgrade also selects the c7shell greeter theme in sddm if nothing else
+c7shell-upgrade also points greetd at the c7shell greeter if nothing else
 has claimed it -- an install from before the theme existed has the files but not
 the selection.
 

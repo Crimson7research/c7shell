@@ -50,7 +50,7 @@ done
 # A library a bin/ script sources is not a program, so the loop above does not
 # see it -- and an uninstalled one is worse than a missing program: the source
 # fails, `set -e` ends the run, and the user gets a line number instead of a
-# reason. share/c7shell-sddm.sh is the first of these; the check is general so
+# reason. share/c7shell-greetd.sh is the first of these; the check is general so
 # the second one cannot arrive unnoticed.
 # --------------------------------------------------------------------------
 while read -r lib; do
@@ -168,6 +168,42 @@ mkdir -p "$tree/quickshell/c7shell/scripts/__pycache__"
 touch "$tree/quickshell/c7shell/scripts/__pycache__/planted.cpython-314.pyc"
 run_fn package "$tree"
 expect_ok 'package()'
+# The login screen is part of the shell: this package ships
+# /usr/bin/c7shell-greeter, which speaks greetd's protocol and nothing else, so
+# greetd and the compositor it runs the greeter inside are hard dependencies
+# rather than suggestions.
+for dep in greetd cage; do
+  (. "$pkgbuild"; [[ " ${depends[*]} " == *" $dep "* ]]) \
+    || fail "depends lacks $dep, without which the greeter this package ships cannot run"
+done
+
+# The greeter's log and state directory are created by the install scriptlet
+# rather than by tmpfiles. Both are written as user `greeter`, which greetd's
+# package creates -- and a tmpfiles entry naming a user that does not resolve
+# yet fails the pacman hook outright, where a guarded scriptlet simply does
+# nothing.
+grep -q 'getent passwd greeter' "$here/../c7shell.install" \
+  || fail 'c7shell.install does not guard the greeter paths on the user existing'
+# A scriptlet is sourced, so a second definition of a function silently replaces
+# the first -- and pacman reports nothing, because the hook still succeeds. That
+# is how the greeter paths shipped uncreated: a post_upgrade added at the top of
+# the file was shadowed by the one already further down.
+for fn in post_install post_upgrade; do
+  n=$(grep -c "^$fn()" "$here/../c7shell.install")
+  (( n == 1 )) || fail "c7shell.install defines $fn() $n times; the last one wins silently"
+done
+# And each has to actually call the helper, or the paths are never made.
+for fn in post_install post_upgrade; do
+  grep -A1 "^$fn()" "$here/../c7shell.install" | grep -q '_greeter_paths' \
+    || fail "$fn() does not call _greeter_paths, so the greeter cannot write its log or state"
+done
+for p in /var/lib/c7shell-greeter /var/log/c7greeter.log; do
+  grep -q "$p" "$here/../c7shell.install" \
+    || fail "c7shell.install never creates $p, so the greeter cannot write it"
+done
+[[ -e $fake/pkg/usr/lib/tmpfiles.d/c7shell-greeter.conf ]] \
+  && fail 'package() ships a tmpfiles entry naming greeter; it fails without greetd'
+
 leaked=$(find "$fake/pkg" -name __pycache__)
 [[ -z $leaked ]] || fail "package() ships Python bytecode, which embeds \$srcdir:
 ${leaked//$fake\/pkg/}"

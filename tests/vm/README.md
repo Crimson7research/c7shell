@@ -1,7 +1,7 @@
 # VM setup test
 
 Installs a pushed c7shell branch onto a fresh, non-graphical Arch VM, logs in
-through the real SDDM greeter, and checks the session. It runs on a dedicated
+through the real greetd greeter (c7shell-greeter in cage), and checks the session. It runs on a dedicated
 KVM machine, never in `tests/*.sh`.
 
 Design: `docs/superpowers/specs/2026-10-13-vm-setup-test-design.md`.

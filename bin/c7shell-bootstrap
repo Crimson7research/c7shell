@@ -25,7 +25,7 @@ usage() {
 usage: c7shell-bootstrap [options]
 
 Installs and configures what a bare Arch install lacks before the c7shell
-session can start: GPU driver, SDDM, pipewire, fonts, icon theme, xdg-utils,
+session can start: GPU driver, greetd, pipewire, fonts, icon theme, xdg-utils,
 system services, and the optional programs the keybinds expect.
 
   -n, --dry-run    print the whole plan and change nothing
@@ -36,10 +36,10 @@ system services, and the optional programs the keybinds expect.
       --no-upgrade   skip the full system upgrade (and the database refresh:
                      -Sy without -u is a partial upgrade)
       --no-drivers   don't touch GPU drivers
-      --no-greeter   don't install or enable SDDM
+      --no-greeter   don't install or enable greetd
       --no-greeter-theme
-                   install SDDM but leave its theme alone (keep whatever
-                   theme the machine already uses)
+                   install greetd but leave /etc/greetd/config.toml alone
+                   (keep whatever greeter the machine already runs)
       --no-aur       don't install paru or any AUR package
       --no-extras    skip kitty, dolphin, ddcutil, brightnessctl, playerctl
       --no-fingerprint
@@ -84,8 +84,8 @@ if ((EUID == 0)); then
   echo 'c7shell-bootstrap: run this as your own user (it uses sudo where it needs root)' >&2
   exit 2
 fi
-# The sddm theme parse and the drop-in body, shared with
-# c7shell-upgrade and c7shell-doctor: share/c7shell-sddm.sh. The repo layout
+# The greetd config body and the display-manager lookup, shared with
+# c7shell-upgrade and c7shell-doctor: share/c7shell-greetd.sh. The repo layout
 # answers first, so a checkout and the test suite run the copy beside them;
 # an installed script falls through to /usr/lib/c7shell. A missing lib fails
 # the source and `set -e` ends the run, which is right -- c7shell-bootstrap
@@ -93,9 +93,9 @@ fi
 # Pure parameter expansion, no dirname: c7shell-doctor runs its own checks
 # with PATH pointed at a fake tree, where no external command exists yet.
 _c7lib=${C7SHELL_LIB:-${0%/*}/../share}
-[[ -r $_c7lib/c7shell-sddm.sh ]] || _c7lib=/usr/lib/c7shell
-# shellcheck source=../share/c7shell-sddm.sh
-. "$_c7lib/c7shell-sddm.sh"
+[[ -r $_c7lib/c7shell-greetd.sh ]] || _c7lib=/usr/lib/c7shell
+# shellcheck source=../share/c7shell-greetd.sh
+. "$_c7lib/c7shell-greetd.sh"
 
 have() { command -v "$1" >/dev/null; }
 installed() { pacman -Qq "$1" &>/dev/null; }
@@ -132,7 +132,6 @@ write_root() {
 # Prefix for the /etc paths below. Empty in normal use; the test suite points
 # it at a fake tree, the same hook c7shell-doctor takes as C7SHELL_ROOT.
 etc_root=${C7SHELL_ROOT:-}
-SDDM_DROPIN=$etc_root/etc/sddm.conf.d/10-c7shell.conf
 POLKIT_PAM=$etc_root/etc/pam.d/polkit-1
 # polkit 127 ships its service in the vendor directory; a file in /etc replaces
 # it outright, which is why the change below is a copy of it plus one line.
@@ -253,33 +252,33 @@ add ttf-jetbrains-mono noto-fonts noto-fonts-emoji
 
 # --- greeter ---------------------------------------------------------------
 if ((want_greeter)); then
-  add sddm
+  # greetd, not sddm. sddm answers every PAM prompt from one stored secret and
+  # replays it when the backend asks again, which with a directory backend that
+  # deletes its credential after a few bad attempts means one mistyped PIN
+  # destroys it -- and the recovery, enrolling a new one, needs a second prompt
+  # its protocol cannot carry. greetd hands the greeter one message at a time
+  # and answers nothing on its behalf. cage is the compositor it runs the
+  # greeter inside.
+  add greetd cage
   other_dm=''
-  for dm in gdm lightdm greetd lxdm; do
+  for dm in gdm lightdm sddm lxdm; do
     enabled "$dm.service" && other_dm=$dm
   done
   if [[ -n $other_dm ]]; then
     # Two enabled display managers fight over the seat and neither comes up.
-    warn "$other_dm.service is already enabled; not enabling sddm as well"
-    add_note "to switch: sudo systemctl disable $other_dm.service && sudo systemctl enable sddm.service"
+    warn "$other_dm.service is already enabled; not enabling greetd as well"
+    add_note "to switch: sudo systemctl disable $other_dm.service && sudo systemctl enable greetd.service"
   else
-    units_system+=(sddm.service)
+    units_system+=(greetd.service)
   fi
 fi
 
-# The greeter theme. sddm reads its config from /etc/sddm.conf and the drop-ins
-# in /etc/sddm.conf.d, so selecting a theme is a write to /etc -- which a
-# package must not do, and which is why it lives here next to the unit enables.
-# The theme itself is shipped by the package, under /usr/share/sddm/themes.
-greeter_theme_todo=0
-greeter_theme_replaces=''
+greetd_config_todo=0
+# Which greeter greetd runs is a line in /etc/greetd/config.toml -- a write to
+# /etc, which a package must not do, so it happens here. The greeter binary and
+# its QML come with the package.
 if ((want_greeter && want_greeter_theme)); then
-  current_theme=$(sddm_theme_current "$etc_root")
-  if [[ ! -f $SDDM_DROPIN ]] || ! grep -q '^Current=c7shell$' "$SDDM_DROPIN" \
-     || [[ $current_theme != c7shell ]]; then
-    greeter_theme_todo=1
-    [[ -n $current_theme && $current_theme != c7shell ]] && greeter_theme_replaces=$current_theme
-  fi
+  greetd_is_c7shell "$etc_root" || greetd_config_todo=1
 fi
 
 # --- network / bluetooth ---------------------------------------------------
@@ -433,13 +432,9 @@ nvidia_conf=0
 for vendor in ${gpu_vendors[@]+"${gpu_vendors[@]}"}; do [[ $vendor == nvidia ]] && nvidia_conf=1; done
 ((nvidia_conf)) && info '/etc/modprobe.d/c7shell-nvidia.conf  (nvidia_drm modeset, needed for wayland)'
 ((want_extras)) && info '/etc/modules-load.d/c7shell-i2c.conf  (i2c-dev, for ddcutil backlight)'
-if ((greeter_theme_todo)); then
-  info "$SDDM_DROPIN  (select the c7shell greeter theme)"
-  [[ -n $greeter_theme_replaces ]] \
-    && warn "the sddm theme is currently \"$greeter_theme_replaces\"; this replaces it (--no-greeter-theme keeps it)"
-fi
+((greetd_config_todo)) && info "$etc_root$GREETD_CONFIG  (run the c7shell greeter)"
 ((fingerprint_todo)) && info "$POLKIT_PAM  (pam_fprintd before the password, for the shell's prompt)"
-((nvidia_conf || want_extras || greeter_theme_todo || fingerprint_todo)) || info 'none'
+((nvidia_conf || want_extras || greetd_config_todo || fingerprint_todo)) || info 'none'
 
 if ((${#notes[@]})); then
   step 'notes'
@@ -492,14 +487,22 @@ if ((nvidia_conf)); then
   add_note 'the nvidia module settings apply after a reboot'
 fi
 
-if ((greeter_theme_todo)); then
-  step 'selecting the c7shell greeter theme'
-  run_root mkdir -p "$etc_root/etc/sddm.conf.d"
-  write_root "$SDDM_DROPIN" "$(sddm_dropin_body)"
-  # The theme files themselves come with the package, which is installed after
-  # this script runs -- and sddm is not started until the next boot, so a
-  # selection that points at a theme not on disk yet is not a problem.
-  add_note 'the greeter theme applies at the next boot, once the c7shell package is installed'
+if ((greetd_config_todo)); then
+  step 'pointing greetd at the c7shell greeter'
+  run_root mkdir -p "$etc_root/etc/greetd"
+  write_root "$etc_root$GREETD_CONFIG" "$(greetd_config_body)"
+  # Where the greeter remembers the last account. The greetd package creates
+  # the greeter user; this has to be writable by it.
+  run_root install -dm755 -o greeter -g greeter "$etc_root/var/lib/c7shell-greeter" \
+    || run_root install -dm755 "$etc_root/var/lib/c7shell-greeter"
+  # And its log. The greeter redirects stderr here as user `greeter`, and
+  # /var/log is root-owned -- so without this the redirect fails, cage never
+  # starts, and greetd gives up after five tries with nothing on screen. The
+  # package ships a tmpfiles entry for the same file; this covers the window
+  # before the package is installed.
+  run_root install -Dm600 -o greeter -g greeter /dev/null "$etc_root/var/log/c7greeter.log" \
+    || warn 'could not create /var/log/c7greeter.log; the greeter may not start'
+  add_note 'the greeter applies at the next boot, once the c7shell package is installed'
 fi
 
 if ((want_extras)); then
@@ -535,14 +538,14 @@ fi
 if ((${#units_todo[@]})); then
   step 'enabling system services'
   run_root systemctl enable "${units_todo[@]}"
-  # sddm is deliberately not started here: starting it would take over the
+  # greetd is deliberately not started here: starting it would take over the
   # console mid-install. It comes up at the next boot.
   for u in "${units_todo[@]}"; do
-    [[ $u == sddm.service ]] && continue
+    [[ $u == greetd.service ]] && continue
     run_root systemctl start "$u" || warn "could not start $u now; it is enabled for the next boot"
   done
   for u in "${units_todo[@]}"; do
-    [[ $u == sddm.service ]] && add_note 'sddm is enabled but not started; it takes over at the next boot'
+    [[ $u == greetd.service ]] && add_note 'greetd is enabled but not started; it takes over at the next boot'
   done
 fi
 
@@ -603,5 +606,5 @@ The system side is ready. What is left is the c7shell package itself:
     ./install.sh          # build and install it, then check the requirements
     c7shell-setup         # copy the configs into ~/.config
 
-Then reboot and pick the "c7shell" session in SDDM.
+Then reboot and log in at the c7shell greeter.
 MSG

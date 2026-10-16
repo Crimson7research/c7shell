@@ -21,6 +21,18 @@ depends=(
   # when c7-authd will not start: an unstyled dialog is worth having when the
   # alternative is a desktop where pkexec silently does nothing.
   'hyprpolkitagent'
+  # The login screen is part of the shell, not an optional extra: this package
+  # ships /usr/bin/c7shell-greeter, and that binary speaks greetd's protocol and
+  # nothing else. greetd hands the greeter the PAM conversation one message at a
+  # time instead of replaying a single stored secret, which is why a mistyped
+  # PIN costs one attempt here and a second prompt -- enrolling a PIN, changing
+  # an expired password -- reaches the user rather than looping. cage is the
+  # kiosk compositor it runs the greeter inside.
+  #
+  # Which greeter greetd actually runs is still a write to /etc that a package
+  # must not make; c7shell-bootstrap does that.
+  'greetd'
+  'cage'
   'qt6-declarative'
   'wireplumber'
   'networkmanager'
@@ -69,10 +81,6 @@ optdepends=(
   # popover both show the "tuned is not running" card and everything else --
   # the battery readout, the idle timings, the charge limit -- carries on.
   'tuned: power profiles in settings -> system -> power'
-  # Not a depends=: the greeter is system state that c7shell-bootstrap sets up,
-  # and a machine running gdm or greetd installs this package just as happily.
-  # The theme under /usr/share/sddm/themes is inert without it.
-  'sddm: the greeter the c7shell theme styles'
   'kitty: terminal bound to SUPER+Q'
   'dolphin: file manager bound to SUPER+E, and the capture toast'"'"'s "folder" button (auto-detected; override with shell.json fileManager)'
   # QT_QPA_PLATFORMTHEME=kde (hypr/conf/environment.lua) only means something
@@ -147,6 +155,13 @@ build() {
   # optimisation, not a CMake build type.
   cmake -S plugin -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build build
+
+  # The greetd greeter. greetd speaks only an authentication protocol -- no
+  # user list, no session list, no power actions and no theme config -- so the
+  # greeter is a binary that supplies those and drives the conversation.
+  cmake -S greetd-greeter -B build-greeter -G Ninja \
+    -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build-greeter
 }
 
 check() {
@@ -157,7 +172,7 @@ check() {
   # Every one of these stubs the machine it tests (pacman, lspci, systemctl,
   # $HOME), so they are safe to run mid-build and mean the package cannot be
   # built out of a tree whose scripts are broken. The two exceptions still are:
-  # test-greeter.sh renders the sddm theme with qml6 offscreen, and
+  # test-greeter.sh renders the greeter's QML with qml6 offscreen, and
   # test-lockscreen.sh has hyprlock validate its own config against a Wayland
   # display that does not exist -- neither can touch a running session, and both
   # skip themselves when the tool is not installed (in a clean chroot, neither
@@ -242,11 +257,13 @@ package() {
   # tuned.service. Same trust boundary and the same place as c7up-root -- a
   # fixed verb, never a command line, and nowhere near anyone's PATH.
   install -Dm755 bin/c7power-root "$pkgdir/usr/lib/c7shell/c7power-root"
-  # Sourced by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the sddm
+  # Sourced by c7shell-bootstrap, c7shell-upgrade and c7shell-doctor: the
   # theme parse and the drop-in body they all have to agree about. Not on PATH
   # and not executable -- it is a library, so it sits with the other non-PATH
   # helpers and the three scripts find it there once installed.
-  install -Dm644 share/c7shell-sddm.sh "$pkgdir/usr/lib/c7shell/c7shell-sddm.sh"
+  # The same, for greetd. /etc/greetd/config.toml is system state a package must
+  # not write, so the body lives here and bootstrap/upgrade install it.
+  install -Dm644 share/c7shell-greetd.sh "$pkgdir/usr/lib/c7shell/c7shell-greetd.sh"
   # Sourced from ~/.zshrc and ~/.bashrc (c7shell-setup adds the line): an
   # interactive `sudo CMD` becomes `run0 CMD`, which asks through polkit.
   install -Dm644 share/sudo-run0.sh "$pkgdir/usr/lib/c7shell/sudo-run0.sh"
@@ -269,18 +286,33 @@ package() {
   install -Dm644 share/c7shell.desktop \
     "$pkgdir/usr/share/wayland-sessions/c7shell.desktop"
 
-  # The sddm greeter theme. It cannot travel with the configs above: sddm runs
-  # the greeter as its own user before any session exists, so the QML has to sit
-  # in /usr/share where that user can read it -- c7shell-setup copies nothing
-  # here. Selecting the theme is a line in /etc/sddm.conf.d, which a package must
-  # not write; c7shell-bootstrap does it on a fresh machine and c7shell-upgrade
-  # on an existing one.
-  install -dm755 "$pkgdir/usr/share/sddm/themes"
-  cp -a sddm/themes/c7shell "$pkgdir/usr/share/sddm/themes/"
-  chmod -R u=rwX,go=rX "$pkgdir/usr/share/sddm/themes/c7shell"
+
+  # The greetd greeter: a binary, and the QML in sddm/themes/c7shell with
+  # greetd-greeter/Main.qml in place of the sddm one. Main.qml is the adapter --
+  # everything it adapts to lives in that one file -- so the rest is copied as
+  # it is.
+  DESTDIR="$pkgdir" cmake --install build-greeter
+  install -dm755 "$pkgdir/usr/share/c7shell/greeter"
+  cp -a sddm/themes/c7shell/. "$pkgdir/usr/share/c7shell/greeter/"
+  install -Dm644 greetd-greeter/Main.qml "$pkgdir/usr/share/c7shell/greeter/Main.qml"
+  chmod -R u=rwX,go=rX "$pkgdir/usr/share/c7shell/greeter"
+
+  # Where the greeter remembers the last account, and where it writes its log.
+  # Both are written as user `greeter`, into directories root owns, so both
+  # have to exist and be owned by it before greetd starts: without the log the
+  # greeter's stderr redirect fails before cage is exec'd and the login screen
+  # never draws; without the directory the greeter runs but never preselects an
+  # account.
+  #
+  # The ownership cannot be set here -- makepkg has no such user -- and not by
+  # a tmpfiles entry either: `greeter` comes with greetd, which is an optdepend,
+  # and an entry naming a missing user fails the pacman hook on every machine
+  # running another display manager. c7shell.install does it, guarded on the
+  # user existing, and c7shell-bootstrap does it too.
+  install -dm755 "$pkgdir/var/lib/c7shell-greeter"
 
   # What the greeter's network pill reads. The greeter is QML with no D-Bus
-  # binding, running as the sddm user before any session exists, so it cannot
+  # binding, running as the greeter user before any session exists, so it cannot
   # ask NetworkManager what it is connected to -- this runs as root on every
   # connection change and writes the answer where the greeter can read it.
   # /usr/lib, not /etc/NetworkManager/dispatcher.d: it is a program, and

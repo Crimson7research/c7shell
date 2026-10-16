@@ -9,8 +9,8 @@
 # black screen and a bounce straight back to the greeter, with the reason
 # buried in a log -- so check it up front instead.
 set -euo pipefail
-# The sddm theme parse and the drop-in body, shared with
-# c7shell-bootstrap and c7shell-upgrade: share/c7shell-sddm.sh. The repo layout
+# The greetd config body and the display-manager lookup, shared with
+# c7shell-bootstrap and c7shell-upgrade: share/c7shell-greetd.sh. The repo layout
 # answers first, so a checkout and the test suite run the copy beside them;
 # an installed script falls through to /usr/lib/c7shell. A missing lib fails
 # the source and `set -e` ends the run, which is right -- c7shell-doctor
@@ -18,9 +18,9 @@ set -euo pipefail
 # Pure parameter expansion, no dirname: c7shell-doctor runs its own checks
 # with PATH pointed at a fake tree, where no external command exists yet.
 _c7lib=${C7SHELL_LIB:-${0%/*}/../share}
-[[ -r $_c7lib/c7shell-sddm.sh ]] || _c7lib=/usr/lib/c7shell
-# shellcheck source=../share/c7shell-sddm.sh
-. "$_c7lib/c7shell-sddm.sh"
+[[ -r $_c7lib/c7shell-greetd.sh ]] || _c7lib=/usr/lib/c7shell
+# shellcheck source=../share/c7shell-greetd.sh
+. "$_c7lib/c7shell-greetd.sh"
 
 conf=${XDG_CONFIG_HOME:-$HOME/.config}
 # Prefix for the absolute paths checked below. Empty in normal use; the test
@@ -522,95 +522,108 @@ if [[ -f $entry ]]; then
 fi
 
 section 'greeter'
-# The greeter is where a broken session shows up, and where the theme is easiest
-# to get half-installed: the QML ships with the package, the selection is a line
-# in /etc/sddm.conf.d that only c7shell-bootstrap or c7shell-upgrade writes. All
-# warnings, never failures -- a machine may deliberately run another display
-# manager, and the session works either way.
-
-sddm_theme=$root/usr/share/sddm/themes/c7shell
-if [[ -d $sddm_theme ]]; then
-  ok '/usr/share/sddm/themes/c7shell'
-  current=$(sddm_theme_current "$root")
-  case $current in
-    c7shell) ok 'sddm uses the c7shell greeter theme' ;;
-    '')
-      warn 'no sddm theme is selected, so the greeter comes up unstyled'
-      note 'select it:  c7shell-upgrade   (or c7shell-bootstrap on a fresh machine)'
-      ;;
-    *)
-      warn "sddm is set to the \"$current\" theme, not c7shell"
-      note 'that may well be deliberate; to switch, run: c7shell-bootstrap'
-      ;;
-  esac
-  # Which greeter binary sddm will launch for this theme, and whether it can
-  # actually run. sddm builds the path as sddm-greeter + (QtVersion ? "-qt<n>" :
-  # ""), so a theme that declares nothing is handed to the Qt5 greeter -- which
-  # Arch ships, but whose Qt5 libraries are only an optdepend of sddm. It exits
-  # 127 and the login screen is black, with the reason only in sddm's journal.
-  # Nothing else on this machine notices until the next reboot, which is why
-  # this is checked here rather than left to the theme.
-  if [[ $current == c7shell ]]; then
-    # Parsed in bash: this file's checks run under a PATH with almost nothing
-    # on it, and the rest of the doctor sticks to grep and head for the same
-    # reason.
-    qt_version=''
-    while IFS= read -r line; do
-      [[ $line =~ ^QtVersion=([0-9]+)[[:space:]]*$ ]] && qt_version=${BASH_REMATCH[1]}
-    done < "$sddm_theme/metadata.desktop" 2>/dev/null || true
-    greeter_bin=$root/usr/bin/sddm-greeter${qt_version:+-qt$qt_version}
-    if [[ ! -x $greeter_bin ]]; then
-      bad "the theme asks sddm for ${greeter_bin##*/}, which is not installed -- the greeter would be a black screen"
-      want_pkg sddm
-    elif ! command -v ldd >/dev/null; then
-      ok "greeter binary ${greeter_bin##*/} is installed"
-    elif missing_libs=$(ldd "$greeter_bin" 2>/dev/null | grep 'not found'); then
-      bad "${greeter_bin##*/} cannot start: ${missing_libs%%$'\n'*}"
-      note 'sddm picks that binary from QtVersion in the theme metadata; the'
-      note 'greeter exits 127 and the login screen is black.'
-      [[ -z $qt_version ]] && note 'the theme declares no QtVersion, so sddm defaulted to the Qt5 greeter'
-    else
-      ok "greeter binary ${greeter_bin##*/} runs"
-    fi
-  fi
-
-  # The network pill's only source of truth. Nothing breaks without it -- the
-  # pill just never appears -- but "my greeter shows no wifi" has no other
-  # explanation, and a dispatcher script is easy to lose to a manual /usr edit.
-  if [[ $current == c7shell ]] && command -v nmcli >/dev/null; then
-    dispatcher=''
-    for d in "$root"/usr/lib/NetworkManager/dispatcher.d "$root"/etc/NetworkManager/dispatcher.d; do
-      [[ -x $d/50-c7shell-greeter ]] && dispatcher=$d/50-c7shell-greeter
-    done
-    if [[ -n $dispatcher ]]; then
-      ok "greeter network readout (${dispatcher#"$root"})"
-    else
-      warn 'the greeter shows no network: 50-c7shell-greeter is not in'
-      note 'NetworkManager'"'"'s dispatcher.d, so nothing publishes the connection'
-      note 'where the greeter (running as the sddm user, with no D-Bus) can read it.'
-      note 'It ships with the package, so a rebuild restores it: c7shell-upgrade'
-    fi
-  fi
-
-  # Without this the greeter still comes up, but its top-left line loses the
-  # kernel version and the bottom bar loses the battery: QML refuses file://
-  # reads unless the greeter's environment allows them.
-  if [[ $current == c7shell ]]; then
-    if grep -rqs 'QML_XHR_ALLOW_FILE_READ' "$root"/etc/sddm.conf "$root"/etc/sddm.conf.d/; then
-      ok 'the greeter may read /proc and /sys (kernel and battery readout)'
-    else
-      warn 'GreeterEnvironment does not set QML_XHR_ALLOW_FILE_READ=1, so the'
-      note 'greeter shows no kernel version and no battery level'
-      note 'fix it:  c7shell-upgrade   (it rewrites the sddm drop-in)'
-    fi
-  fi
-elif command -v sddm-greeter-qt6 >/dev/null || command -v sddm >/dev/null; then
-  warn 'sddm is installed but /usr/share/sddm/themes/c7shell is not -- the'
-  note 'greeter theme ships with the package, so rebuild it: c7shell-upgrade'
-else
-  warn 'sddm is not installed, so the c7shell greeter theme is unused'
-  note 'install it:  c7shell-bootstrap'
+# The greeter is where a broken session shows up, and where it is easiest to
+# get half-installed: the binary and its QML ship with the package, but the line
+# telling greetd to run it is in /etc/greetd/config.toml, which only
+# c7shell-bootstrap or c7shell-upgrade writes. All warnings, never failures -- a
+# machine may deliberately run another display manager, and the session works
+# either way.
+dm=$(c7shell_display_manager "$root")
+if [[ -z $dm ]]; then
+  warn 'no display manager is enabled, so nothing shows the c7shell greeter at boot'
+  note 'c7shell-upgrade enables greetd, or by hand: sudo systemctl enable greetd.service'
+elif [[ $dm == sddm ]]; then
+  warn "this machine's display manager is sddm, not greetd"
+  note 'c7shell has moved to greetd; c7shell-upgrade switches it at the next boot'
+elif [[ $dm != greetd ]]; then
+  warn "this machine's display manager is $dm, not greetd"
+  note "the c7shell greeter runs on greetd; to switch: sudo systemctl disable $dm.service && sudo systemctl enable greetd.service"
 fi
+
+if [[ -x $root/usr/bin/c7shell-greeter ]]; then
+  ok '/usr/bin/c7shell-greeter'
+else
+  warn '/usr/bin/c7shell-greeter is not installed'
+  note 'the greeter comes with the c7shell package; reinstall it'
+fi
+
+if [[ -f $root/usr/share/c7shell/greeter/Main.qml ]]; then
+  ok '/usr/share/c7shell/greeter'
+else
+  warn 'the greeter QML is missing, so the login screen cannot draw'
+  note 'it ships with the c7shell package; reinstall it'
+fi
+
+if greetd_is_c7shell "$root"; then
+  ok 'greetd runs the c7shell greeter'
+elif [[ -f $root$GREETD_CONFIG ]]; then
+  warn 'greetd is configured to run something other than the c7shell greeter'
+  note 'that may well be deliberate; to switch, run: c7shell-upgrade'
+else
+  warn "no $GREETD_CONFIG, so greetd has nothing to run"
+  note 'write it:  c7shell-upgrade   (or c7shell-bootstrap on a fresh machine)'
+fi
+
+# greetd runs the greeter as its own user inside cage; without either, the
+# login screen never appears and the reason is only in greetd's journal.
+if [[ -x $root/usr/bin/cage ]]; then
+  ok 'cage'
+else
+  warn 'cage is not installed, so greetd has no compositor to run the greeter in'
+  note 'install it:  pacman -S cage'
+fi
+
+# The greeter runs as its own user and writes to two root-owned places, so both
+# must exist and belong to it. Both have broken a fresh install before, and
+# neither says so anywhere obvious: without the log the stderr redirect fails
+# before cage is exec'd and nothing is drawn; without a writable state
+# directory the greeter runs but never preselects an account.
+greeter_user=${C7SHELL_GREETER_USER:-greeter}
+owned_by_greeter() {
+  local owner
+  command -v stat >/dev/null || return 0
+  owner=$(stat -c %U "$1" 2>/dev/null) || return 1
+  [[ $owner == "$greeter_user" ]]
+}
+
+if [[ ! -e $root/var/log/c7greeter.log ]]; then
+  warn 'no /var/log/c7greeter.log, so the greeter cannot start: its stderr redirect fails before cage runs'
+  note 'create it:  sudo install -m600 -o greeter -g greeter /dev/null /var/log/c7greeter.log'
+elif ! owned_by_greeter "$root/var/log/c7greeter.log"; then
+  warn "/var/log/c7greeter.log is not owned by $greeter_user, so the greeter cannot start"
+  note 'fix it:  sudo chown greeter:greeter /var/log/c7greeter.log'
+else
+  ok '/var/log/c7greeter.log'
+fi
+
+if [[ ! -d $root/var/lib/c7shell-greeter ]]; then
+  warn 'no /var/lib/c7shell-greeter, so the greeter cannot remember the last account'
+  note 'create it:  sudo install -dm755 -o greeter -g greeter /var/lib/c7shell-greeter'
+elif ! owned_by_greeter "$root/var/lib/c7shell-greeter"; then
+  warn "/var/lib/c7shell-greeter is not owned by $greeter_user, so the greeter cannot remember the last account"
+  note 'fix it:  sudo chown greeter:greeter /var/lib/c7shell-greeter'
+else
+  ok '/var/lib/c7shell-greeter'
+fi
+
+# The network pill's only source of truth. Nothing breaks without it -- the
+# pill just never appears -- but "my greeter shows no wifi" has no other
+# explanation, and a dispatcher script is easy to lose to a manual /usr edit.
+if command -v nmcli >/dev/null; then
+  dispatcher=''
+  for d in "$root"/usr/lib/NetworkManager/dispatcher.d "$root"/etc/NetworkManager/dispatcher.d; do
+    [[ -x $d/50-c7shell-greeter ]] && dispatcher=$d/50-c7shell-greeter
+  done
+  if [[ -n $dispatcher ]]; then
+    ok "greeter network readout (${dispatcher#"$root"})"
+  else
+    warn 'the greeter shows no network: 50-c7shell-greeter is not in'
+    note 'NetworkManager'"'"'s dispatcher.d, so nothing publishes the connection'
+    note 'where the greeter (running as the greeter user, with no D-Bus) can read it.'
+    note 'It ships with the package, so a rebuild restores it: c7shell-upgrade'
+  fi
+fi
+
 
 section 'user config'
 # This is the one that produces the classic "black screen, back to the
