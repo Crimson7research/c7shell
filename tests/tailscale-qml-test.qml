@@ -303,6 +303,7 @@ Window {
     root.panelChecks()
     root.foldOutChecks()
     root.exitNodeControlChecks()
+    root.settingsChecks()
     root.delegateIdentityChecks()
   }
 
@@ -841,6 +842,14 @@ Window {
       "the row survived the fold but its own state did not")
 
     // -- the device search --------------------------------------------------
+    // The number on the row is a claim about the list under it. Task 6 left it
+    // as the tailnet's own total, which reads as 50 over a list showing one
+    // the moment a query is running -- and the row is the only thing on screen
+    // that says how many devices the search left standing.
+    const deviceCount = root.panelOne("ts-devices-count")
+    root.check(deviceCount.text === "4",
+      `the device row says "${deviceCount.text}" over an unfiltered list of 4`)
+
     search.text = "TANGO"
     root.layout()
     const hits = root.panelShown("ts-peer")
@@ -848,6 +857,8 @@ Window {
       `searching "TANGO" left ${hits.length} rows: ${hits.map(o => o.title).join(", ")}`)
     root.check(root.panelShown("ts-peer-no-match").length === 0,
       "a device search that DID match said it matched nothing")
+    root.check(deviceCount.text === "1",
+      `the device row says "${deviceCount.text}" over a list the query left showing 1 device`)
 
     // A section whose every row the query hid may not keep its heading -- a
     // heading over nothing reads as a group the search emptied of devices
@@ -886,6 +897,8 @@ Window {
     root.seedPeers(root.tailnetPeers)
     root.layout()
     root.check(root.panelShown("ts-peer").length === 4, "the device list did not come back")
+    root.check(deviceCount.text === "4",
+      `the device row says "${deviceCount.text}" after the query was cleared over 4 devices`)
 
     // -- the height the fold-out decides ------------------------------------
     // Twenty-five devices is an ordinary tailnet. The card has to stop growing
@@ -1051,20 +1064,47 @@ Window {
     // The control that matters when an exit node is blackholing the LAN: with
     // it off, a node that stops answering takes the printer and the router's
     // own web UI with it.
+    //
+    // IT READS ITSELF BACK OFF THE CONTRACT, which it could not until the
+    // three read-back properties existed. With only the action under it the
+    // switch drew what was last clicked on it IN THIS SESSION: it opened off
+    // on a machine where LAN access was already on, a change made with
+    // `tailscale set` elsewhere never reached it, and a refused write could
+    // not spring it back because there was nothing for it to spring back to.
+    Tailscale.exitNodeAllowLANAccess = true
+    root.layout()
     const lan = root.panelOne("ts-exit-lan")
     const lanSwitch = root.panelOne("ts-exit-lan-switch")
-    root.check(!lanSwitch.checked, "the LAN switch starts on")
-    lan.clicked()
-    root.check(root.tookCalls() === "setExitNodeAllowLANAccess(true)",
-      "the LAN row does not ask for local network access")
-    root.layout()
     root.check(lanSwitch.checked,
-      "the switch did not draw the value it just asked for, so a press does nothing visible")
+      "the panel opened on a machine where LAN access is already on and drew the switch off:"
+      + " it is showing what was last clicked here, not what tailscaled holds")
+
+    root.tookCalls()
     lan.clicked()
     root.check(root.tookCalls() === "setExitNodeAllowLANAccess(false)",
+      "the LAN row does not ask for the opposite of the value tailscaled currently holds")
+
+    // The click ASKED. An action moves nothing on the contract, so a switch
+    // that moved here is drawing its own click as a fact -- and a refused
+    // write looks exactly like an accepted one from then on.
+    root.layout()
+    root.check(lanSwitch.checked,
+      "the switch moved on the click rather than on what the daemon then reported,"
+      + " so a write tailscaled refuses leaves it showing the wrong value")
+
+    // The daemon answering is what moves it. tailscaled took this one.
+    Tailscale.exitNodeAllowLANAccess = false
+    root.layout()
+    root.check(!lanSwitch.checked, "the switch did not follow the daemon's own notification")
+
+    // And the other direction, which is the refusal: the panel asks for `true`
+    // and tailscaled keeps it off. The switch has to stay off.
+    lan.clicked()
+    root.check(root.tookCalls() === "setExitNodeAllowLANAccess(true)",
       "the LAN control asks for the same value twice, so it is not a switch")
     root.layout()
-    root.check(!lanSwitch.checked, "the switch did not come back off")
+    root.check(!lanSwitch.checked,
+      "a write the daemon never confirmed left the switch showing the value it asked for")
 
     // -- use this device as an exit node… -----------------------------------
     // The contract has no action for advertising this machine as an exit node
@@ -1178,6 +1218,185 @@ Window {
     root.everyTextIsPlain(root.panelOne("ts-exit-lan"), "the LAN access row")
     root.everyTextIsPlain(root.panelOne("ts-exit-advertise"), "the advertise row")
     root.everyTextIsPlain(root.panelOne("ts-exit-no-match"), "the no-match row")
+  }
+
+  // ==========================================================================
+  // The settings sub-card
+  // ==========================================================================
+  //
+  // Two more prefs of the same shape as the LAN switch -- an action to ask
+  // with, a property to read back from -- and `accept routes` closes a loop
+  // this module has carried since v1.
+  //
+  // RouteAll: false is the pref behind the one health warning the backend
+  // SUPPRESSES (LocalApiTailscaleBackend::suppressedHealth: "advertising
+  // routes but --accept-routes is false"). Surfaced naively it is an issue
+  // that never clears on a machine that deliberately does not accept routes,
+  // so the panel would warn forever about a setting someone chose; dropped
+  // with nothing said, it is a hidden special case and the issue list is
+  // quietly not the whole of what tailscaled reported. Said beside the switch
+  // that changes it, it is an explanation -- which is the only reading of the
+  // suppression that is honest, and is why the explanation is asserted here
+  // rather than treated as decoration.
+  function settingsChecks() {
+    root.connectedWithPeers()
+    PopoverManager.toggle("tailscale", null)
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    Tailscale.acceptRoutes = false
+    Tailscale.acceptDns = false
+    pop.expanded = ""
+    root.layout()
+
+    root.check(root.panelShown("ts-settings-routes").length === 0,
+      "the settings rows are on the root card; they belong in a sub-card folded out of it")
+
+    const shut = pop.panel.height
+    const settingsRow = root.panelOne("ts-settings-row")
+    const chevron = root.panelOne("ts-settings-chevron")
+    const shutRotation = chevron.rotation
+    settingsRow.clicked()
+    root.layout()
+
+    // Folded out of its own row, like the other two: the root rows stay, the
+    // card grows, and the card lands under the row that opened it.
+    root.check(root.panelOne("ts-self-name").visible,
+      "the settings sub-card replaced the card instead of folding out of it")
+    root.check(root.panelShown("ts-peer").length === 0,
+      "opening settings left the device sub-card folded out as well")
+    root.check(pop.panel.height > shut,
+      `the card is ${pop.panel.height}px with the settings card out and was ${shut}px without it`)
+    root.check(chevron.rotation !== shutRotation,
+      "the chevron on the settings row points the same way open as shut")
+    const cardY = root.panelOne("ts-settings-card").mapToItem(pop.panel, 0, 0).y
+    root.check(cardY > settingsRow.mapToItem(pop.panel, 0, 0).y,
+      `the settings sub-card is at ${cardY}, above the row that opens it`)
+
+    // -- accept routes ------------------------------------------------------
+    const routesRow = root.panelOne("ts-settings-routes")
+    const routesSwitch = root.panelOne("ts-settings-routes-switch")
+    root.check(routesSwitch.enabled && routesRow.hoverable,
+      "the settings switches opened disabled with nothing refused yet: `writable` is a claim"
+      + " about the last attempt, not permission to make the first")
+    root.check(!routesSwitch.checked,
+      "the accept-routes switch does not read itself back off the contract")
+
+    root.tookCalls()
+    routesRow.clicked()
+    root.check(root.tookCalls() === "setAcceptRoutes(true)",
+      "the accept-routes row does not ask for the opposite of what tailscaled holds")
+    root.layout()
+    root.check(!routesSwitch.checked,
+      "the accept-routes switch drew its own click as a fact, so a refused write would leave it"
+      + " showing a setting the machine does not have")
+    Tailscale.acceptRoutes = true
+    root.layout()
+    root.check(routesSwitch.checked,
+      "the accept-routes switch did not follow the daemon's own notification")
+    routesRow.clicked()
+    root.check(root.tookCalls() === "setAcceptRoutes(false)",
+      "the accept-routes control asks for the same value twice, so it is not a switch")
+
+    // -- why the route warning is not in the issue list ---------------------
+    // With RouteAll off, tailscaled raises its standing --accept-routes
+    // warning and this module drops it. Both halves are asserted: the issue
+    // list is empty, and the panel still says what is being hidden.
+    Tailscale.acceptRoutes = false
+    Tailscale.issues = []
+    root.layout()
+    root.check(root.panelShown("ts-issue").length === 0,
+      "this check needs an empty issue list to mean anything and the list is not empty")
+    const why = root.panelShown("ts-settings-routes-why")
+    root.check(why.length === 1,
+      "the warning this module suppresses is suppressed with nothing said about it, so the"
+      + " issue list is quietly not the whole of what tailscaled reported")
+    root.check(why[0].text.toLowerCase().indexOf("route") >= 0,
+      `the explanation beside accept routes does not mention routes: "${why[0].text}"`)
+    root.check(why[0].textFormat === Text.PlainText,
+      "the suppression explanation is in a markup-parsing element")
+    root.check(why[0].mapToItem(pop.panel, 0, 0).y > routesRow.mapToItem(pop.panel, 0, 0).y,
+      "the explanation is not beside the control it explains")
+
+    // On a machine that DOES accept routes tailscaled raises no such warning,
+    // so there is nothing suppressed and nothing to explain.
+    Tailscale.acceptRoutes = true
+    root.layout()
+    root.check(root.panelShown("ts-settings-routes-why").length === 0,
+      "the panel explains a suppressed warning on a machine where tailscaled raises none")
+    Tailscale.acceptRoutes = false
+    root.layout()
+
+    // -- accept dns ---------------------------------------------------------
+    const dnsRow = root.panelOne("ts-settings-dns")
+    const dnsSwitch = root.panelOne("ts-settings-dns-switch")
+    Tailscale.acceptDns = true
+    root.layout()
+    root.check(dnsSwitch.checked,
+      "the accept-dns switch does not read itself back off the contract: it opened off on a"
+      + " machine using the tailnet's DNS")
+    root.tookCalls()
+    dnsRow.clicked()
+    root.check(root.tookCalls() === "setAcceptDns(false)",
+      "the accept-dns row does not ask for the opposite of what tailscaled holds")
+    root.layout()
+    root.check(dnsSwitch.checked, "the accept-dns switch moved on the click rather than on the bus")
+    Tailscale.acceptDns = false
+    root.layout()
+    root.check(!dnsSwitch.checked, "the accept-dns switch did not follow the daemon")
+
+    // -- after a refusal, and only after one --------------------------------
+    const refusal = "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden"
+    Tailscale.writable = false
+    Tailscale.writeError = refusal
+    root.layout()
+    const explained = root.panelShown("ts-settings-write-error")
+    root.check(explained.length === 1, "a refused write left the settings card silent")
+    root.check(explained[0].text.indexOf(refusal) >= 0,
+      `the explanation does not carry what refused it: "${explained[0].text}"`)
+    root.check(explained[0].textFormat === Text.PlainText,
+      "the refusal is daemon-supplied text in a markup-parsing element")
+    root.check(!routesSwitch.enabled && !dnsSwitch.enabled,
+      "a settings switch is still live after tailscaled refused to change anything")
+    root.check(`${routesRow.titleColor}` === `${Theme.textDisabled}`
+      && `${dnsRow.titleColor}` === `${Theme.textDisabled}`,
+      "a settings row kept its live colour after a refusal")
+    root.check(!routesRow.hoverable && !dnsRow.hoverable,
+      "a dead settings row still lights up under the pointer, which is a promise")
+
+    root.tookCalls()
+    routesRow.clicked()
+    dnsRow.clicked()
+    root.check(root.tookCalls() === "",
+      "a settings control disabled after a refusal still asked tailscaled to change something")
+
+    // The suppressed-warning explanation is not an offer and does not go with
+    // the controls: it says why the issue list is short, which is true however
+    // dead the switch above it is.
+    root.check(root.panelShown("ts-settings-routes-why").length === 1,
+      "the explanation of the suppressed warning went away with the controls")
+
+    // And back: `writable` follows the LAST attempt rather than latching.
+    Tailscale.writable = true
+    Tailscale.writeError = ""
+    root.layout()
+    root.check(root.panelShown("ts-settings-write-error").length === 0,
+      "the refusal is still explained after a write was accepted")
+    routesRow.clicked()
+    root.check(root.tookCalls() !== "",
+      "the settings controls stayed dead after `writable` came back, so the flag latched")
+
+    root.everyTextIsPlain(routesRow, "the accept routes row")
+    root.everyTextIsPlain(dnsRow, "the accept dns row")
+
+    // The row that opened the card closes it, as the other two do.
+    settingsRow.clicked()
+    root.layout()
+    root.check(root.panelShown("ts-settings-routes").length === 0,
+      "the settings rows stayed on screen after their card was folded away")
+    root.check(chevron.rotation === shutRotation, "the settings chevron did not turn back")
+    root.check(Math.abs(pop.panel.height - shut) < 1,
+      `the card is ${pop.panel.height}px with the settings card folded away and was ${shut}px`
+      + ` before it opened`)
   }
 
   // The tailnet's exit nodes, twice over the same display name: `host-5` is

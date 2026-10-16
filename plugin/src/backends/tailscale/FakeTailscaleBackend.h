@@ -43,6 +43,9 @@ public:
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
+    bool exitNodeAllowLANAccess() const override { return m_exitNodeAllowLANAccess; }
+    bool acceptRoutes() const override { return m_acceptRoutes; }
+    bool acceptDns() const override { return m_acceptDns; }
 
     // The actions, recorded rather than performed: "setWantRunning(true)",
     // "setExitNode(nABC123CNTRL)". What a view is answerable for is WHAT it
@@ -115,6 +118,20 @@ public:
         set(m_writeError, v, &TailscaleBackend::writeErrorChanged);
     }
 
+    // The read-back side of the three switch actions, named `report...`
+    // rather than `set...` for a reason worth having in the API: `setX` is
+    // already taken by the ACTION, which only records. The two cannot share a
+    // name because they are not the same thing -- one is a panel asking
+    // tailscaled for something, the other is tailscaled having answered -- and
+    // a test that wants a switch to move calls this one, which is the only
+    // thing that moves one in the shell either.
+    void reportExitNodeAllowLANAccess(bool v)
+    {
+        set(m_exitNodeAllowLANAccess, v, &TailscaleBackend::exitNodeAllowLANAccessChanged);
+    }
+    void reportAcceptRoutes(bool v) { set(m_acceptRoutes, v, &TailscaleBackend::acceptRoutesChanged); }
+    void reportAcceptDns(bool v) { set(m_acceptDns, v, &TailscaleBackend::acceptDnsChanged); }
+
     // The models are the real PeerModel, not a stand-in: stable-row behaviour
     // is the library's and a fake of it would be a fake of our own code.
     void setPeers(const QList<c7::tailscale::Peer> &peers) { m_peers.setPeers(peers); }
@@ -164,5 +181,11 @@ private:
     // false would let a panel gated on it pass here and be dead in the shell.
     bool m_writable = true;
     QString m_writeError;
+    // False until a /prefs says otherwise, as in the real backend: a fake that
+    // started these at tailscaled's own defaults would be inventing a daemon
+    // it has not heard from.
+    bool m_exitNodeAllowLANAccess = false;
+    bool m_acceptRoutes = false;
+    bool m_acceptDns = false;
     QStringList m_calls;
 };
