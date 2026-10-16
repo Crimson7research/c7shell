@@ -65,6 +65,28 @@ QByteArray withoutPeer(const QByteArray &json, const QString &hostName)
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
+// The capture with its ExitNodeStatus re-pointed at the peer with this
+// hostname. Every capture selects pentest-exit-node, whose HostName and DNS
+// label are the same string, so no fixture on its own can tell the two naming
+// rules apart on the one row where naming the wrong machine costs the most.
+// The id is read out of the capture rather than written as a literal: the
+// redaction randomises every node id.
+QByteArray selectingExitNode(const QByteArray &json, const QString &hostName)
+{
+    QJsonObject root = QJsonDocument::fromJson(json).object();
+    const QJsonObject peers = root.value(QLatin1String("Peer")).toObject();
+    QJsonObject status = root.value(QLatin1String("ExitNodeStatus")).toObject();
+    for (const QString &key : peers.keys()) {
+        const QJsonObject peer = peers.value(key).toObject();
+        if (peer.value(QLatin1String("HostName")).toString() != hostName)
+            continue;
+        status.insert(QLatin1String("ID"), peer.value(QLatin1String("ID")));
+        status.insert(QLatin1String("TailscaleIPs"), peer.value(QLatin1String("TailscaleIPs")));
+    }
+    root.insert(QLatin1String("ExitNodeStatus"), status);
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
+}
+
 } // namespace
 
 class TestStatusParser : public QObject {
@@ -210,6 +232,30 @@ private slots:
         QVERIFY(s->exitNode.has_value());
         QCOMPARE(s->exitNode->name, QStringLiteral("pentest-exit-node"));
         QCOMPARE(s->exitNode->online, true);
+    }
+
+    // THE SAME RULE, ON THE ROW WHERE IT MATTERS MOST. joinsExitNodeNameFromItsPeer
+    // above cannot defend it: its exit node is pentest-exit-node, whose HostName
+    // and DNS label are identical, so the join could be re-pointed from
+    // displayName to hostName with every C++ binary still green -- the whole
+    // subject of 13f003b/abe105d, undefended.
+    //
+    // The blocked-exit-node alert's entire job is to say WHICH machine to
+    // clear, and it names it from here. `ip-172-31-0-10` is the shape that
+    // proves the rule -- a cloud instance whose OS hostname is its private
+    // address and whose label is a word -- and it is exit-node-capable in the
+    // capture already, just never the selected node.
+    void namesTheExitNodeByItsDnsLabelNotItsHostName()
+    {
+        const QByteArray json = selectingExitNode(readFixture("status-exitnode.json"),
+                                                  QStringLiteral("ip-172-31-0-10"));
+        const auto s = StatusParser::parse(json);
+        QVERIFY(s.has_value());
+        QVERIFY(s->exitNode.has_value());
+        QCOMPARE(s->exitNode->name, QStringLiteral("host-5"));
+        // The peer that fixture names really does have two different names, so
+        // a green assertion above is the rule and not a coincidence.
+        QCOMPARE(byHostName(s->peers, QStringLiteral("ip-172-31-0-10")).nodeId, s->exitNode->id);
     }
 
     void fallsBackToTheIdWhenTheExitPeerIsMissing()
