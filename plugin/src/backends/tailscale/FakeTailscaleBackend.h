@@ -43,6 +43,7 @@ public:
     QString recommendedExitNodeId() const override { return m_recommendedExitNodeId; }
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
+    QString readError() const override { return m_readError; }
     bool wantRunning() const override { return m_wantRunning; }
     bool exitNodeAllowLANAccess() const override { return m_exitNodeAllowLANAccess; }
     bool acceptRoutes() const override { return m_acceptRoutes; }
@@ -118,6 +119,15 @@ public:
     {
         set(m_writeError, v, &TailscaleBackend::writeErrorChanged);
     }
+    // The read side's twin, and a test states it for the same reason: this
+    // fake reads no socket, so a daemon that is present and unreadable is a
+    // state to put the contract IN. Empty means "nothing nameable is wrong",
+    // which is also what a machine with no tailscaled on it reads as -- see
+    // the contract.
+    void setReadError(const QString &v)
+    {
+        set(m_readError, v, &TailscaleBackend::readErrorChanged);
+    }
 
     // The read-back side of the three switch actions, named `report...`
     // rather than `set...` for a reason worth having in the API: `setX` is
@@ -183,6 +193,9 @@ private:
     // false would let a panel gated on it pass here and be dead in the shell.
     bool m_writable = true;
     QString m_writeError;
+    // Empty until a read fails with something this module can name: a fake
+    // that started non-empty would claim a daemon it has never talked to.
+    QString m_readError;
     // False until a /prefs says otherwise, as in the real backend: a fake that
     // started these at tailscaled's own defaults would be inventing a daemon
     // it has not heard from.

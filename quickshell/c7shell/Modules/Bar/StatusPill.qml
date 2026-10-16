@@ -140,7 +140,21 @@ Rectangle {
       // under a running tailscaled.
       Component.onCompleted: if (tsSlot.answering) tsSlot.everAnswered = true
 
-      visible: tsSlot.everAnswered
+      // Shown once tailscaled has answered -- OR while it is there and cannot
+      // be read. The latch alone answers only half of NoState: it keeps the
+      // slot alive for a daemon that answered and then died, and does nothing
+      // for one that is present and has never produced a usable answer, which
+      // is where every read failure lands when it happens at boot -- which is
+      // when it usually happens. The slot was then invisible, the popover is
+      // only reachable by clicking it, and TailscalePopover's "tailscaled is
+      // not responding" row -- the one piece of text that would explain any of
+      // it -- could never be shown in the scenario it was written for.
+      //
+      // A non-empty readError is exactly that case and nothing else: the
+      // contract leaves it EMPTY for the one failure that means there is no
+      // tailscaled here, so this does not put a globe back on a machine that
+      // does not run Tailscale.
+      visible: tsSlot.everAnswered || Tailscale.readError !== ""
       active: PopoverManager.current === "tailscale"
       slotColor: Tailscale.exitNodeActive ? Theme.accentFill : "transparent"
       // The outline as well, only here: the battery's warn threshold is the

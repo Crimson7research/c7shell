@@ -136,6 +136,11 @@ private slots:
             QStringLiteral("peers"),           QStringLiteral("exitNodes"),
             QStringLiteral("recommendedExitNodeId"), QStringLiteral("writable"),
             QStringLiteral("writeError"),
+            // The read side's error channel. Without it every read failure --
+            // a 403, a wedged daemon, a body that will not parse -- reached
+            // QML as state == NoState, which is also "has not started yet"
+            // and "this machine does not run Tailscale".
+            QStringLiteral("readError"),
             // The read-back for the four write-backed switches. Every one of
             // them had an action and no property, so a switch drew what was
             // last clicked on it rather than what tailscaled holds -- and the

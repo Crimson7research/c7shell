@@ -112,7 +112,26 @@ signals:
     // Why a request ended badly, and the token its get() carried. A watch that
     // fails emits this first and watchEnded straight after, never one without
     // the other; a watch carries no token of its own and reports zero.
-    void failed(const QString &path, const QString &reason, quint64 token);
+    //
+    // `reason` is the sentence -- what a caller publishes for someone to read.
+    // The two after it are the same ending made DECIDABLE, because the two
+    // decisions a caller has to make cannot be made from a sentence without
+    // matching strings against it:
+    //
+    //   * `status` is the HTTP status tailscaled answered with, or 0 when it
+    //     never answered one. A 403 is a permission setting and nothing else
+    //     -- it says the caller is not this daemon's operator, while the same
+    //     socket serves the same process's reads perfectly -- and a caller
+    //     that cannot tell it from a timeout reports a transient as a
+    //     permanent refusal.
+    //   * `socketAbsent` is true only for ServerNotFoundError: there is
+    //     nothing at the socket path at all, which is the one failure that
+    //     means Tailscale is not installed here rather than unreadable. Every
+    //     other transport error -- refused, access denied, closed -- is a
+    //     daemon that IS there and could not be read, and those are opposite
+    //     things to show a person.
+    void failed(const QString &path, const QString &reason, quint64 token, int status = 0,
+                bool socketAbsent = false);
     // The watch's response headers arrived and were accepted: the stream is
     // up and notifications will follow. Emitted once per watch, before any
     // event(), and never for a get.
@@ -165,7 +184,10 @@ private:
     void closed(QLocalSocket *socket);
     void errored(QLocalSocket *socket);
     void finish(QLocalSocket *socket);
-    void fail(QLocalSocket *socket, const QString &reason);
+    // `status` and `socketAbsent` are handed to failed() unchanged -- see the
+    // signal for what a caller decides with them.
+    void fail(QLocalSocket *socket, const QString &reason, int status = 0,
+              bool socketAbsent = false);
     // Stop and drop `exchange`'s deadline, if it still has one. Called with
     // the exchange already out of the table, so a timeout cannot race the
     // ending that disarmed it.

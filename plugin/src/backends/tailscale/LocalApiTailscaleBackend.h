@@ -107,6 +107,7 @@ public:
 
     bool writable() const override { return m_writable; }
     QString writeError() const override { return m_writeError; }
+    QString readError() const override { return m_readError; }
 
     // The four switch prefs, read back out of the same /prefs reply the
     // snapshot is already assembled from.
@@ -161,7 +162,8 @@ private:
     // Also the retry timer's slot.
     void open();
     void onReplied(const QString &path, const QByteArray &body, quint64 token);
-    void onFailed(const QString &path, const QString &reason, quint64 token);
+    void onFailed(const QString &path, const QString &reason, quint64 token, int status,
+                  bool socketAbsent);
     // Whether a pass is open at all. A pass is numbered from 1, so a reply
     // that carries no token cannot be mistaken for one belonging to it.
     bool passOpen() const { return m_openPass != 0; }
@@ -178,8 +180,18 @@ private:
     // Fails safe: anything not known to be ignorable is a reason to re-read.
     static bool worthRefreshing(const QByteArray &notification);
     // tailscaled is not answering: publish what that means and arrange to try
-    // again.
+    // again. It carries NO DIAGNOSIS, deliberately -- one lost connection
+    // arrives here several times (a failing watch reports failed and then
+    // watchEnded, and the three opening gets fail together), and only the
+    // first of those knows why. noteReadError() is where the why is stored,
+    // and a later arrival with nothing to say must not wipe it.
     void lostTailscaled();
+    // Store and announce WHY the last read failed -- see
+    // TailscaleBackend::readError. `socketAbsent` publishes nothing: there
+    // being nothing at the socket path is the absence of a daemon to read,
+    // not a daemon this module failed to read, and those are opposite things
+    // to put on screen.
+    void noteReadError(const QString &reason, bool socketAbsent);
     void scheduleRetry();
     // Re-read what a notification can have changed: the status, and the
     // suggestion that is keyed on a row of it.
@@ -301,6 +313,10 @@ private:
     // panel gated on it with no way to make that click.
     bool m_writable = true;
     QString m_writeError;
+    // Empty until a read fails with something nameable, and cleared again by
+    // the next whole snapshot. Empty is therefore "nothing nameable is
+    // wrong", which is what a machine with no tailscaled on it reads as too.
+    QString m_readError;
     // False until a /prefs has said otherwise. CorpDNS and WantRunning are
     // both true on a daemon in ordinary use and these still start false: a
     // value this object has not heard is not a value to guess at, and a

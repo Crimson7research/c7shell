@@ -220,8 +220,12 @@ bool LocalApiClient::readHeaders(QLocalSocket *socket)
     it->buffer.remove(0, at + kHeaderEndSize);
     const int code = statusCode(head);
     if (code < 200 || code >= 300) {
-        fail(socket, QStringLiteral("%1 answered %2")
-                         .arg(it->path, QString::fromUtf8(statusLine(head))));
+        // The code travels beside the sentence: a 403 is a permission setting
+        // and every other code is not, and a caller may not have to find that
+        // out by looking for "403" in prose.
+        fail(socket,
+             QStringLiteral("%1 answered %2").arg(it->path, QString::fromUtf8(statusLine(head))),
+             code);
         return false;
     }
     it->headersDone = true;
@@ -379,7 +383,11 @@ void LocalApiClient::errored(QLocalSocket *socket)
         closed(socket);
         return;
     }
-    fail(socket, socket->errorString());
+    // ServerNotFoundError is the one transport failure that means there is
+    // nothing at the path: no tailscaled on this machine, as against a
+    // tailscaled that is there and cannot be read.
+    fail(socket, socket->errorString(), 0,
+         socket->error() == QLocalSocket::ServerNotFoundError);
 }
 
 void LocalApiClient::finish(QLocalSocket *socket)
@@ -397,12 +405,13 @@ void LocalApiClient::finish(QLocalSocket *socket)
                  exchange->token);
 }
 
-void LocalApiClient::fail(QLocalSocket *socket, const QString &reason)
+void LocalApiClient::fail(QLocalSocket *socket, const QString &reason, int status,
+                          bool socketAbsent)
 {
     const std::optional<Exchange> exchange = take(socket);
     if (!exchange)
         return;
-    emit failed(exchange->path, reason, exchange->token);
+    emit failed(exchange->path, reason, exchange->token, status, socketAbsent);
     if (exchange->streaming)
         emit watchEnded();
 }

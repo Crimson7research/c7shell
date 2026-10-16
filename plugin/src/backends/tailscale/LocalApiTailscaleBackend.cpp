@@ -371,6 +371,14 @@ void LocalApiTailscaleBackend::onReplied(const QString &path, const QByteArray &
     // without one there is nothing to publish but the parser's defaults, which
     // would read as a tailnet with no peers rather than as no answer.
     if (!status || status->backendState.isEmpty()) {
+        // Named here because LocalApiClient cannot name it: nothing went wrong
+        // on the wire. A 200 that is not a status is the shape a TS_SOCKET
+        // pointing at some other listening socket has, and the shape a
+        // de-chunking regression in this module has -- the exact class of bug
+        // that once hid chunked encoding for a whole task with the suite green.
+        noteReadError(status ? QStringLiteral("%1 answered without a BackendState").arg(path)
+                             : QStringLiteral("%1 answered something that is not a status").arg(path),
+                      false);
         lostTailscaled();
         return;
     }
@@ -401,7 +409,8 @@ void LocalApiTailscaleBackend::applySnapshotWhenWhole()
         refresh();
 }
 
-void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &, quint64 token)
+void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &reason,
+                                        quint64 token, int, bool socketAbsent)
 {
     // A suggestion that does not arrive is not a tailscaled that is gone. The
     // endpoint is optional -- a tailnet with no exit nodes has nothing to
@@ -430,10 +439,30 @@ void LocalApiTailscaleBackend::onFailed(const QString &path, const QString &, qu
     // it happens.
     if (token != 0 && token != m_openPass)
         return;
+    // The DIAGNOSIS, before the loss it belongs to is published. The reason
+    // is the only thing that tells a 403, a wedged daemon, a socket closed
+    // mid-body, a non-hex chunk length and a de-chunking regression in this
+    // module apart from each other -- and apart from a machine that has never
+    // had Tailscale installed, which is what all of them used to read as. See
+    // TailscaleBackend::readError.
+    noteReadError(reason, socketAbsent);
     // No bookkeeping of the open pass here: lostTailscaled() closes it for
     // every path, which is what keeps /prefs and the watch from leaving one
     // open behind them.
     lostTailscaled();
+}
+
+void LocalApiTailscaleBackend::noteReadError(const QString &reason, bool socketAbsent)
+{
+    // Nothing at the socket path is the absence of a daemon to read, not a
+    // daemon this module could not read: it publishes no diagnosis, and an
+    // empty readError beside NoState is what "there is no Tailscale here"
+    // reads as.
+    const QString diagnosis = socketAbsent ? QString() : reason;
+    if (m_readError == diagnosis)
+        return;
+    m_readError = diagnosis;
+    emit readErrorChanged();
 }
 
 void LocalApiTailscaleBackend::lostTailscaled()
@@ -578,6 +607,13 @@ void LocalApiTailscaleBackend::applyStatus(const Status &status, const Prefs &pr
           &TailscaleBackend::exitNodeNameChanged);
 
     store(m_issues, reportableHealth(status.health), &TailscaleBackend::issuesChanged);
+
+    // A WHOLE SNAPSHOT IS THE ANSWER to whatever the last read failure was, so
+    // the diagnosis clears here -- with everything else, and not on the first
+    // byte back: half a pass is not a read that worked, and a readError
+    // cleared by a /prefs whose /status never arrives would take the slot off
+    // the bar while the daemon was still unreadable.
+    store(m_readError, QString(), &TailscaleBackend::readErrorChanged);
 
     // The four switch prefs, stored with everything else and announced with
     // everything else: a panel reacting to one of these must not find half of

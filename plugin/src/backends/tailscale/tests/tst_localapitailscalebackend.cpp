@@ -772,6 +772,80 @@ private slots:
         QVERIFY(!b.exitNodeActive());
     }
 
+    // A TAILSCALED THAT IS THERE AND CANNOT BE READ SAYS WHY. Until readError
+    // existed, every read failure had exactly one observable -- state ==
+    // NoState -- which is also "has not started yet" and "this machine does
+    // not run Tailscale", so a 403 on the read path, a TS_SOCKET naming some
+    // other listening socket, a wedged daemon, a body that will not parse and
+    // a de-chunking regression in this very module all reached the panel as
+    // the three words "no daemon".
+    void saysWhyWhenTheDaemonIsThereAndUnreadable()
+    {
+        FakeSocketServer server(socketPath());
+        // A listener that refuses every read: the shape of a socket this
+        // desktop user may not read, and of a TS_SOCKET pointing at something
+        // that is not a local API at all.
+        server.onRequest(
+                [](const QByteArray &) {
+                    return QByteArrayLiteral("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // A base no test will wait out: this is about what one failure
+        // publishes, not when the next attempt fires.
+        LocalApiTailscaleBackend b(socketPath(), 20000);
+        TailscaleBackend *ts = &b;
+        QSignalSpy announced(&b, &TailscaleBackend::readErrorChanged);
+        QTRY_VERIFY2(!ts->readError().isEmpty(),
+                     "a daemon that refused every read published nothing but NoState");
+        // The daemon's own words, which is what tells this apart from the six
+        // other endings LocalApiClient can report.
+        QVERIFY2(ts->readError().contains(QStringLiteral("403")), qPrintable(ts->readError()));
+        QCOMPARE(announced.count(), 1);
+        QCOMPARE(ts->state(), TailscaleBackend::State::NoState);
+    }
+
+    // THE OTHER HALF OF THE SAME DISTINCTION, and the reason empty cannot be
+    // read as "no failure". Nothing at the socket path is the ABSENCE of a
+    // daemon to read, which is what a machine that does not run Tailscale
+    // looks like forever -- and a bar that drew its Tailscale slot there would
+    // be chrome for something that is not installed.
+    void saysNothingWhenThereIsNoTailscaledAtAll()
+    {
+        LocalApiTailscaleBackend b(socketPath(), 20000);
+        TailscaleBackend *ts = &b;
+        QSignalSpy armed(&b, &LocalApiTailscaleBackend::retryScheduled);
+        // The reconnect is armed by the loss, after the diagnosis is stored:
+        // once it is up, everything this attempt will ever publish has been
+        // published.
+        QTRY_COMPARE(armed.count(), 1);
+        QVERIFY2(ts->readError().isEmpty(), qPrintable(ts->readError()));
+        QCOMPARE(ts->state(), TailscaleBackend::State::NoState);
+    }
+
+    // Cleared by the next WHOLE snapshot and by nothing less. A diagnosis
+    // cleared on the first byte back -- or on a /prefs whose /status never
+    // arrives -- would take the panel's one explanation away while the daemon
+    // was still unreadable.
+    void clearsTheReadErrorWhenTheDaemonAnswersAgain()
+    {
+        FakeSocketServer server(socketPath());
+        server.onRequest(
+                [](const QByteArray &) {
+                    return QByteArrayLiteral("HTTP/1.1 500 Internal Server Error\r\n"
+                                             "Content-Length: 0\r\n\r\n");
+                },
+                FakeSocketServer::KeepOpen, "\r\n\r\n");
+        // One millisecond of backoff rather than the shipped half-second: a
+        // test may not sleep out the real curve (docs/architecture.md:204).
+        LocalApiTailscaleBackend b(socketPath(), 1);
+        TailscaleBackend *ts = &b;
+        QTRY_VERIFY(!ts->readError().isEmpty());
+
+        serveFixture(server, "status-idle.json");
+        QTRY_COMPARE(b.state(), TailscaleBackend::State::Running);
+        QVERIFY2(ts->readError().isEmpty(), qPrintable(ts->readError()));
+    }
+
     void republishesOnAWatchEvent()
     {
         FakeSocketServer server(socketPath());
