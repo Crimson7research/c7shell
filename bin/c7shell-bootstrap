@@ -296,6 +296,26 @@ else
   units_system+=(NetworkManager.service)
 fi
 units_system+=(bluetooth.service)
+# tailscaled is a depends= of the c7shell package (see PKGBUILD), but this
+# script also runs on a machine that has not installed c7shell yet -- so the
+# client is named here too, the same way networkmanager and bluez are above.
+# Enabling a unit whose package is absent is an error, not a warning.
+#
+# Enabling it does not join a tailnet and does not put this machine on anyone's
+# network: it only means the local API socket exists for the shell's tailscale
+# panel to read. A daemon that has never been logged in sits idle.
+add tailscale
+units_system+=(tailscaled.service)
+
+# Installing the client and enabling the daemon is as far as an install can
+# get: joining a tailnet is an interactive login against the coordination
+# server, and no package can perform it for you. Without this note a fresh
+# machine comes up with a tailscale panel that works perfectly and shows
+# nothing, which reads as a broken panel rather than an unjoined machine.
+# A machine already on a tailnet answers `tailscale status` and is not nagged.
+if ! have tailscale || ! tailscale status >/dev/null 2>&1; then
+  add_note 'tailscale is installed but this machine has joined no tailnet, so the tailscale panel will be empty; join with: sudo tailscale up'
+fi
 
 # --- extras the keybinds expect -------------------------------------------
 if ((want_extras)); then

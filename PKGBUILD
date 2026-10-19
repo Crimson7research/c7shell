@@ -36,6 +36,13 @@ depends=(
   'qt6-declarative'
   'wireplumber'
   'networkmanager'
+  # The bar carries a tailscale slot at all times and the panel behind it
+  # reads tailscaled's local API. With no client installed that slot is a
+  # dark globe with nothing behind it, which as an optdepends= would be the
+  # default experience on a fresh machine and offer no hint as to why. The
+  # daemon is enabled by c7shell-bootstrap; joining a tailnet is still an
+  # interactive `tailscale up`, which no package install can do for you.
+  'tailscale'
   'bluez'
   'bluez-utils'
   'python'
