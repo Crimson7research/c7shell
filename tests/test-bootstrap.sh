@@ -383,10 +383,16 @@ rm -rf "$tmp/root"
 # Everything below answers out of a stub: no check may reach a real tailscaled
 # or run a real `tailscale set`.
 
-# Not installed is the ordinary case (tailscale is not a dependency of
-# c7shell), and it has to pass in silence rather than as a warning.
+# No client on this machine: the operator step has nothing to ask and has to
+# pass in silence rather than as a warning.
+#
+# It asserts on the operator, not on the word "tailscale". Whether the client
+# is planned for installation is a packaging question that this step does not
+# answer and must not be coupled to -- an assertion of silence about the whole
+# subject breaks the moment tailscale becomes a depends=.
 out=$(plan "$AMD")
-grep -qi tailscale <<<"$out" && fail "nothing tailscale is installed, yet the run talks about it:\n$out"
+grep -qi operator <<<"$out" && fail "no tailscale client here, yet the operator was touched:\n$out"
+grep -qi 'naming the tailscale operator' <<<"$out" && fail "the operator step ran with no client installed:\n$out"
 
 cat > "$bin/tailscale" <<'STUB'
 #!/bin/sh
@@ -428,6 +434,17 @@ out=$(env -i PATH="$bin" HOME="$tmp" USER=root C7SHELL_ROOT="$tmp/root" \
 grep -q 'operator=root' <<<"$out" && fail "USER=root made root the tailscale operator:\n$out"
 grep -q 'would run (root): tailscale set --operator=tester' <<<"$out" \
   || fail "the desktop user was not named as the operator:\n$out"
+
+# ...and it is asked AFTER the services step. Naming the operator is a question
+# put to a running daemon, and on a first install tailscaled is started by that
+# very step: asked before it, a fresh machine answers "no daemon", the operator
+# stays unset, and the panel is read-only until this script is run again.
+svc_at=$(grep -n '== enabling system services' <<<"$out" | head -1 | cut -d: -f1)
+op_at=$(grep -n '== naming the tailscale operator' <<<"$out" | head -1 | cut -d: -f1)
+[[ -n $svc_at && -n $op_at ]] \
+  || fail "expected both the services step and the operator step in the plan:\n$out"
+((svc_at < op_at)) \
+  || fail "the operator was named at line $op_at, before the services step at line $svc_at -- on a first install tailscaled is not answering yet:\n$out"
 
 # ...and a real (stubbed) run does it, once. The second run finds the operator
 # already named and must not write, which is also what keeps it from prompting

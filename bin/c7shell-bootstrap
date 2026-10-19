@@ -532,6 +532,20 @@ if getent group rfkill >/dev/null && ! id -nG | grep -qw rfkill; then
   add_note 'you were added to the rfkill group; log out and back in for airplane mode'
 fi
 
+if ((${#units_todo[@]})); then
+  step 'enabling system services'
+  run_root systemctl enable "${units_todo[@]}"
+  # sddm is deliberately not started here: starting it would take over the
+  # console mid-install. It comes up at the next boot.
+  for u in "${units_todo[@]}"; do
+    [[ $u == sddm.service ]] && continue
+    run_root systemctl start "$u" || warn "could not start $u now; it is enabled for the next boot"
+  done
+  for u in "${units_todo[@]}"; do
+    [[ $u == sddm.service ]] && add_note 'sddm is enabled but not started; it takes over at the next boot'
+  done
+fi
+
 # tailscaled authorises its local API by peer credentials, not polkit: it ships
 # no polkit actions at all. So unlike wifi and bluetooth -- which NetworkManager
 # delegates to polkit, and polkit grants to whoever holds the active seat --
@@ -540,9 +554,34 @@ fi
 # a privileged write. It happens once, here; without it every change the shell's
 # tailscale panel makes comes back 403.
 #
-# Tailscale is not a dependency of c7shell. With no client installed, or no
-# daemon answering, there is nothing to configure and nothing worth saying.
-if have tailscale && ts_prefs=$(tailscale debug prefs 2>/dev/null); then
+# AFTER the services step, not before it: naming the operator is a question put
+# to a running daemon, and on a first install tailscaled is started by that very
+# step. Asked earlier, every fresh machine answers "no daemon", the operator
+# stays unset, and the panel comes up read-only until somebody runs this script
+# a second time.
+#
+# This script also runs on machines that have not installed c7shell yet, where
+# there may be no client at all -- then there is nothing to configure and
+# nothing worth saying.
+ts_prefs=''
+if have tailscale; then
+  # systemd returning from `start` is not tailscaled answering its local API.
+  # Wait a bounded moment, but only when this run is what started it: on every
+  # other path the daemon has been up for a while and one ask is the whole
+  # story. --dry-run started nothing, so it never waits.
+  ts_tries=1
+  if ((!dry)); then
+    for u in ${units_todo[@]+"${units_todo[@]}"}; do
+      [[ $u == tailscaled.service ]] && ts_tries=20
+    done
+  fi
+  for ((ts_try = 0; ts_try < ts_tries; ts_try++)); do
+    ts_prefs=$(tailscale debug prefs 2>/dev/null) && break
+    ts_prefs=''
+    ((ts_try + 1 < ts_tries)) && sleep 0.5
+  done
+fi
+if [[ -n $ts_prefs ]]; then
   step 'naming the tailscale operator'
   # OperatorUser is omitempty in those prefs, so an absent key is an operator
   # that was never set.
@@ -564,20 +603,6 @@ if have tailscale && ts_prefs=$(tailscale debug prefs 2>/dev/null); then
     run_root tailscale set --operator="$ts_user" \
       || warn 'could not name the tailscale operator; the tailscale panel stays read-only'
   fi
-fi
-
-if ((${#units_todo[@]})); then
-  step 'enabling system services'
-  run_root systemctl enable "${units_todo[@]}"
-  # sddm is deliberately not started here: starting it would take over the
-  # console mid-install. It comes up at the next boot.
-  for u in "${units_todo[@]}"; do
-    [[ $u == sddm.service ]] && continue
-    run_root systemctl start "$u" || warn "could not start $u now; it is enabled for the next boot"
-  done
-  for u in "${units_todo[@]}"; do
-    [[ $u == sddm.service ]] && add_note 'sddm is enabled but not started; it takes over at the next boot'
-  done
 fi
 
 step 'enabling user services'
