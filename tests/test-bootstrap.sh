@@ -81,6 +81,10 @@ NVIDIA='01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD107M [GeF
 OLD_NVIDIA='01:00.0 VGA compatible controller [0300]: NVIDIA Corporation GP104 [GeForce GTX 1080] [10de:1b80]'
 QEMU='00:01.0 VGA compatible controller [0300]: Red Hat, Inc. Virtio GPU [1af4:1050]'
 
+# grep the pacman line, not the whole plan: the note explaining the skip names
+# the package too.
+installs() { grep -E 'pacman -S --needed' <<<"$1"; }
+
 # --- the things every machine needs ---------------------------------------
 out=$(plan "$AMD")
 for pkg in qt6-wayland xdg-utils polkit pipewire pipewire-pulse wireplumber \
@@ -93,7 +97,8 @@ grep -q 'enable: .*greetd.service' <<<"$out" || fail "greetd.service is not enab
 grep -q 'enable: .*NetworkManager.service' <<<"$out" || fail "NetworkManager is not enabled:\n$out"
 grep -q 'enable: .*bluetooth.service' <<<"$out" || fail "bluetooth is not enabled:\n$out"
 grep -q 'enable: .*tailscaled.service' <<<"$out" || fail "tailscaled.service is not enabled:\n$out"
-grep -q '\btailscale\b' <<<"$out" || fail "tailscaled.service is enabled but the client is never installed:\n$out"
+installs "$out" | grep -q '\btailscale\b' \
+  || fail "tailscaled.service is enabled but the client is never installed:\n$out"
 grep -q 'join with: sudo tailscale up' <<<"$out" || fail "no tailnet here, yet nothing says how to join one:\n$out"
 
 # --dry-run really does nothing: no stub was asked to change anything
@@ -102,9 +107,6 @@ grep -q 'join with: sudo tailscale up' <<<"$out" || fail "no tailnet here, yet n
 # --- the Qt/KDE theming packages ride with dolphin, not on their own -------
 # plasma-integration is useless without a QWidget app to theme, so it must not
 # land on a machine that has none.
-# grep the pacman line, not the whole plan: the note explaining the skip names
-# the package too.
-installs() { grep -E 'pacman -S --needed' <<<"$1"; }
 
 out=$(plan "$AMD")
 installs "$out" | grep -q '\bplasma-integration\b' \
