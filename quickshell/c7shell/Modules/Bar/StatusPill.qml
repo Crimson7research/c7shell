@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
+import C7
 import qs.Theme
 import qs.Common
 import qs.Services
@@ -103,6 +104,123 @@ Rectangle {
       slotColor: Theme.accentFill
       onClicked: AirplaneService.setEnabled(false)
       Icon { name: "plane"; tint: Theme.accentSoft }
+    }
+    // Ahead of the radios: egress outranks which radio carries it.
+    //
+    // NoState means two different things and the slot answers them
+    // differently. On a machine with no tailscaled there is no tailnet to
+    // report on and never was, so there is no slot -- a globe on a machine
+    // that does not run Tailscale is chrome. Once tailscaled HAS answered,
+    // NoState means it stopped answering, and then the slot stays: the whole
+    // reason TailscaleBackend.h keeps the last snapshot when the daemon dies
+    // is that exitNodeBlocked must not fall quiet exactly when the thing
+    // dropping the traffic goes unreachable, and hiding the slot would drop
+    // it just as thoroughly as blanking the snapshot would. An absent icon
+    // cannot tell "the tailnet is fine" from "tailscaled is gone"; a dimmed
+    // one can, and the icon below dims on anything short of Running.
+    //
+    // What IS gated on state is the panel behind the slot: a last-known
+    // device list and a last-known identity would read as live (see
+    // TailscalePopover). The badges here are the exception the contract asks
+    // for, not a hole in that rule.
+    QuickSlot {
+      id: tsSlot
+      // The one handle a compositor-less test has on this slot: a QuickSlot in
+      // a row of eight differs from its neighbours only by what it is bound to.
+      objectName: "tailscale"
+      anchors.verticalCenter: parent.verticalCenter
+
+      // "Has tailscaled ever answered since the bar started?" -- latched, not
+      // a binding, because its whole job is to outlive the state that set it.
+      property bool everAnswered: false
+      readonly property bool answering: Tailscale.state !== Tailscale.NoState
+      onAnsweringChanged: if (tsSlot.answering) tsSlot.everAnswered = true
+      // The binding above does not fire for a value that was already true
+      // when this was built, which is the ordinary case for a bar restarted
+      // under a running tailscaled.
+      Component.onCompleted: if (tsSlot.answering) tsSlot.everAnswered = true
+
+      // Shown once tailscaled has answered -- OR while it is there and cannot
+      // be read. The latch alone answers only half of NoState: it keeps the
+      // slot alive for a daemon that answered and then died, and does nothing
+      // for one that is present and has never produced a usable answer, which
+      // is where every read failure lands when it happens at boot -- which is
+      // when it usually happens. The slot was then invisible, the popover is
+      // only reachable by clicking it, and TailscalePopover's "tailscaled is
+      // not responding" row -- the one piece of text that would explain any of
+      // it -- could never be shown in the scenario it was written for.
+      //
+      // A non-empty readError is exactly that case and nothing else: the
+      // contract leaves it EMPTY for the one failure that means there is no
+      // tailscaled here, so this does not put a globe back on a machine that
+      // does not run Tailscale.
+      visible: tsSlot.everAnswered || Tailscale.readError !== ""
+      active: PopoverManager.current === "tailscale"
+      slotColor: Tailscale.exitNodeActive ? Theme.accentFill : "transparent"
+      // The outline as well, only here: the battery's warn threshold is the
+      // other state allowed to shout, and this is the Tailscale equivalent --
+      // traffic is being dropped, not merely routed somewhere unusual.
+      slotBorder: Tailscale.exitNodeBlocked ? Theme.accentBorder : "transparent"
+      onClicked: PopoverManager.toggle("tailscale", tsSlot)
+
+      Item {
+        width: 15; height: 15
+        anchors.verticalCenter: parent.verticalCenter
+
+        Icon {
+          anchors.fill: parent
+          name: "globe"
+          // Dimmed rather than hidden whenever the daemon is not actually
+          // carrying traffic; accent-tinted while an exit node is.
+          tint: Tailscale.state !== Tailscale.Running ? Theme.textDisabled
+            : Tailscale.exitNodeActive ? Theme.accentSoft : Theme.text
+        }
+        // tailscaled's own health warnings: amber, not crimson, because
+        // nothing is broken. Both badges own the same corner, so this one
+        // stands down for the blocked one rather than stacking on it.
+        Rectangle {
+          anchors { right: parent.right; bottom: parent.bottom; margins: -1 }
+          visible: Tailscale.issueCount > 0 && !Tailscale.exitNodeBlocked
+          width: 4; height: 4; radius: 2
+          color: Theme.warning
+        }
+        Text {   // ✕ badge, bottom-right, as the wifi slot wears it when offline
+          // The selected exit node cannot be reached, so tailscaled is
+          // dropping all egress rather than leaking it onto the local network.
+          // The machine looks connected and nothing works; this is the only
+          // thing on screen that says why.
+          visible: Tailscale.exitNodeBlocked
+          anchors { right: parent.right; bottom: parent.bottom; rightMargin: -2; bottomMargin: -2 }
+          text: "✕"
+          font { family: Theme.fontMono; pixelSize: 7; weight: 700 }
+          color: Theme.accentSoft
+        }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        // Named, not just tinted: clearing the block means knowing which node
+        // to clear, and the name is the only identity the panel will offer.
+        visible: Tailscale.exitNodeActive
+        text: Tailscale.exitNodeName
+        // A MagicDNS label, or -- for a peer with no DNSName -- the raw
+        // HostName tailscaled was handed when that machine enrolled. Either
+        // way it is text off the network, and Common/ListRow.qml:97-105
+        // writes out what the default Text.AutoText does with it: it renders
+        // <b> AND fetches a remote <img src>, which is a markup injection and
+        // a beacon in the shell's own bar.
+        textFormat: Text.PlainText
+        // Capped, unlike the update slot's label beside it: that one is a
+        // count, this is a MagicDNS hostname off the network and nothing
+        // bounds its length. QuickSlot grows with its content and the pill
+        // grows with the slot, so an uncapped name would shove every slot to
+        // its right -- and the clock with them -- each time an exit node came
+        // or went.
+        width: Math.min(implicitWidth, 90)
+        elide: Text.ElideRight
+        font { family: Theme.fontMono; pixelSize: 10; weight: 600 }
+        color: Theme.accentSoft
+      }
     }
     QuickSlot {
       id: netSlot

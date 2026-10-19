@@ -141,6 +141,7 @@ ListView {
 | `MediaBackend` (`Media`) | MPRIS over D-Bus |
 | `BluetoothBackend` (`Bluetooth`) | BlueZ over D-Bus |
 | `NetworkBackend` (`Network`) | NetworkManager over D-Bus |
+| `TailscaleBackend` (`Tailscale`) | tailscaled's local API socket |
 | `RadioBackend` (`Radio`) | `/dev/rfkill` (airplane mode) |
 | `CompositorBackend` (`Compositor`) | Hyprland's request and event sockets |
 | `NotificationsBackend` (`Notifications`) | owns `org.freedesktop.Notifications` |
@@ -244,6 +245,26 @@ quickshell/c7shell/         the shell config, copied to ~/.config by c7shell-set
 bin/                        install and maintenance tools (not shell runtime)
 tests/                      test-*.sh, run by PKGBUILD check()
 ```
+
+A contract owns every rule its backends share, so that a backend cannot skip
+one. A value that has to be normalised is a non-virtual public getter over a
+pure-virtual raw one the backend stores. A property derived from another is
+computed in the contract, non-virtual: it shares its input's `NOTIFY` when it
+has one input, and has its own signal -- which the contract's constructor
+chains off each input's signal -- when it has several. A backend overrides only
+what it stores, and stores before it emits.
+
+Every contract also ships `src/backends/<area>/Fake<Name>Backend.h`: settable
+properties, no I/O, listed in the test target's sources and never in
+`qt_add_qml_module(c7 ... SOURCES)`. That placement is the whole of what keeps
+it out of the installed module.
+
+Each new contract or backend directory goes on
+`target_include_directories(c7 PRIVATE ...)`, because the generated type
+registration includes every header carrying QML macros by its bare name. Each
+new test is registered `c7_add_test(... LABELS testing)` -- the label the
+50-consecutive-run gate selects on, and which `tests/test-c7-plugin.sh` now
+requires of every test.
 
 `docs/diagrams/current.png` and `target.png` draw today's integrations and the
 target, with their Graphviz sources next to them.

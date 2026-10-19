@@ -71,7 +71,8 @@ QStringList isolationKeeps()
 
 QStringList isolationSets()
 {
-    QStringList out{QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS")};
+    QStringList out{QStringLiteral("DBUS_SESSION_BUS_ADDRESS"),
+                    QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), QStringLiteral("TS_SOCKET")};
     for (const Private &p : kPrivate)
         out << QLatin1String(p.var);
     return out;
@@ -92,6 +93,14 @@ void isolateFromHost()
     const QByteArray dead = QStringLiteral("unix:path=%1/no-such-bus").arg(base).toLocal8Bit();
     qputenv("DBUS_SESSION_BUS_ADDRESS", dead);
     qputenv("DBUS_SYSTEM_BUS_ADDRESS", dead);
+    // tailscaled's local API socket, the same variable the `tailscale` CLI
+    // reads. Unset, a backend that opens it falls back to the host's
+    // /var/run/tailscale/tailscaled.sock -- which is the machine's real
+    // tailnet daemon, and is exactly what docs/architecture.md forbids a test
+    // to touch. Pointed at a path in the private directory that nothing
+    // listens on, so a test that constructs one fails to connect instead.
+    qputenv("TS_SOCKET",
+            QStringLiteral("%1/no-such-tailscaled.sock").arg(base).toLocal8Bit());
     for (const Private &p : kPrivate) {
         const QString path = base + QLatin1Char('/') + QLatin1String(p.sub);
         if (!QDir().mkpath(path))

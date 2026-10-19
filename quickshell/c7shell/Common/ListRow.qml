@@ -94,9 +94,19 @@ Rectangle {
     }
     spacing: 2
 
+    // PlainText, both of them, and not negotiable. Every caller of this row
+    // puts a name that came off a network into one of these two: WifiPopover
+    // feeds it scanned SSIDs, which are whatever the access point next door
+    // says they are, and the Tailscale panel feeds it tailscaled's hostnames
+    // and the free-form display names of other people on the tailnet. The
+    // default is Text.AutoText, which renders <b> AND fetches a remote
+    // <img src> -- a markup injection, and a beacon, in the shell's own bar.
+    // A caller that really wants markup here sets the property on its own
+    // Text; this row does not offer the choice.
     Text {
       width: parent.width
       text: root.title
+      textFormat: Text.PlainText
       font { family: Theme.fontMono; pixelSize: root.titleSize; weight: root.titleWeight }
       color: root.titleColor
       elide: Text.ElideRight
@@ -105,6 +115,7 @@ Rectangle {
       width: parent.width
       visible: root.subtitle !== ""
       text: root.subtitle
+      textFormat: Text.PlainText
       font { family: Theme.fontMono; pixelSize: root.subtitleSize; weight: 400 }
       color: root.subtitleColor
       elide: Text.ElideRight

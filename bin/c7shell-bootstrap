@@ -549,6 +549,65 @@ if ((${#units_todo[@]})); then
   done
 fi
 
+# tailscaled authorises its local API by peer credentials, not polkit: it ships
+# no polkit actions at all. So unlike wifi and bluetooth -- which NetworkManager
+# delegates to polkit, and polkit grants to whoever holds the active seat --
+# there is no policy file to install for it. Write access is root, or the single
+# operator user named in tailscaled's own prefs, and naming that user is itself
+# a privileged write. It happens once, here; without it every change the shell's
+# tailscale panel makes comes back 403.
+#
+# AFTER the services step, not before it: naming the operator is a question put
+# to a running daemon, and on a first install tailscaled is started by that very
+# step. Asked earlier, every fresh machine answers "no daemon", the operator
+# stays unset, and the panel comes up read-only until somebody runs this script
+# a second time.
+#
+# This script also runs on machines that have not installed c7shell yet, where
+# there may be no client at all -- then there is nothing to configure and
+# nothing worth saying.
+ts_prefs=''
+if have tailscale; then
+  # systemd returning from `start` is not tailscaled answering its local API.
+  # Wait a bounded moment, but only when this run is what started it: on every
+  # other path the daemon has been up for a while and one ask is the whole
+  # story. --dry-run started nothing, so it never waits.
+  ts_tries=1
+  if ((!dry)); then
+    for u in ${units_todo[@]+"${units_todo[@]}"}; do
+      [[ $u == tailscaled.service ]] && ts_tries=20
+    done
+  fi
+  for ((ts_try = 0; ts_try < ts_tries; ts_try++)); do
+    ts_prefs=$(tailscale debug prefs 2>/dev/null) && break
+    ts_prefs=''
+    ((ts_try + 1 < ts_tries)) && sleep 0.5
+  done
+fi
+if [[ -n $ts_prefs ]]; then
+  step 'naming the tailscale operator'
+  # OperatorUser is omitempty in those prefs, so an absent key is an operator
+  # that was never set.
+  ts_operator=$(sed -n 's/^[[:space:]]*"OperatorUser":[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$ts_prefs")
+  # Who logs in, not $USER: reached through sudo that would name root the
+  # operator and leave the desktop user exactly as locked out as before.
+  ts_user=$(id -un 2>/dev/null || true)
+  if [[ -z $ts_user ]]; then
+    warn 'cannot tell who logs in here, so the tailscale operator is left alone'
+  elif [[ $ts_operator == "$ts_user" ]]; then
+    info "already the operator: $ts_user"
+  elif [[ -n $ts_operator ]]; then
+    # Someone chose that; taking it over silently would break whatever they
+    # set it up for, and tailscaled keeps only one operator.
+    warn "tailscale's operator is \"$ts_operator\", not you; leaving it alone"
+    add_note "the tailscale panel stays read-only until you take it over: sudo tailscale set --operator=$ts_user"
+  else
+    info "naming $ts_user, so the tailscale panel can change tailnet state"
+    run_root tailscale set --operator="$ts_user" \
+      || warn 'could not name the tailscale operator; the tailscale panel stays read-only'
+  fi
+fi
+
 step 'enabling user services'
 # Not fatal: run over su, sudo -iu or a chroot there is no user manager, and
 # stopping here would skip the AUR step and every note after it.

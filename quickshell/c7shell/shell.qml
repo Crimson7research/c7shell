@@ -31,6 +31,7 @@ Scope {
   // bar item opened it.
   AudioPopover {}
   WifiPopover {}
+  TailscalePopover {}
   BluetoothPopover {}
   CalendarPopover {}
   MediaPopover {}

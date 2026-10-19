@@ -5,5 +5,5 @@ target_include_directories(c7_core PUBLIC ${PROJECT_SOURCE_DIR}/lib)
 target_link_libraries(c7_core PUBLIC Qt6::Core)
 target_compile_definitions(c7_core PRIVATE C7_VERSION="${PROJECT_VERSION}")
 
-c7_add_test(tst_version SOURCES tests/tst_version.cpp LIBS c7_core)
+c7_add_test(tst_version SOURCES tests/tst_version.cpp LIBS c7_core LABELS testing)
 target_compile_definitions(tst_version PRIVATE C7_EXPECTED_VERSION="${PROJECT_VERSION}")
