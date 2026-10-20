@@ -26,6 +26,8 @@ Source of truth for behaviour: branch `feat/tailscale-backend` (PR #286, open,
 | PR slicing | One PR per phase, each with the three-agent review | Rule change + spike, requirements, characterisation tests, harness port, core crate, Tailscale crates, cut-over |
 | #286 non-goals | `AdvertiseRoutes` and in-panel login are in scope | Both designs are undecided: login needs a browser flow, and an exit node may need IP forwarding |
 | Tracking | A GitHub epic with one sub-issue per phase PR | The plan links to the epic once it is filed |
+| Linker (2026-10-20) | rust-lld, pinned in `.cargo/config.toml` | GNU ld cannot export the plugin entry points (spike check 8); `PKGBUILD` appends `-C link-arg=-fuse-ld=lld` to makepkg's `RUSTFLAGS` |
+| Branch coverage (2026-10-20) | Only the coverage gate runs on a pinned, dated nightly | Stable rejects `--branch`; the plugin builds and ships on stable |
 
 ## Phase 0 — adopt Rust (decided)
 
