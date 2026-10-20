@@ -4,8 +4,8 @@ Part of epic #287. The plan is
 `docs/superpowers/plans/2026-10-19-tailscale-rust-rewrite.md`.
 
 cxx-qt 0.10 can carry the C7 plugin with no hand-written C++ and no CMake.
-Twelve of the fifteen checks pass. Two wait on Quickshell. One failed:
-GNU ld cannot link the plugin, so the build pins rust-lld.
+Fourteen of the fifteen checks pass. One failed: GNU ld cannot link the
+plugin, so the build pins rust-lld.
 
 The spike code is throwaway and never merges. It lives on branch
 `spike/cxx-qt-288`, in `spike/cxx-qt/`. Its `README.md` says how to run each
@@ -15,17 +15,19 @@ Host: Arch, Qt 6.12.0, cxx-qt 0.10.0, cargo 1.94.0.
 
 ## Results
 
-Every pass below also passed 50 consecutive runs. A separate review agent
-re-ran each one, read the code, and tried to refute it; none was refuted.
+Every pass below except 1b and 4b also passed 50 consecutive runs. A
+separate review agent re-ran each one, read the code, and tried to refute it;
+none was refuted. Checks 1b and 4b are manual procedures, run once each in
+the test VM (see below).
 
 | # | Check | Result |
 |---|---|---|
 | 1a | Cargo alone builds a QML module (`qmldir`, `.qmltypes`, one `.so`) that a QQmlEngine loads from its import path, and the load fails without it | Pass |
-| 1b | Quickshell loads the module from its import path | Pending: Quickshell is not installed on the test host |
+| 1b | Quickshell loads the module from its import path, as a plugin, not through Qt's linked-library fallback | Pass, in the test VM |
 | 2 | A `#[qml_singleton]` and a `#[base = QAbstractListModel]` keep stable rows: insert, `dataChanged` and remove, never a reset, the same delegate objects | Pass |
 | 3 | `cargo llvm-cov` measures the Rust behind the bridge when QML drives it | Pass, with the caveat below |
 | 4a | tokio shuts down on destruction: 20 simulated reloads with callbacks in flight, no leaked thread, no late callback, no hang | Pass |
-| 4b | The same under a real Quickshell reload | Pending: Quickshell is not installed on the test host |
+| 4b | The same under 20 real Quickshell reloads, soft and hard | Pass, in the test VM |
 | 5 | A Rust test binary renders QML headless (`QT_QPA_PLATFORM=offscreen`) | Pass |
 | 6 | That binary loads the C++ #286 `C7` plugin, alone and beside the Rust module in one engine | Pass |
 | 7a | A singleton whose QML name differs from its Rust type (`QML_NAMED_ELEMENT`) | Pass |
@@ -85,8 +87,37 @@ to 6 did not use.
   window shows its first frame can find no delegate, so feeding waits for
   `frameSwapped`.
 
+## Checks 1b and 4b in the test VM
+
+They ran on 2026-10-20 in a VM booted from the VM setup test's base image
+(`docs/vm-setup-test-operations.md`), after `pacman -Syu quickshell rustup
+clang`: Quickshell 0.3.2, Qt 6.12.0, Rust 1.99.1. The spike was built there
+with `cargo stage`, linked by `LLD 23.1.1`, and `nm -D` listed both entry
+points. `qs` ran with `QT_QPA_PLATFORM=offscreen`, since the base image has
+no Wayland session. Neither check opens a window.
+
+- **1b.** `QML_IMPORT_PATH=$PWD/target/qml qs -p quickshell/load/shell.qml`,
+  with `QT_LOGGING_RULES=qt.qml.import=true`, logged:
+
+  ```
+  qt.qml.import: module "C7Spike" provided by plugin "/home/c7test/s/spike/cxx-qt/target/qml/C7Spike/libC7Spike.so"
+  qml: C7SPIKE 1b loaded, state=idle
+  qml: C7SPIKE 1b PASS counter=1 state=a=1,b=0 rows=2
+  ```
+
+  `qs` then exited 0 by itself.
+- **4b.** `quickshell/reload/shell.qml` ran once with `Quickshell.reload(false)`
+  and once with `reload(true)`. Each run printed 21 generations and
+  `C7SPIKE 4b PASS after 20 reloads`, and `qs` exited 0. In both runs every
+  generation after the first reported `live=1 tokioThreads=1 threads=5
+  late=0`; the first reported `threads=4`. The thread count stays flat, and
+  no callback ran after its singleton was gone.
+
+The full c7shell install in the VM failed first, for an unrelated reason:
+the base image's package database is stale, and `install.sh` runs
+`pacman -S` without `-y`, so pacman fetched `pkgconf-3.0.7-1` and every
+mirror answered 404.
+
 ## To finish Phase 0
 
-1. Install Quickshell on the test host, then run checks 1b and 4b with the
-   procedure in the spike's `README.md`.
-2. Merge the rule change in `docs/architecture.md` and `CLAUDE.md`.
+Merge the rule change in `docs/architecture.md` and `CLAUDE.md`.
