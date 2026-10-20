@@ -6,17 +6,18 @@ or `plugin/`.
 
 ## The ownership rule
 
-C++ owns the system side. QML and JavaScript own interaction and presentation
+Rust owns the system side. QML and JavaScript own interaction and presentation
 only: QML knows "the person clicked here" and dispatches a C7 action, or binds
 to C7 state.
 
 - Every integration with something c7shell does not control (PipeWire,
   UPower, BlueZ, NetworkManager, Hyprland, tuned, fprintd, grim, kitty, ...)
-  is a plain C++ library in `plugin/lib/<name>/` (no QML, no Quickshell),
-  adapted by a C++ contract in `plugin/src/contracts/` and a backend in
-  `plugin/src/backends/<area>/`. The contract is a `QML_SINGLETON` (for
-  example `Network`) whose `create()` returns the selected backend. This holds
-  even with one backend, so any backend can be swapped later.
+  is a plain Rust crate in `plugin/lib/<name>/` (no Qt, no QML, no
+  Quickshell), adapted by a cxx-qt contract in `plugin/src/contracts/` and a
+  backend in `plugin/src/backends/<area>/`. The contract is a
+  `#[qml_singleton]` (for example `Network`) that delegates to the backend it
+  selects. This holds even with one backend, so any backend can be swapped
+  later.
 - No QML file imports a Quickshell integration module (`Quickshell.Services.*`,
   `.Networking`, `.Bluetooth`, `.Hyprland`, `.DBusMenu`) or starts a process.
   Qt and Quickshell's core (windows, `Quickshell.Wayland`, `FileView`,
@@ -27,11 +28,16 @@ to C7 state.
   goes in the plugin too. Layout, bindings, handlers, animation, view state
   and display formatting stay in QML/JS.
 
-- C++ with Qt 6 only. Quickshell (LGPL-3.0-only) may be read for ideas and
-  is never copied, translated or paraphrased; c7shell is MIT.
+- Rust, with Qt 6 through cxx-qt, and a Cargo-only build. No hand-written
+  C++: the C++ glue cxx-qt generates is build output, never committed or
+  edited. The C++ still on `main` is ported under epic #287 and must not
+  grow: never add a `.cpp`, `.h` or `.hpp` file.
+- Quickshell (LGPL-3.0-only) may be read for ideas and is never copied,
+  translated or paraphrased; c7shell is MIT.
 - Test first, against per-test fakes from `plugin/lib/testing/`; no sleeps, no
   host state. Gates: 90% line / 80% branch coverage, 70% of mutants killed,
-  50 consecutive runs. Three review agents approve every PR.
+  50 consecutive runs (`cargo llvm-cov`, `cargo mutants`, `cargo nextest`).
+  Three review agents approve every PR.
 
 `docs/architecture.md` has the network feature as the worked example.
 

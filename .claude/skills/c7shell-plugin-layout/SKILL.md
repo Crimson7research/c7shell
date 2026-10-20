@@ -7,6 +7,10 @@ description: Use in the c7shell repo whenever you create, move, rename or split 
 
 Announce first: **Using c7shell-plugin-layout to place this file.**
 
+**Legacy C++ only.** `docs/architecture.md` makes the plugin Rust with no
+hand-written C++. This skill applies only to C++ already on `main` until epic
+#287 ports it. Never use it to create a new `.cpp`, `.h` or `.hpp` file.
+
 Run `c7shell-native-boundary` first if it has not run for this change. It decides
 whether code is C++ at all. This skill decides where the C++ goes.
 
