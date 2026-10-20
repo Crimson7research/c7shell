@@ -1,0 +1,22 @@
+[package]
+name = "c7spike"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# A dynamic QML module plugin must be a cdylib (cxx-qt-build docs, QmlModule::plugin_type).
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib = { workspace = true, features = ["qt_qml"] }
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[build-dependencies]
+cxx-qt-build.workspace = true

@@ -1,0 +1,13 @@
+[alias]
+# Builds the plugin and stages target/qml/C7Spike/{qmldir,plugin.qmltypes,libC7Spike.so}.
+stage = "run -q -p xtask -- stage"
+
+# Pin the linker to rust-lld (shipped with rustup; rustc passes -B<sysroot>/gcc-ld).
+# GNU ld.bfd cannot link this cdylib: it rejects build.rs's second version
+# script next to rustc's anonymous one, and nothing else exports the plugin
+# entry points (README, check 8). Setting -fuse-ld here also stops
+# qt-build-utils from picking the deprecated gold. Note: a RUSTFLAGS env var
+# replaces this list entirely (cargo precedence), so a packager must not
+# put -fuse-ld=bfd there.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

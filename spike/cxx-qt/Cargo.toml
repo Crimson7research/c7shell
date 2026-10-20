@@ -1,0 +1,16 @@
+# Throwaway spike for #288: proves a Cargo-only cxx-qt QML plugin.
+[workspace]
+resolver = "2"
+members = ["c7spike", "spike-tests", "xtask"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+cxx = "1.0.95"
+cxx-qt = "0.10"
+cxx-qt-lib = { version = "0.10", default-features = false }
+cxx-qt-build = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "sync"] }

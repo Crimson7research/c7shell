@@ -1,0 +1,55 @@
+[package]
+name = "spike-tests"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Deliberately does NOT depend on c7spike: the module is found only through
+# the QML import path, the way Quickshell finds a system module.
+[dependencies]
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib = { workspace = true, features = ["qt_gui", "qt_qml"] }
+
+# Qt wants QGuiApplication on the main thread, so each check is its own
+# process with its own main() (harness = false).
+[[test]]
+name = "check1a_load"
+harness = false
+[[test]]
+name = "check2_stable_rows"
+harness = false
+[[test]]
+name = "check4a_shutdown"
+harness = false
+[[test]]
+name = "check5_headless"
+harness = false
+[[test]]
+name = "check6_parity_286"
+harness = false
+[[test]]
+name = "check7a_named_singleton"
+harness = false
+[[test]]
+name = "check7b_enum"
+harness = false
+[[test]]
+name = "check7c_owned_model"
+harness = false
+[[test]]
+name = "check7c_lifetime"
+harness = false
+[[test]]
+name = "check7d_types"
+harness = false
+[[test]]
+name = "check7e_shared_notify"
+harness = false
+[[test]]
+name = "check7f_backend_swap"
+harness = false
+[[test]]
+name = "check8_plugin_entry"
+harness = false
