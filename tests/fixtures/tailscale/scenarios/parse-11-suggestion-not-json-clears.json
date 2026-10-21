@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "A malformed reply clears it: from a published nEwJFIats021CNTRL, the fake answers /suggest-exit-node 200 with the body `x` (not JSON) and pushes {\"Prefs\":{}}; recommendedExitNodeId reads empty, checked once recommendedExitNodeIdChanged has fired a second time, so a reply that changes it to anything but empty fails at the value (one that leaves it unchanged still ends in a wait timeout: only phase 3's read barrier can tell that apart). #286 already clears it (a failure at LocalApiTailscaleBackend.cpp:449-451, a malformed body at :686-689), so the scenario is tagged parity"
+    "A malformed reply clears it: from a published nEwJFIats021CNTRL, the fake answers /suggest-exit-node 200 with the body `x` (not JSON) and pushes {\"Prefs\":{}}; recommendedExitNodeId reads empty, checked once recommendedExitNodeIdChanged has fired after the push (counted from a mark just before it, so however often the opening pass fired it), so a reply that changes it to anything but empty fails at the value (one that leaves it unchanged still ends in a wait timeout: only phase 3's read barrier can tell that apart). #286 already clears it (a failure at LocalApiTailscaleBackend.cpp:449-451, a malformed body at :686-689), so the scenario is tagged parity"
   ],
   "deferred": [
     "the change counts (recommendedExitNodeIdChanged exactly once), \"no retry\", the arrival-order runs and the readError and retry clauses of the malformed runs: phase3-only, they are exact counts and negatives after the idle or read barrier, and the retry hook",
@@ -28,8 +28,9 @@
     { "start": {} },
     { "wait": { "contract": { "state": { "enum": "Running" }, "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "mark": "before-push" },
     { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
-    { "wait": { "signal": { "name": "recommendedExitNodeIdChanged", "at_least": 2 } } },
+    { "wait": { "signal": { "name": "recommendedExitNodeIdChanged", "at_least": 1, "since": "before-push" } } },
     { "expect": { "id": "asked-again", "precondition": true,
       "requests": { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "count": 2 } } },
     { "expect": { "id": "cleared", "contract": { "recommendedExitNodeId": "" } } }
