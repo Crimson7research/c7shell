@@ -343,7 +343,8 @@ fn it_rejects_a_push_or_completion_over_the_write_limit() {
 #[test]
 fn it_rejects_a_rust_declaration_of_fail() {
     let mut v = full();
-    v["on"]["rust"] = json!({ "result": "fail", "failing": [{ "id": "error", "actual": "y" }], "reason": "a regression" });
+    v["on"]["rust"] =
+        json!({ "result": "fail", "failing": [{ "id": "error", "actual": "y" }], "reason": "a regression" });
     let e = rejected(v);
     assert_names(&e, "on.rust");
     assert_names(&e, "rewrite");
