@@ -240,16 +240,16 @@ def main():
         glow = accent(conf)
         # The accent is part of the name because these are cached: keyed on the
         # monitor alone, the first PNG written would be reused for every later
-        # accent. Which means a new file per accent picked, so the ones this
-        # lock does not want are dropped below -- each is a screen-sized RGBA
-        # image, and nothing else would ever collect them.
+        # accent. Which means a new file per accent picked, so the ones drawn
+        # for another accent are dropped below -- each is a screen-sized RGBA
+        # image, and nothing else would ever collect them. Overlays of monitors
+        # not connected right now stay: docking would otherwise pay the slow
+        # render again on the next lock.
         tint = "".join(f"{v:02x}" for v in glow)
-        keep = set()
         blocks = []
         for name, w, h, s in mons:
             # Authored at, and sized in, the monitor's real pixels.
             path = os.path.join(cache, f"lock-overlay-{name}-{w}x{h}-{tint}.png")
-            keep.add(os.path.basename(path))
             if not os.path.exists(path):
                 tmp = path + ".tmp"
                 with open(tmp, "wb") as f:
@@ -278,7 +278,7 @@ def main():
             )
 
         for stale in os.listdir(cache):
-            if stale.startswith("lock-overlay-") and stale not in keep:
+            if stale.startswith("lock-overlay-") and not stale.endswith(f"-{tint}.png"):
                 try:
                     os.unlink(os.path.join(cache, stale))
                 except OSError:
