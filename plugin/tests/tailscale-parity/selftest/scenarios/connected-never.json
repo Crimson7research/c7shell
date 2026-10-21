@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "connected-never",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: the stub never connects, so the client barrier is never reached"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "fake": { "connected": 1 } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

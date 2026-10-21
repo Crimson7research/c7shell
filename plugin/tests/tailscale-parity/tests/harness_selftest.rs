@@ -25,6 +25,10 @@ fn selftest(file: &str) -> PathBuf {
 
 const STUB_IMPLEMENTATIONS: &[(&str, &[Capability])] = &[("stub", &[])];
 
+/// cpp-286 alone, for a self-test declared to fail there that the rewrite
+/// would fail too.
+const CPP_ONLY: &[(&str, &[Capability])] = &[("cpp-286", &[])];
+
 /// Runs one self-test scenario against the stub, with a small wait cap.
 fn run_stub(file: &str) -> Report {
     let stub = Implementation { name: "stub".into(), qml_dir: stub_dir(), capabilities: vec![] };
@@ -86,6 +90,11 @@ fn runner_verdicts(failures: &mut Vec<String>) {
     verdict(failures, &r, false, &["no result line"], error("no result line"));
     let r = run_stub("scenarios/unknown-member.json");
     verdict(failures, &r, false, &["noSuchMember"], error("noSuchMember"));
+    let r = run_stub("scenarios/signal-count.json");
+    verdict(failures, &r, true, &["fail as declared: fired-twice"], |o| matches!(o, Outcome::Fail(_)));
+    let r = run_stub("scenarios/connected-never.json");
+    let never = "wait never reached: the fake has 1 connected clients";
+    verdict(failures, &r, false, &[never], error(never));
 
     // An empty scenario directory is a failure, never a pass.
     let empty = PrivateRoot::new();
@@ -222,10 +231,22 @@ fn parent() -> i32 {
                 &["unmatched", "GET /localapi/v0/prefs"],
                 |o| matches!(o, Outcome::Error(e) if e.contains("GET /localapi/v0/prefs")),
             );
+
+            // 5. A request expectation fails on other bytes with the bytes
+            //    sent, and on a request never sent with null; a requests
+            //    expectation fails on a wrong count with the count sent.
+            let r = runner::run_one(&imp, CPP_ONLY, &selftest("scenarios-cpp/request-failures.json"), &[]);
+            verdict(
+                &mut failures,
+                &r,
+                true,
+                &["fail as declared: never-sent, sent-twice, wrong-host"],
+                |o| matches!(o, Outcome::Fail(f) if f.len() == 3),
+            );
         }
     }
 
-    // 5. The runner's verdicts, pinned on the stub.
+    // 6. The runner's verdicts, pinned on the stub.
     runner_verdicts(&mut failures);
 
     if failures.is_empty() {
