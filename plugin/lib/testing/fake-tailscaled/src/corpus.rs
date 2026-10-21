@@ -15,7 +15,8 @@
 //! - `status`: the body, `{"file": path}` (under the fixture root, served
 //!   unchanged) or `{"json": value}`, then `edits`, JSON Patch `add`,
 //!   `replace` and `remove` operations applied to it. It must be an object
-//!   with a non-empty string `BackendState`, or nothing is published.
+//!   with a `BackendState` naming one of [`STATES`], or nothing is
+//!   published.
 //! - `prefs`: the `/prefs` body, `captures/prefs.json` by default. Its
 //!   `WantRunning` must be true: the runner waits for it.
 //! - `suggest`: the `/suggest-exit-node` body, `{}` by default. A case that
@@ -25,8 +26,10 @@
 //!   naming the roles it checks by name.
 //!
 //! The scenario answers the opening pass from the case, waits until
-//! `wantRunning` reads true (the prefs half, published with the status
-//! half, R-WATCH-11), and until `recommendedExitNodeIdChanged` has fired
+//! `wantRunning` reads true (the prefs half) and `state` reads the status's
+//! `BackendState` (the status half, published with it, R-WATCH-11), so even
+//! a case expecting only default values proves its status was published,
+//! and until `recommendedExitNodeIdChanged` has fired
 //! when the case gives a suggestion. It then expects each member
 //! (`contract.<member>`), each model's row count (`<model>.count`) and each
 //! row (`<model>[<i>]`): the ids a declared failure names.
@@ -50,6 +53,10 @@ pub const WATCH_TARGET: &str = "/localapi/v0/watch-ipn-bus?mask=18";
 
 /// The `/prefs` body a case without `prefs` is served.
 pub const DEFAULT_PREFS: &str = "captures/prefs.json";
+
+/// The `BackendState` strings the contract's `state` has a value of the
+/// same name for (#286's `TailscaleBackend::State`).
+pub const STATES: [&str; 6] = ["NoState", "NeedsMachineAuth", "NeedsLogin", "Stopped", "Starting", "Running"];
 
 /// The models a case can expect rows of.
 pub const MODELS: [&str; 2] = ["peers", "exitNodes"];
@@ -137,14 +144,17 @@ impl Case {
         if self.id != stem {
             return Err(format!("id: `{}` differs from the file name `{stem}`", self.id));
         }
-        let status = self.status_bytes(root).map_err(|e| format!("status: {e}"))?;
+        let (status, state) = self.status_bytes(root).map_err(|e| format!("status: {e}"))?;
         let prefs = self.prefs.clone().unwrap_or_else(|| json!({ "file": DEFAULT_PREFS }));
         let prefs = body(&prefs, root).map_err(|e| format!("prefs: {e}"))?;
         let suggest = match &self.suggest {
             Some(b) => body(b, root).map_err(|e| format!("suggest: {e}"))?,
             None => b"{}".to_vec(),
         };
-        let mut steps = vec![json!({ "start": {} }), json!({ "wait": { "contract": { "wantRunning": true } } })];
+        let mut steps = vec![
+            json!({ "start": {} }),
+            json!({ "wait": { "contract": { "wantRunning": true, "state": { "enum": state } } } }),
+        ];
         if self.suggest.is_some() {
             self.check_recommendation()?;
             steps.push(json!({ "wait": { "signal": { "name": "recommendedExitNodeIdChanged", "at_least": 1 } } }));
@@ -157,15 +167,25 @@ impl Case {
         }))
     }
 
-    /// The status body: the file unchanged, or the JSON with the edits.
-    fn status_bytes(&self, root: &Path) -> Result<Vec<u8>, String> {
+    /// The status body (the file unchanged, or the JSON with the edits) and
+    /// its `BackendState`.
+    fn status_bytes(&self, root: &Path) -> Result<(Vec<u8>, String), String> {
         let bytes = body(&self.status, root)?;
         let mut value: Value = serde_json::from_slice(&bytes).map_err(|e| format!("not JSON: {e}"))?;
         apply_edits(&mut value, &self.edits)?;
-        if value.get("BackendState").and_then(Value::as_str).is_none_or(str::is_empty) {
-            return Err("no non-empty BackendState string, so no snapshot is published (R-CONN-04)".into());
-        }
-        Ok(if self.edits.is_empty() { bytes } else { serde_json::to_vec(&value).expect("JSON serialises") })
+        let state = match value.get("BackendState").and_then(Value::as_str) {
+            None | Some("") => {
+                return Err("no non-empty BackendState string, so no snapshot is published (R-CONN-04)".into())
+            }
+            Some(s) if !STATES.contains(&s) => {
+                return Err(format!(
+                    "BackendState `{s}` is not one of {STATES:?}, so no state to wait for (R-WATCH-13)"
+                ))
+            }
+            Some(s) => s.to_owned(),
+        };
+        let bytes = if self.edits.is_empty() { bytes } else { serde_json::to_vec(&value).expect("JSON serialises") };
+        Ok((bytes, state))
     }
 
     fn check_recommendation(&self) -> Result<(), String> {
