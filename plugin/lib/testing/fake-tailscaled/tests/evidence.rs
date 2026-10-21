@@ -5,8 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use fake_tailscaled::corpus::Case;
 use fake_tailscaled::evidence::{self, Evidence, KNOWN_NEEDS};
-use fake_tailscaled::scenario::{EvidenceClass, Scenario, Verdict};
+use fake_tailscaled::scenario::{EvidenceClass, Scenario, Tag, Verdict};
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
@@ -245,6 +246,32 @@ fn scenarios_agree_with_the_evidence() {
     }
     for r in ev.requirements.iter().filter(|r| r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(306)) {
         assert!(covered.contains(&r.id), "{}: assigned to #306, but no scenario runs it", r.id);
+    }
+}
+
+/// A corpus case runs harness-on-cpp clauses of the requirements it names.
+/// A `fix` case expects what #286 does not do, so every requirement it
+/// names is a `fix` one; a `parity` case may name a `fix` requirement whose
+/// clause #286 already meets.
+#[test]
+fn corpus_cases_agree_with_the_evidence() {
+    let ev = loaded();
+    let by_id: BTreeMap<&str, &evidence::Entry> = ev.requirements.iter().map(|r| (r.id.as_str(), r)).collect();
+    let dir = repo().join("tests/fixtures/tailscale/corpus");
+    let cases =
+        if dir.exists() { Case::load_dir(&dir, fake_tailscaled::scenario::IMPLEMENTATIONS).unwrap() } else { vec![] };
+    for c in &cases {
+        for id in &c.requirements {
+            let e = by_id.get(id.as_str()).unwrap_or_else(|| panic!("{}: unknown requirement {id}", c.id));
+            let runs_here = e.class == EvidenceClass::HarnessOnCpp
+                || e.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp);
+            assert!(runs_here, "{}: {id} has no harness-on-cpp clause", c.id);
+            if c.tag == Tag::Fix {
+                assert_eq!(e.tag, "fix", "{}: a fix case names {id}, a {} requirement", c.id, e.tag);
+            }
+        }
+        let d = &c.on["cpp-286"];
+        assert!(matches!(d.result, Verdict::Pass | Verdict::Fail), "{}: a corpus case runs on cpp-286", c.id);
     }
 }
 
