@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "id": "group-06-join-and-leave",
+  "requirements": ["R-GROUP-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Setting alpha, bravo, charlie over alpha, charlie emits one rowsInserted (bravo at row 1) and no reset, move or remove; the reverse emits one rowsRemoved and no reset, move or insert; each served as a change and counted from QML from just before it, once the snapshot's row count is seen"
+  ],
+  "deferred": [
+    "the QML delegate half: harness-on-cpp, #309",
+    "the row the insert names: the driver reads no signal arguments; the rows after it are read instead"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {"nodekey:0001": {"ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1}, "nodekey:0002": {"ID": "nCCC1CNTRL", "HostName": "charlie", "DNSName": "charlie.example.ts.net.", "TailscaleIPs": ["100.64.0.4"], "Online": true, "ExitNodeOption": false, "UserID": 1}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {"nodekey:0001": {"ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1}, "nodekey:0002": {"ID": "nBBB1CNTRL", "HostName": "bravo", "DNSName": "bravo.example.ts.net.", "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": false, "UserID": 1}, "nodekey:0003": {"ID": "nCCC1CNTRL", "HostName": "charlie", "DNSName": "charlie.example.ts.net.", "TailscaleIPs": ["100.64.0.4"], "Online": true, "ExitNodeOption": false, "UserID": 1}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {"nodekey:0001": {"ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1}, "nodekey:0002": {"ID": "nCCC1CNTRL", "HostName": "charlie", "DNSName": "charlie.example.ts.net.", "TailscaleIPs": ["100.64.0.4"], "Online": true, "ExitNodeOption": false, "UserID": 1}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"model": {"name": "peers", "count": 2}}},
+    {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"mark": "before-join"},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"model": {"name": "peers", "count": 3}}},
+    {"expect": {"id": "joined-at-row-1", "model": {"name": "peers", "row": 1, "values": {"nodeId": "nBBB1CNTRL", "hostName": "bravo"}}}},
+    {"expect": {"id": "charlie-kept", "model": {"name": "peers", "row": 2, "values": {"nodeId": "nCCC1CNTRL"}}}},
+    {"expect": {"id": "one-insert", "signal": {"name": "peers.rowsInserted", "count": 1, "since": "before-join"}}},
+    {"expect": {"id": "join-no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-join"}}},
+    {"expect": {"id": "join-no-move", "signal": {"name": "peers.rowsMoved", "count": 0, "since": "before-join"}}},
+    {"expect": {"id": "join-no-remove", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-join"}}},
+    {"mark": "before-leave"},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"model": {"name": "peers", "count": 2}}},
+    {"expect": {"id": "charlie-back-at-row-1", "model": {"name": "peers", "row": 1, "values": {"nodeId": "nCCC1CNTRL"}}}},
+    {"expect": {"id": "one-remove", "signal": {"name": "peers.rowsRemoved", "count": 1, "since": "before-leave"}}},
+    {"expect": {"id": "leave-no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-leave"}}},
+    {"expect": {"id": "leave-no-move", "signal": {"name": "peers.rowsMoved", "count": 0, "since": "before-leave"}}},
+    {"expect": {"id": "leave-no-insert", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-leave"}}}
+  ],
+  "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
+}

@@ -37,7 +37,7 @@
     "R-PARSE-05: the parsed Self DNS name with its trailing dot (cpp-suite: the contract strips it, R-UI-07)",
     "R-PARSE-07: whether a Peer section is present (phase3-only: not on #286's contract)",
     "R-GROUP-04: the role-name table has exactly ten entries (cpp-suite: roleNames() is not invokable from QML)",
-    "R-GROUP-09: exitNodes is a different object from peers (no driver op compares two objects yet)"
+    "R-GROUP-09: exitNodes is a different object from peers (the scenario group-09-a-separate-model)"
   ],
   "status": {
     "file": "captures/status-idle.json"

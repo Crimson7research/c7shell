@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "id": "group-12-needs-login-keeps-rows",
+  "requirements": ["R-GROUP-12"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Backend half: from Running with 20 peers and 2 exit nodes (status-idle.json), a notification brings {\"BackendState\":\"NeedsLogin\",\"Peer\":null} as the next /status; once state NeedsLogin is seen, peers has 20 rows, exitNodes has 2, and no rowsRemoved fired on either model since the notification. #286 never counts a null Peer (StatusParser.cpp:126-131), so it keeps them too and the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the Running return with peersKnown, and the view half: phase3-only, both read or stage peersKnown, a contract addition"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "NeedsLogin", "Peer": null}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"contract": {"state": {"enum": "Running"}}}},
+    {"wait": {"model": {"name": "peers", "count": 20}}},
+    {"wait": {"model": {"name": "exitNodes", "count": 2}}},
+    {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"mark": "before-logout"},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"contract": {"state": {"enum": "NeedsLogin"}}}},
+    {"expect": {"id": "peers-kept", "model": {"name": "peers", "count": 20}}},
+    {"expect": {"id": "exit-nodes-kept", "model": {"name": "exitNodes", "count": 2}}},
+    {"expect": {"id": "no-peer-removed", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-logout"}}},
+    {"expect": {"id": "no-exit-node-removed", "signal": {"name": "exitNodes.rowsRemoved", "count": 0, "since": "before-logout"}}}
+  ],
+  "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
+}

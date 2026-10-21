@@ -9,7 +9,7 @@
     "given suggest-exit-node.json, once the backend is Running recommendedExitNodeId is nEwJFIats021CNTRL (the ID, not the Name), and it matches a nodeId in exitNodes"
   ],
   "deferred": [
-    "the change count, the 500 and malformed replies after a notification (a scenario), the arrival order and the retry hook (phase3-only)"
+    "the 500 and malformed replies after a notification (the scenarios parse-11-suggestion-500-clears, -not-json-clears, -array-clears and -id-not-a-string-clears), the change count, the arrival order and the retry hook (phase3-only)"
   ],
   "status": {
     "file": "captures/status-idle.json"
