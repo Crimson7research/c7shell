@@ -453,9 +453,12 @@ impl Drop for Fake {
     fn drop(&mut self) {
         let Some(acceptor) = self.acceptor.take() else { return };
         self.shared.closing.store(true, Ordering::SeqCst);
-        // Wake the blocking accept. If the path is gone, nothing can wake it,
-        // so the thread is left to end with the process.
-        if UnixStream::connect(&self.path).is_ok() {
+        // Wake the blocking accept, but only through this fake's own socket:
+        // a path that is gone or now holds another socket cannot reach it,
+        // and connecting to that one would wake someone else's acceptor and
+        // leave the join waiting for ever. Such a thread is left to end with
+        // the process.
+        if self.still_bound() && UnixStream::connect(&self.path).is_ok() {
             let _ = acceptor.join();
         }
         for c in self.shared.lock().clients.iter() {
@@ -465,11 +468,16 @@ impl Drop for Fake {
         for r in readers {
             let _ = r.join();
         }
-        if let (Some(inode), Ok(meta)) = (self.inode, fs::symlink_metadata(&self.path)) {
-            if meta.ino() == inode {
-                let _ = fs::remove_file(&self.path);
-            }
+        if self.still_bound() {
+            let _ = fs::remove_file(&self.path);
         }
+    }
+}
+
+impl Fake {
+    /// The path still holds the socket this fake bound.
+    fn still_bound(&self) -> bool {
+        matches!((self.inode, fs::symlink_metadata(&self.path)), (Some(inode), Ok(meta)) if meta.ino() == inode)
     }
 }
 
