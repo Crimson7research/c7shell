@@ -244,7 +244,8 @@ def main():
         # for another accent are dropped below -- each is a screen-sized RGBA
         # image, and nothing else would ever collect them. Overlays of monitors
         # not connected right now stay: docking would otherwise pay the slow
-        # render again on the next lock.
+        # render again on the next lock. The price is one file per monitor and
+        # mode seen under this accent, until the accent next changes.
         tint = "".join(f"{v:02x}" for v in glow)
         blocks = []
         for name, w, h, s in mons:

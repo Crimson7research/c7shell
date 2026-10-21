@@ -429,17 +429,19 @@ rm -f "$lockdir/conf/hypr/appearance.json"
 # connected right now stay cached as long as the accent has not changed, so the
 # next lock on that monitor does not pay the slow pure-Python render again.
 runlock >/dev/null || fail "c7shell-lock failed on the default accent:\n$(cat "$lockdir/err")"
-laptop=$(grep -oE '/[^ ]*\.png' "$gen" | head -1)
+first=$(grep -oE '/[^ ]*\.png' "$gen" | head -1)
 printf '#!/bin/sh\ncat <<JSON\n[{"name":"HDMI-A-1","width":2560,"height":1440,"scale":1.0}]\nJSON\n' \
   > "$lockdir/bin/hyprctl"
 runlock >/dev/null || fail "a second monitor broke c7shell-lock:\n$(cat "$lockdir/err")"
-[[ -f $laptop ]] \
-  || fail "locking on another monitor deleted the cached overlay of the one unplugged: $laptop"
-inode=$(stat -c %i "$laptop")
+[[ -f $first ]] \
+  || fail "locking on another monitor deleted the cached overlay of the one unplugged: $first"
+grep -q 'monitor = DP-1' "$gen" \
+  && fail "the generated config draws on DP-1, which is not connected:\n$(grep 'monitor =' "$gen")"
+stamp=$(stat -c '%i %Y' "$first")
 printf '#!/bin/sh\ncat <<JSON\n[{"name":"DP-1","width":1920,"height":1080,"scale":1.0}]\nJSON\n' \
   > "$lockdir/bin/hyprctl"
 runlock >/dev/null || fail "returning to the first monitor broke c7shell-lock:\n$(cat "$lockdir/err")"
-[[ $(stat -c %i "$laptop") == "$inode" ]] \
+[[ $(stat -c '%i %Y' "$first") == "$stamp" ]] \
   || fail 'returning to the first monitor rendered its overlay again instead of reusing the cache'
 # Two monitors under one accent: two files, nothing else.
 (($(find "$lockdir/cache/c7shell" -name 'lock-overlay-*.png' | wc -l) == 2)) \
