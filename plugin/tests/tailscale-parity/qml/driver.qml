@@ -9,7 +9,9 @@
 // (every counted signal's count, by name), {"op": "members"},
 // and on a model member {"op": "rows", "name", "row"},
 // {"op": "has_children", "name", "row"} and {"op": "data", "name", "row",
-// "role"} (row null for the root; role a name or "#<number>").
+// "role"} (row null for the root; role a name or "#<number>"), and
+// {"op": "distinct", "name", "other"}, whether two model members are
+// different objects.
 // The answer is {"value": ...} or {"error": "..."}.
 import QtQml
 import QtQml.Models
@@ -136,6 +138,8 @@ QtObject {
         }
         case "data":
             return data(c.name, c.row, c.role);
+        case "distinct":
+            return model(c.name) !== model(c.other);
         case "members": {
             const names = [];
             for (const k in Tailscale)

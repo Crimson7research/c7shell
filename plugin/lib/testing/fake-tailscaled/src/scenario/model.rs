@@ -9,13 +9,15 @@ use serde_json::Value;
 use super::check_value;
 
 /// One read of the model member `name`, with exactly one of `count`,
-/// `values` and `has_children`.
+/// `values`, `has_children` and `distinct_from`.
 ///
 /// - `count`: `rowCount()`, or with `row` the row's child count.
 /// - `values`: the roles of row `row`. A key is a role name, or `#<n>` for
 ///   role number `n` (`#0` is Qt's display role). A role read by name needs
 ///   a row that exists; one read by number can read any row.
 /// - `has_children`: `hasChildren()`, of the root or with `row` of the row.
+/// - `distinct_from`: another model member's name; holds when the two are
+///   different objects.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelQuery {
@@ -24,6 +26,7 @@ pub struct ModelQuery {
     pub count: Option<u64>,
     pub values: Option<BTreeMap<String, Value>>,
     pub has_children: Option<bool>,
+    pub distinct_from: Option<String>,
 }
 
 /// A role key: a role name, or `#` and a whole number.
@@ -51,9 +54,15 @@ impl ModelQuery {
         if self.name.is_empty() {
             return Err("name: empty; name the model member".into());
         }
-        let kinds = [self.count.is_some(), self.values.is_some(), self.has_children.is_some()];
+        let kinds =
+            [self.count.is_some(), self.values.is_some(), self.has_children.is_some(), self.distinct_from.is_some()];
         if kinds.iter().filter(|&&k| k).count() != 1 {
-            return Err("give exactly one of count, values and has_children".into());
+            return Err("give exactly one of count, values, has_children and distinct_from".into());
+        }
+        match (&self.distinct_from, self.row) {
+            (Some(other), _) if other.is_empty() => return Err("distinct_from: empty; name the other member".into()),
+            (Some(_), Some(_)) => return Err("distinct_from takes no row: it compares the members".into()),
+            _ => {}
         }
         if let Some(row) = self.row.filter(|r| *r < 0) {
             return Err(format!("row: {row} is negative; an invalid index reads the root, not a row"));
@@ -79,7 +88,10 @@ impl ModelQuery {
             (Some(n), ..) => format!("{} has {n} rows", self.name),
             (_, Some(v), _) => format!("{}{at} reads {}", self.name, serde_json::json!(v)),
             (_, _, Some(h)) => format!("{}{at} has_children {h}", self.name),
-            _ => self.name.clone(),
+            _ => match &self.distinct_from {
+                Some(other) => format!("{} is not the object {other} is", self.name),
+                None => self.name.clone(),
+            },
         }
     }
 }

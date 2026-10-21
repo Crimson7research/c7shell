@@ -88,6 +88,12 @@ impl Contract {
         self.request(json!({ "op": "data", "name": name, "row": row, "role": role }))
     }
 
+    /// Whether model members `name` and `other` are different objects.
+    pub fn models_distinct(&self, name: &str, other: &str) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "distinct", "name": name, "other": other }))?;
+        v.as_bool().ok_or_else(|| format!("distinct of {name} and {other} is {v}"))
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;

@@ -119,7 +119,8 @@ value. `{"enum": key}` inside an array is resolved like any other.
 
 A `model` expect, and a `model` wait that holds once the same read does,
 query a list model member of `Tailscale` (`peers`, `exitNodes`). Give
-`name` and exactly one of `count`, `values` and `has_children`:
+`name` and exactly one of `count`, `values`, `has_children` and
+`distinct_from`:
 
 ```json
 { "wait":   { "model": { "name": "peers", "count": 3 } } },
@@ -142,6 +143,9 @@ query a list model member of `Tailscale` (`peers`, `exitNodes`). Give
   value. The actual value is the one role's value, or an object by role
   for several.
 - `has_children` is `hasChildren()`, of the root or with `row` of that row.
+- `distinct_from` names another model member, and holds when the two
+  are different objects (R-GROUP-09: `exitNodes` is not `peers`). It
+  takes no `row`; its actual value is whether they differ.
 
 A `name` that is no model member is an error. A model `wait` never reached
 says what it last read.

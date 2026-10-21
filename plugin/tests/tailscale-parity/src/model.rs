@@ -17,6 +17,10 @@ pub fn read(contract: &Contract, q: &ModelQuery) -> Result<(bool, Value), String
         let has = contract.model_has_children(&q.name, q.row)?;
         return Ok((has == want, json!(has)));
     }
+    if let Some(other) = &q.distinct_from {
+        let distinct = contract.models_distinct(&q.name, other)?;
+        return Ok((distinct, json!(distinct)));
+    }
     let (Some(values), Some(row)) = (&q.values, q.row) else {
         return Err(format!("the model query {} reads nothing", q.describe()));
     };
