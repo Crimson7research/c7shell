@@ -20,6 +20,10 @@ cxx-qt-build.workspace = true
 # QGuiApplication lives on the main thread, so each test binary has its own
 # main (harness = false) and respawns itself for each check or scenario.
 [[test]]
+name = "stub_selftest"
+harness = false
+
+[[test]]
 name = "harness_selftest"
 harness = false
 

@@ -35,11 +35,13 @@ An earlier version registered a git worktree at
 ## The gate is manual for now
 
 `run.sh` is not part of `for t in tests/*.sh`: the reference build is not
-something the suite makes. `tests/test-tailscale-parity.sh` runs the
-harness self-tests and the scenarios when the reference build is already in
-the cache (or `C7_QML_DIR` names one), and skips with the reason when it is
-not. The 50-run gate (`run.sh --repeat 50`) and the parallel stress are run
-by hand until a later PR wires the reference build into the suite.
+something the suite makes. `tests/test-tailscale-parity.sh` always runs
+`stub_selftest`, the harness self-tests that need only the QML-only stub C7.
+It runs `harness_selftest` and 50 runs of the scenarios when the reference
+build is already in the cache, and skips them with the reason when it is
+not. A `C7_QML_DIR` that holds no `C7/qmldir` is a failure, never a skip.
+The parallel stress is run by hand until a later PR wires the reference
+build into the suite.
 
 ## Run
 
@@ -49,6 +51,7 @@ plugin/tests/tailscale-parity/run.sh --repeat 50   # 50 consecutive runs of each
 
 qml=$(plugin/tests/tailscale-parity/build-reference.sh | tail -1)
 cd plugin
+cargo test --locked -p tailscale-parity --test stub_selftest
 C7_IMPL=cpp-286 C7_QML_DIR=$qml cargo test --locked -p tailscale-parity --test harness_selftest
 C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_SCENARIOS=http-01-request-line-and-host \
   cargo test --locked -p tailscale-parity --test scenarios

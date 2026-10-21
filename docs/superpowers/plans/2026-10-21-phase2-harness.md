@@ -159,7 +159,7 @@ scenarios do not (both run only clauses with no clock and no hook).
 | `.../fake-tailscaled/tests/binary.rs` | The standalone binary: start, refusal, every control command, end-of-stdin shutdown, and the equivalence of in-process and binary records for one script. |
 | `.../fake-tailscaled/tests/scenario_format.rs` | Format validation, accepted and rejected inline cases, and "every file under `tests/fixtures/tailscale/scenarios/` validates". |
 | `.../fake-tailscaled/tests/evidence.rs` | The evidence file against the spec's 154 headings and Table B; every R-FAKE requirement has `r_fake_0N_` tests; every scenario agrees with the evidence file. |
-| `plugin/tests/tailscale-parity/Cargo.toml` | Package `tailscale-parity`: depends on `fake-tailscaled`, `cxx`, `cxx-qt`, `cxx-qt-lib` (features `qt_gui`, `qt_qml`), `serde_json`; build-depends on `cxx-qt-build`. `[[test]] name = "harness_selftest"` and `[[test]] name = "scenarios"`, both `harness = false`. |
+| `plugin/tests/tailscale-parity/Cargo.toml` | Package `tailscale-parity`: depends on `fake-tailscaled`, `cxx`, `cxx-qt`, `cxx-qt-lib` (features `qt_gui`, `qt_qml`), `serde_json`; build-depends on `cxx-qt-build`. `[[test]]` targets `stub_selftest`, `harness_selftest` and `scenarios`, all `harness = false`. |
 | `plugin/tests/tailscale-parity/build.rs` | `CxxQtBuilder` with a QML module `C7Harness` holding the `Probe` bridge. |
 | `plugin/tests/tailscale-parity/src/lib.rs` | Headless app, bounded `wait_until` and `pump` (from the spike's pattern), engine loading with only the chosen import paths. |
 | `plugin/tests/tailscale-parity/src/probe.rs` | The cxx-qt bridge (P7): `Probe` singleton, `command` signal, `reply` and `ready` invokables, a thread-local handle to the live instance. Declarations plus a few lines of glue only. |
@@ -170,7 +170,9 @@ scenarios do not (both run only clauses with no clock and no hook).
 | `plugin/tests/tailscale-parity/qml/driver.qml` | The generic driver (P7). |
 | `plugin/tests/tailscale-parity/selftest/qml/C7/qmldir`, `.../Tailscale.qml` | A QML-only stub `C7` module with a `Tailscale` singleton of a few properties and setters, used only to test the runner without #286. It does no I/O. |
 | `plugin/tests/tailscale-parity/selftest/scenarios/*.json` | Runner self-test scenarios (pass, declared fail, unexpected pass, wrong actual, wait never reached, precondition failed, cannot-run, needs not declared). They are not requirement scenarios, and the evidence checks ignore them. |
-| `plugin/tests/tailscale-parity/tests/harness_selftest.rs` | Bring-up checks and the runner self-tests against the stub. |
+| `plugin/tests/tailscale-parity/tests/stub_selftest.rs` | Bring-up checks and the runner self-tests against the stub: no reference build needed. |
+| `plugin/tests/tailscale-parity/tests/harness_selftest.rs` | The checks against #286's C7: the module read from Rust, an unmatched request, the request expectations' failures. |
+| `plugin/tests/tailscale-parity/tests/support/mod.rs` | What both self-test binaries share. |
 | `plugin/tests/tailscale-parity/tests/scenarios.rs` | Runs `tests/fixtures/tailscale/scenarios/*.json` against `C7_IMPL`. |
 | `plugin/tests/tailscale-parity/build-reference.sh` | Builds #286's `C7` from `a38dbca` into the cache with #286's own CMake; prints the `C7_QML_DIR` as its last line. |
 | `plugin/tests/tailscale-parity/run.sh` | `build-reference.sh`, then the `scenarios` test against `cpp-286`; `--repeat N`. |
