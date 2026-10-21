@@ -27,3 +27,6 @@ quickshell/c7shell/PreviewRegistry.qml
 
 # cargo build (plugin/.cargo/config.toml sets target-dir)
 /target/
+# cargo --manifest-path plugin/Cargo.toml from the root, which skips that
+# config; tests/test-c7-plugin.sh check 1 skips this directory too
+/plugin/target/
