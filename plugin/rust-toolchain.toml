@@ -1,0 +1,7 @@
+# The stable channel, not an exact release: an exact pin would drift from
+# Arch's rust package, which PKGBUILD uses. Cargo.toml's rust-version is the
+# floor. llvm-tools-preview is for cargo llvm-cov.
+[toolchain]
+channel = "stable"
+components = ["llvm-tools-preview"]
+profile = "minimal"

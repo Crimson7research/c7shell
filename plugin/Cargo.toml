@@ -1,0 +1,24 @@
+# The Rust half of the C7 plugin, beside the CMake build (plugin/CMakeLists.txt).
+# Run cargo from this directory: .cargo/config.toml (the target directory and
+# the rust-lld pin) and rust-toolchain.toml are read from the working
+# directory, not from --manifest-path.
+[workspace]
+resolver = "2"
+members = ["lib/testing/fake-tailscaled"]
+default-members = ["lib/testing/fake-tailscaled"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+publish = false
+rust-version = "1.94"
+
+[workspace.dependencies]
+# docs/architecture.md: cxx-qt is pinned to an exact version. cxx is pinned to
+# the release the cxx-qt spike (#288) resolved with it.
+cxx = "=1.0.205"
+cxx-qt = "=0.10.0"
+cxx-qt-lib = { version = "=0.10.0", default-features = false }
+cxx-qt-build = "=0.10.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

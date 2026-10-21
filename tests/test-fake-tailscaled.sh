@@ -47,8 +47,12 @@ echo "PASS: plugin/Cargo.toml is a workspace"
 
 # 2. the target directory ------------------------------------------------------
 run_logged 'cargo metadata' in_plugin cargo metadata --locked --format-version 1 --no-deps
-grep -qF "\"target_directory\":\"$repo/target\"" "$log" \
-  || fail "cargo's target directory is not $repo/target:\n$(grep -o '"target_directory":"[^"]*"' "$log")"
+# Cargo joins target-dir to plugin/ without normalising it (plugin/../target),
+# so the path is resolved before it is compared.
+target=$(grep -o '"target_directory":"[^"]*"' "$log" | sed 's/^"target_directory":"//; s/"$//')
+[[ -n $target ]] || fail "cargo metadata reported no target_directory"
+[[ $(realpath -m -- "$target") == "$repo/target" ]] \
+  || fail "cargo's target directory is $target, not $repo/target"
 echo "PASS: cargo builds into $repo/target"
 
 # 3. the linker pin ------------------------------------------------------------
