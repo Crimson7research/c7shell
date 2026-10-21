@@ -227,6 +227,14 @@ fn the_wait_cap(failures: &mut Vec<String>) {
     verdict(failures, &r, false, &["C7_HARNESS_MAX_ITERATIONS"], error("C7_HARNESS_MAX_ITERATIONS"));
 }
 
+/// 11. A string list is compared as an array, in a wait and an expect; a
+///     failed comparison reports the array it read.
+fn the_array_values(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/array-values.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(["a", ""]));
+    verdict(failures, &r, true, &["fail as declared: shorter"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -239,6 +247,7 @@ fn parent() -> i32 {
     the_conclusion(&mut failures);
     the_repeat_count(&mut failures);
     the_wait_cap(&mut failures);
+    the_array_values(&mut failures);
     finish("stub_selftest", &failures)
 }
 

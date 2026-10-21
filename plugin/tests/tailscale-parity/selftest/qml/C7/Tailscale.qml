@@ -9,10 +9,15 @@ QtObject {
     property int state: 0
     property string writeError: ""
     property bool acceptRoutes: false
+    property list<string> issues: []
 
     function setAcceptRoutes(on) {
         acceptRoutes = on;
         writeError = "set " + on;
+    }
+
+    function setIssues(list) {
+        issues = list;
     }
 
     // Asks the application to exit, as a crash before a result would end it.

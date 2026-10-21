@@ -402,3 +402,24 @@ fn it_rejects_an_empty_contract_map_in_a_wait_or_an_expect() {
     assert_names(&e, "steps[17].expect `error`: contract");
     assert_names(&e, "empty");
 }
+
+#[test]
+fn it_accepts_an_array_value_in_a_wait_and_an_expect() {
+    let mut v = full();
+    v["steps"][2]["wait"]["contract"] = json!({ "issues": ["a", ""] });
+    v["steps"][17]["expect"]["contract"] = json!({ "issues": [], "tags": [["nested"], { "enum": "Running" }] });
+    let dir = TestDir::new();
+    load(&dir, "full", &v).unwrap();
+}
+
+#[test]
+fn it_rejects_an_array_holding_a_value_it_cannot_compare() {
+    let mut v = full();
+    v["steps"][17]["expect"]["contract"] = json!({ "issues": ["a", { "regex": "x" }] });
+    let e = rejected(v);
+    assert_names(&e, "steps[17].expect `error`: contract.issues");
+    assert_names(&e, "regex");
+    let mut v = full();
+    v["steps"][2]["wait"]["contract"] = json!({ "issues": [{ "regex": "x" }] });
+    assert_names(&rejected(v), "steps[2].wait.contract.issues");
+}

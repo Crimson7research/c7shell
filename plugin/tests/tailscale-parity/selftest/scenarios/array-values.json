@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "array-values",
+  "requirements": ["R-PARSE-02"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a string-list member is waited on and compared as an array, and a failed comparison reports the array read"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "empty", "contract": { "issues": [] } } },
+    { "call": { "name": "setIssues", "args": [["a", ""]] } },
+    { "wait": { "contract": { "issues": ["a", ""] } } },
+    { "expect": { "id": "same", "contract": { "issues": ["a", ""] } } },
+    { "expect": { "id": "shorter", "contract": { "issues": ["a"] } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "shorter", "actual": ["a", ""] } ], "reason": "self-test" } }
+}
