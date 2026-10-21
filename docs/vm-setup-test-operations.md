@@ -102,7 +102,8 @@ The installed system doesn't log to serial. A failed phase's `<phase>-serial-tai
 ~/.cache/c7shell-vmtest/
   archlinux-<ver>-x86_64.iso   base.qcow2   id_ed25519   c7test.password
   runs/<ts>-<branch>/       VM disk, sockets, pid (kept on failure or --keep)
-  results/<ts>-<branch>/    summary.txt, <phase>.log, screens/*.png
+  results/<ts>-<branch>/    summary.txt, <phase>.log, screens/*.png,
+                            <phase>-serial-tail.log (failed phase only)
 ```
 
 `summary.txt` lists each phase with its duration and the built package (`pacman -Q c7shell`). It ends in `PASS` or `FAIL: <phase>`. A run stopped from outside, for example with `systemctl --user stop`, ends in `FAIL: interrupted` and exits 2.
