@@ -350,7 +350,7 @@ fn a_reply_over_the_write_limit_is_refused() {
     fits.validate().unwrap();
     // So must a stream head.
     let head = json!({ "rules": [{ "match": { "method": "GET", "target": "/w" },
-        "stream": { "headers": [["X-Pad", "x".repeat(fake_tailscaled::MAX_WRITE)]] } }] });
+        "stream": { "framing": "chunked", "headers": [["X-Pad", "x".repeat(fake_tailscaled::MAX_WRITE)]] } }] });
     let e = serde_json::from_value::<Script>(head).unwrap().validate().unwrap_err();
     assert!(e.contains("write limit"), "{e}");
 }
@@ -366,3 +366,22 @@ fn a_zero_chunk_size_is_refused() {
     assert!(error.contains("framing.chunked.sizes"), "{error}");
 }
 
+/// Watch lines are written as plain chunks, so a stream rule framed any
+/// other way would get bytes no tailscaled sends.
+#[test]
+fn a_stream_rule_must_be_plainly_chunked() {
+    for framing in [
+        json!("content-length"),
+        json!("none"),
+        json!({ "content-length": 4 }),
+        json!({ "chunked": { "extension": ";x=1" } }),
+        json!({ "chunked": { "final": false } }),
+    ] {
+        let rules = json!({ "rules": [{ "match": { "method": "GET", "target": "/w" },
+            "stream": { "framing": framing.clone() } }] });
+        let e = serde_json::from_value::<Script>(rules).unwrap().validate().unwrap_err();
+        assert!(e.starts_with("rules[0]: stream: framing"), "{framing}: {e}");
+    }
+    let rules = json!({ "rules": [{ "match": { "method": "GET", "target": "/w" }, "stream": { "framing": "chunked" } }] });
+    serde_json::from_value::<Script>(rules).unwrap().validate().unwrap();
+}
