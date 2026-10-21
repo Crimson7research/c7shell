@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use fake_tailscaled::scenario::Capability;
 use serde_json::json;
 use tailscale_parity::child::{self, PrivateRoot};
-use tailscale_parity::runner::{self, Outcome, Report};
 use tailscale_parity::contract::Contract;
 use tailscale_parity::implementation::Implementation;
+use tailscale_parity::runner::{self, Outcome, Report};
 use tailscale_parity::{headless_app, load_driver};
 
 fn stub_dir() -> PathBuf {
@@ -91,7 +91,11 @@ fn runner_verdicts(failures: &mut Vec<String>) {
     let none = runner::run_all(&stub, STUB_IMPLEMENTATIONS, empty.path(), 1, None);
     check(failures, none.as_ref().is_err_and(|e| e.contains("no scenarios found")), &format!("no scenarios: {none:?}"));
     let filtered = runner::run_all(&stub, STUB_IMPLEMENTATIONS, &selftest("scenarios"), 1, Some("nothing-by-this-id"));
-    check(failures, filtered.as_ref().is_err_and(|e| e.contains("no scenarios found")), "a filter matching nothing finds no scenarios");
+    check(
+        failures,
+        filtered.as_ref().is_err_and(|e| e.contains("no scenarios found")),
+        "a filter matching nothing finds no scenarios",
+    );
 }
 
 /// Reports one check; returns whether it passed.
@@ -203,8 +207,19 @@ fn parent() -> i32 {
             check(&mut failures, out.status.success(), "#286's C7 loads and Rust reads Tailscale through the driver");
 
             // 4. A request the script does not match is an error naming it.
-            let r = runner::run_one(&imp, fake_tailscaled::scenario::IMPLEMENTATIONS, &selftest("scenarios-cpp/unmatched.json"), &[]);
-            verdict(&mut failures, &r, false, &["unmatched", "GET /localapi/v0/prefs"], |o| matches!(o, Outcome::Error(e) if e.contains("GET /localapi/v0/prefs")));
+            let r = runner::run_one(
+                &imp,
+                fake_tailscaled::scenario::IMPLEMENTATIONS,
+                &selftest("scenarios-cpp/unmatched.json"),
+                &[],
+            );
+            verdict(
+                &mut failures,
+                &r,
+                false,
+                &["unmatched", "GET /localapi/v0/prefs"],
+                |o| matches!(o, Outcome::Error(e) if e.contains("GET /localapi/v0/prefs")),
+            );
         }
     }
 

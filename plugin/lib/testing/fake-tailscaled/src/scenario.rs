@@ -258,11 +258,17 @@ impl Scenario {
 
     /// Loads and validates `path` against `implementations`.
     pub fn load_for(path: &Path, implementations: &[Implementation<'_>]) -> Result<Scenario, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let scenario: Scenario = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let scenario = Scenario::read(path)?;
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         scenario.validate(stem, implementations).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(scenario)
+    }
+
+    /// Parses `path` without validating it: for a runner's child, whose
+    /// parent has already loaded it with [`Scenario::load_for`].
+    pub fn read(path: &Path) -> Result<Scenario, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// The capabilities its steps need.
