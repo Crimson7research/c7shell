@@ -223,6 +223,49 @@ mkdir -p "$real/conf/hypr"; printf 'monitor = ,preferred,auto,1\n' > "$real/conf
 rc=0; out=$(XDG_CONFIG_HOME=$real/conf C7SHELL_STATE=$real/state "$setup" 2>&1) || rc=$?
 ((rc == 4)) || fail "a hand-written hyprland.conf was replaced (exit $rc):\n$out"
 
+# --- --uninstall removes what setup installed, and only that (#19) ----------
+# Switching to another setup means getting c7shell's files out of the way
+# without losing anything the user wrote. Unedited shipped files go; edited
+# ones, files c7shell never shipped, and the .bak copies stay.
+un=$tmp/uninstall
+mkdir -p "$un/home" "$un/dotfiles"; : > "$un/dotfiles/bashrc"
+ln -s ../dotfiles/bashrc "$un/home/.bashrc"
+u() { HOME=$un/home XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$un/state \
+        C7SHELL_SUDO_SNIPPET=$tmp/sn.sh "$setup" "$@"; }
+u >/dev/null 2>&1
+mkdir -p "$un/conf/hypr.bak-1"
+echo edited > "$un/conf/quickshell/c7shell/shell.qml"
+echo v2 > "$un/conf/hypr/hyprland.lua.new"
+echo mine > "$un/conf/hypr/monitors.lua"
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall fixture: setup added no sudo line'
+echo 'alias ll="ls -l"' >> "$un/home/.bashrc"
+
+out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
+[[ -f $un/conf/hypr/hyprland.lua && -f $un/state/manifest ]] || fail "uninstall --dry-run removed files:\n$out"
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall --dry-run edited .bashrc'
+
+out=$(u --uninstall 2>&1) || fail "uninstall failed:\n$out"
+for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf xdg-desktop-portal; do
+  [[ ! -e $un/conf/$gone ]] || fail "uninstall left $gone:\n$out"
+done
+[[ -f $un/conf/quickshell/c7shell/shell.qml ]] || fail 'uninstall deleted an edited file'
+grep -qF "$un/conf/quickshell/c7shell/shell.qml" <<<"$out" || fail "uninstall did not name the edited file it kept:\n$out"
+[[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
+[[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
+[[ -f $un/conf/arch-update/arch-update.conf ]] || fail 'uninstall deleted the user-owned arch-update config'
+grep -q 'PrivilegeElevationCommand' <<<"$out" || fail "uninstall did not mention the arch-update line it left:\n$out"
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" && fail "uninstall left the sudo line:\n$(cat "$un/home/.bashrc")"
+grep -qxF 'alias ll="ls -l"' "$un/home/.bashrc" || fail "uninstall damaged .bashrc:\n$(cat "$un/home/.bashrc")"
+[[ -L $un/home/.bashrc ]] || fail 'uninstall replaced a symlinked .bashrc with a plain file'
+[[ ! -e $un/state/manifest ]] || fail 'uninstall left the manifest, so a reinstall would trust stale hashes'
+
+# Nothing installed is a sentence, not a failure.
+out=$(u --uninstall 2>&1) || fail "a second uninstall failed:\n$out"
+grep -qi 'nothing to remove' <<<"$out" || fail "a second uninstall did not say there was nothing to remove:\n$out"
+# And the config is free for setup again: what is left is only what was kept.
+rc=0; u >/dev/null 2>&1 || rc=$?
+((rc == 4)) || fail "reinstall after uninstall exited $rc, not 4 (the kept edit still blocks its part)"
+
 # --- and none of the above escaped into a real home -----------------------
 # The isolation above is the whole reason this file cannot damage the machine
 # it runs on; assert it rather than trusting it.

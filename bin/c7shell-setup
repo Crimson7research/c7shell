@@ -11,15 +11,20 @@ data=${XDG_DATA_HOME:-$HOME/.local/share}/c7shell
 parts=(hypr quickshell/c7shell xdg-desktop-portal)
 force=0
 dry=0
+uninstall=0
 
 usage() {
   cat <<USAGE
 usage: c7shell-setup [--force] [--dry-run]
+       c7shell-setup --uninstall [--dry-run]
 
   --force     replace existing ~/.config/hypr, ~/.config/quickshell/c7shell and
               ~/.config/xdg-desktop-portal, keeping a timestamped .bak-<stamp>
               copy of each
   --dry-run   print what would happen and change nothing
+  --uninstall remove the shipped files setup installed and you have not
+              edited, and the sudo line it added to your shell rc files;
+              keeps edited files, your own files and .bak-<stamp> copies
 
 env: C7SHELL_SHARE (default /usr/share/c7shell)
      XDG_CONFIG_HOME  (default \$HOME/.config)
@@ -35,6 +40,7 @@ while (($#)); do
   case $1 in
     --force) force=1 ;;
     --dry-run|-n) dry=1 ;;
+    --uninstall) uninstall=1 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'c7shell-setup: unknown option %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -46,11 +52,71 @@ if ((EUID == 0)) && [[ -z ${C7SHELL_ALLOW_ROOT:-} ]]; then
   exit 2
 fi
 
+run() { if ((dry)); then printf '  would: %s\n' "$*"; else "$@"; fi; }
+
+sudo_snippet=${C7SHELL_SUDO_SNIPPET:-/usr/lib/c7shell/sudo-run0.sh}
+rc_files=("${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc")
+
+# --uninstall (#19): the manifest is the list of files this script wrote, with
+# the hash each had when it did. A file whose hash still matches is unedited
+# and goes, with the .new an upgrade parked beside it; anything else under the
+# parts is the user's and stays. It needs no package installed, so a machine
+# that already removed c7shell can still clean up after it.
+uninstall_config() {
+  local manifest=$state/manifest rel h f kept=() removed=0 rc text
+  if [[ ! -f $manifest ]]; then
+    echo 'c7shell-setup: nothing to remove -- no install recorded in' "$manifest"
+    return 0
+  fi
+  while IFS=$'\t' read -r rel h; do
+    [[ -n $rel ]] || continue
+    f=$conf/$rel
+    [[ -e $f.new ]] && run rm -f -- "$f.new"
+    [[ -f $f ]] || continue
+    if [[ $(sha256sum -- "$f" | cut -d' ' -f1) == "$h" ]]; then
+      run rm -f -- "$f"; removed=$((removed + 1))
+    else
+      kept+=("$f")
+    fi
+  done < "$manifest"
+  local part
+  for part in "${parts[@]}"; do
+    [[ -d $conf/$part ]] || continue
+    if ((dry)); then printf '  would: remove the empty directories under %s\n' "$conf/$part"
+    else find "$conf/$part" -depth -type d -empty -delete; fi
+  done
+  printf 'removed %d unedited c7shell files from %s\n' "$removed" "$conf"
+  # The run0 sudo line carries its marker, so it is safe to take out. A line
+  # the user wrote is never touched.
+  for rc in "${rc_files[@]}"; do
+    [[ -f $rc ]] && grep -qF '# c7shell: sudo asks through polkit (run0)' "$rc" || continue
+    printf 'removing the run0 sudo line from %s\n' "$rc"
+    # Written through, not replaced: an rc file is often a dotfile manager's
+    # symlink, and a rename would swap it for a plain file.
+    ((dry)) || { text=$(grep -vF '# c7shell: sudo asks through polkit (run0)' "$rc" || true)
+                 printf '%s\n' "$text" > "$rc"; }
+  done
+  run rm -f -- "$manifest"
+  if ((${#kept[@]})); then
+    printf '\nKept, because you edited them:\n'
+    printf '  %s\n' "${kept[@]}"
+  fi
+  cat <<MSG
+
+Left as they are -- they may be your own choice, so remove them by hand if not:
+  PrivilegeElevationCommand=run0 in $conf/arch-update/arch-update.conf
+  [bin] Sudo = run0 in $conf/paru/paru.conf
+  any $conf/<part>.bak-<stamp> backups, and $data/scripts
+MSG
+}
+if ((uninstall)); then
+  uninstall_config
+  exit 0
+fi
+
 for part in "${parts[@]}"; do
   [[ -d $share/$part ]] || { printf 'c7shell-setup: missing %s -- is the package installed?\n' "$share/$part" >&2; exit 1; }
 done
-
-run() { if ((dry)); then printf '  would: %s\n' "$*"; else "$@"; fi; }
 
 # Replace a literal $HOME placeholder with a real path. Plain bash, not sed: the
 # path is data, and a '#' or '&' in XDG_CONFIG_HOME is sed syntax.
@@ -182,10 +248,9 @@ fi
 # for every permission prompt, not a password line on the terminal. One guarded
 # source line per rc file that exists; the function itself ships in the
 # package, so an upgrade changes it without touching the rc file again.
-sudo_snippet=${C7SHELL_SUDO_SNIPPET:-/usr/lib/c7shell/sudo-run0.sh}
 printf -v q_snippet '%q' "$sudo_snippet"
 sudo_line="[ -r $q_snippet ] && . $q_snippet   # c7shell: sudo asks through polkit (run0)"
-for rc in "${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc"; do
+for rc in "${rc_files[@]}"; do
   [[ -f $rc ]] || continue
   grep -qsF "$sudo_snippet" "$rc" && continue
   printf 'adding the run0 sudo to %s\n' "$rc"
