@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "Setting the same three peers again emits 0 dataChanged (and no row signal): a served status whose peers are unchanged and whose tailnet name changed, counted once the new tailnet is seen",
+    "Setting the same three peers again emits 0 dataChanged (and no row signal, reset or layout change): a served status whose peers are unchanged and whose tailnet name changed, counted once the new tailnet is seen",
     "Changing one row's ownerName emits one dataChanged: a served status that renames charlie's owner, counted once charlie's row reads the new ownerName",
     "Setting an empty list leaves 0 rows, one rowsRemoved and no reset: a served status with \"Peer\":{}, counted once the row count reads 0"
   ],
@@ -43,6 +43,7 @@
     {"expect": {"id": "same-no-insert", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-same"}}},
     {"expect": {"id": "same-no-remove", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-same"}}},
     {"expect": {"id": "same-no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-same"}}},
+    {"expect": {"id": "same-no-layout-change", "signal": {"name": "peers.layoutChanged", "count": 0, "since": "before-same"}}},
     {"mark": "before-rename"},
     {"fake": {"push_watch_line": "{\"State\":6}"}},
     {"wait": {"model": {"name": "peers", "row": 2, "values": {"ownerName": "Renamed Person"}}}},
