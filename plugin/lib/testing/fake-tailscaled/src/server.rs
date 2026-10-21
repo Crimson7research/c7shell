@@ -44,6 +44,9 @@ pub(crate) struct ClientEntry {
     /// The fake has closed it: nothing it sends afterwards is a request.
     pub(crate) closed: bool,
     pub(crate) received: usize,
+    pub(crate) written: usize,
+    /// Its request is held: recorded, unanswered, connected.
+    pub(crate) held: bool,
     pending: Vec<u8>,
 }
 
@@ -53,7 +56,16 @@ impl ClientEntry {
         if !self.connected || self.closed {
             return false;
         }
-        (&*self.stream).write_all(bytes).is_ok()
+        let ok = (&*self.stream).write_all(bytes).is_ok();
+        if ok {
+            self.written += bytes.len();
+        }
+        ok
+    }
+
+    /// Takes pushed bytes: connected, not closed and not held.
+    fn takes_pushes(&self) -> bool {
+        self.connected && !self.closed && !self.held
     }
 
     pub(crate) fn close(&mut self) {
@@ -70,6 +82,7 @@ pub struct State {
     handler: Option<Handler>,
     after: AfterReply,
     delimiter: Option<Vec<u8>>,
+    hold_fragment: Option<Vec<u8>>,
 }
 
 impl Default for State {
@@ -80,6 +93,7 @@ impl Default for State {
             handler: None,
             after: AfterReply::CloseAfterReply,
             delimiter: None,
+            hold_fragment: None,
         }
     }
 }
@@ -93,6 +107,21 @@ impl State {
     /// The bytes received from client `id` so far, framed or not.
     pub fn received(&self, id: ClientId) -> usize {
         self.client(id).map_or(0, |c| c.received)
+    }
+
+    /// The bytes written to client `id` so far: replies, completions, pushes.
+    pub fn written(&self, id: ClientId) -> usize {
+        self.client(id).map_or(0, |c| c.written)
+    }
+
+    /// The clients connected now.
+    pub fn connected_count(&self) -> usize {
+        self.clients.iter().filter(|c| c.connected).count()
+    }
+
+    /// The requests held now.
+    pub fn held_count(&self) -> usize {
+        self.clients.iter().filter(|c| c.connected && c.held).count()
     }
 
     pub(crate) fn client(&self, id: ClientId) -> Option<&ClientEntry> {
@@ -135,8 +164,15 @@ impl State {
         }
     }
 
-    /// Records `request`, then answers it with the handler.
+    /// Records `request`, then holds it or answers it with the handler.
     fn answer(&mut self, id: ClientId, request: Request) {
+        let held = matches!(&self.hold_fragment, Some(f) if find(&request.recorded, f).is_some());
+        if held {
+            self.requests.push(request);
+            self.hold_fragment = None;
+            self.client_mut(id).unwrap().held = true;
+            return;
+        }
         let reply = self.handler.as_ref().and_then(|h| h(&request));
         self.requests.push(request);
         let after = self.after;
@@ -147,6 +183,30 @@ impl State {
                 client.close();
             }
         }
+    }
+}
+
+impl State {
+    /// Writes `bytes` to every client that takes pushes; returns how many
+    /// took them.
+    fn push(&mut self, bytes: &[u8]) -> usize {
+        self.clients.iter_mut().filter(|c| c.takes_pushes()).map(|c| c.write(bytes)).filter(|&ok| ok).count()
+    }
+
+    /// Writes `reply` to every held client and releases it.
+    fn complete_held(&mut self, reply: &[u8]) -> usize {
+        let after = self.after;
+        let mut reached = 0;
+        for c in self.clients.iter_mut().filter(|c| c.held) {
+            c.held = false;
+            if c.write(reply) {
+                reached += 1;
+            }
+            if after == AfterReply::CloseAfterReply {
+                c.close();
+            }
+        }
+        reached
     }
 }
 
@@ -232,6 +292,50 @@ impl Fake {
         state.delimiter = delimiter.filter(|d| !d.is_empty()).map(<[u8]>::to_vec);
     }
 
+    /// Sends `line` and a newline to every connected client that is not
+    /// held; returns how many took it.
+    pub fn push_line(&self, line: &[u8]) -> usize {
+        self.push_chunk(&[line, b"\n"].concat())
+    }
+
+    /// Sends exactly `bytes` to every connected client that is not held;
+    /// returns how many took them.
+    pub fn push_chunk(&self, bytes: &[u8]) -> usize {
+        self.locked(|s| s.push(bytes))
+    }
+
+    /// Sends `bytes` to client `id` alone, held or not; false when it is not
+    /// connected.
+    pub fn push_to(&self, id: ClientId, bytes: &[u8]) -> bool {
+        self.locked(|s| s.client_mut(id).is_some_and(|c| c.write(bytes)))
+    }
+
+    /// Holds the next request whose recorded bytes contain `fragment`:
+    /// recorded, not answered, left connected and skipped by pushes. One
+    /// request per call; a further call while one is held holds another.
+    pub fn hold_next(&self, fragment: &[u8]) {
+        self.locked(|s| s.hold_fragment = Some(fragment.to_vec()));
+    }
+
+    /// Writes `reply` to every request held now and releases it (closing it
+    /// unless the fake keeps clients open); returns how many it reached. A
+    /// hold armed but not yet used stays armed.
+    pub fn complete_held(&self, reply: &[u8]) -> usize {
+        self.locked(|s| s.complete_held(reply))
+    }
+
+    /// The requests held now.
+    pub fn held_count(&self) -> usize {
+        self.shared.lock().held_count()
+    }
+
+    /// Runs `f` on the state, then wakes every waiter.
+    fn locked<T>(&self, f: impl FnOnce(&mut State) -> T) -> T {
+        let value = f(&mut self.shared.lock());
+        self.shared.changed.notify_all();
+        value
+    }
+
     /// Every request recorded, in order.
     pub fn requests(&self) -> Vec<Request> {
         self.shared.lock().requests.clone()
@@ -301,6 +405,8 @@ fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
                 connected: true,
                 closed: false,
                 received: 0,
+                written: 0,
+                held: false,
                 pending: Vec::new(),
             });
             id
@@ -329,6 +435,8 @@ fn read_loop(id: ClientId, stream: Arc<UnixStream>, shared: Arc<Shared>) {
         let mut state = shared.lock();
         if let Some(c) = state.clients.iter_mut().find(|c| c.id == id) {
             c.connected = false;
+            c.held = false;
+            c.pending.clear();
         }
     }
     shared.changed.notify_all();
