@@ -53,15 +53,21 @@ Window {
     check(pick.options.indexOf(pick.current) === 1, "the picker would open on row 0, not on 64%")
 
     PowerService.chargeLimit = 55
+    check(pick.current === "55%", `55 picks "${pick.current}"`)
     check(pick.options[0] === "55%", `55 lists ${pick.options}`)
+    check(label.text === "stops at 55% to slow wear", `55 reads "${label.text}"`)
 
     // Picking still writes what it did: a percentage, or 100 for "off".
     pick.picked("70%")
     pick.picked("off")
     check(PowerService.written.join() === "70,100", `picks wrote ${PowerService.written}`)
 
+    // What the real service reports for a 0 read: no threshold, picker off
+    // and disabled (PowerService.limitSupported requires chargeLimit > 0).
+    PowerService.chargeLimit = 0
     PowerService.limitSupported = false
     check(label.text === "this pack exposes no charge threshold", `unsupported reads "${label.text}"`)
+    check(pick.current === "off" && !pick.enabled, `unsupported picks "${pick.current}", enabled ${pick.enabled}`)
 
     console.log("CHARGE-LIMIT-TEST-PASS")
     Qt.quit()
