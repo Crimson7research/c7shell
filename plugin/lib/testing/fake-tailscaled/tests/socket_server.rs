@@ -484,3 +484,76 @@ fn r_fake_07_reports_what_the_barriers_read() {
     assert!(!fake.clients()[0].connected);
     assert!(fake.clients()[1].connected);
 }
+
+#[test]
+fn r_fake_03_drops_one_chosen_client() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"answered"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    // A client already answered and kept open, standing in for the watch.
+    let mut watch = Client::connect(fake.path());
+    watch.write(b"GET /watch HTTP/1.1\r\n\r\n");
+    assert_eq!(watch.read_exactly(8), b"answered");
+    // A held GET of /status.
+    fake.hold_next(b"/status ");
+    let mut held = Client::connect(fake.path());
+    held.write(STATUS_GET);
+    wait_requests(&fake, 2);
+    assert_eq!(fake.held_count(), 1);
+    assert_eq!(fake.connected_count(), 2);
+
+    let id = fake.client_holding(b"/status ").expect("the held client");
+    assert_eq!(id, 2);
+    let before = fake.disconnects();
+    assert!(fake.close_client(id));
+    assert_eq!(held.read_until_closed(), b"", "the held client got bytes before its end of file");
+    fake.wait_until("the closed client's disconnect", |s| (s.disconnects() == before + 1).then_some(()));
+    assert_eq!(fake.connected_count(), 1, "closing one client dropped another");
+    assert_eq!(fake.held_count(), 0);
+    assert_eq!(fake.client_holding(b"/status "), None);
+
+    // The other client is still served, and so is a new one.
+    assert_eq!(fake.push_line(b"event"), 1);
+    assert_eq!(watch.read_exactly(14), b"answeredevent\n");
+    let mut later = Client::connect(fake.path());
+    later.write(STATUS_GET);
+    assert_eq!(later.read_exactly(8), b"answered");
+    assert!(fake.is_listening());
+}
+
+#[test]
+fn closing_a_client_that_is_gone_or_unknown_says_so() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let client = Client::connect(fake.path());
+    wait_connected(&fake, 1);
+    assert!(!fake.close_client(7));
+    drop(client);
+    wait_connected(&fake, 0);
+    assert!(!fake.close_client(1));
+}
+
+#[test]
+fn r_fake_06_disconnects_its_clients_and_removes_the_socket_when_destroyed() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let fake = Fake::start(&path);
+    let mut first = Client::connect(&path);
+    let mut second = Client::connect(&path);
+    wait_connected(&fake, 2);
+    drop(fake);
+    assert_eq!(first.read_until_closed(), b"");
+    assert_eq!(second.read_until_closed(), b"");
+    assert!(fs::symlink_metadata(&path).is_err(), "the socket file is still there");
+}
+
+#[test]
+fn a_fake_whose_socket_was_replaced_leaves_the_new_file_alone() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let fake = Fake::start(&path);
+    fs::remove_file(&path).unwrap();
+    fs::write(&path, b"someone else's").unwrap();
+    drop(fake);
+    assert_eq!(fs::read(&path).unwrap(), b"someone else's");
+}

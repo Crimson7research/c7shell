@@ -11,6 +11,7 @@
 #   4. git ignores /target/ and no file under plugin/
 #   5. a workspace build leaves no plugin/target behind
 #   6. the fake crate's tests pass
+#   7. they pass 50 consecutive runs
 # Skips, with the reason, when cargo is not on PATH, the rule
 # tests/test-c7-plugin.sh applies to cmake.
 set -euo pipefail
@@ -85,3 +86,12 @@ echo "PASS: a build leaves no plugin/target"
 # 6. the fake's tests ----------------------------------------------------------
 run_logged 'the fake tailscaled tests' in_plugin cargo test --locked -p fake-tailscaled
 echo "PASS: the fake tailscaled's tests pass"
+
+# 7. 50 consecutive runs -------------------------------------------------------
+# Every Tailscale characterisation stands on the fake, so a flaky fake makes
+# them all flaky. Built once, then run 50 times; the first failure stops it.
+run_logged 'build the fake tailscaled tests' in_plugin cargo test --locked --no-run -p fake-tailscaled
+for run in $(seq 1 50); do
+  run_logged "the fake tailscaled tests, run $run of 50" in_plugin cargo test --locked -q -p fake-tailscaled
+done
+echo "PASS: the fake tailscaled's tests pass 50 consecutive runs"
