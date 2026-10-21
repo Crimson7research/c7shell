@@ -28,6 +28,7 @@ Source of truth for behaviour: branch `feat/tailscale-backend` (PR #286, open,
 | Tracking | A GitHub epic with one sub-issue per phase PR | The plan links to the epic once it is filed |
 | Linker (2026-10-20) | rust-lld, pinned in `.cargo/config.toml` | GNU ld cannot export the plugin entry points (spike check 8); `PKGBUILD` appends `-C link-arg=-fuse-ld=lld` to makepkg's `RUSTFLAGS` |
 | Branch coverage (2026-10-20) | Only the coverage gate runs on a pinned, dated nightly | Stable rejects `--branch`; the plugin builds and ships on stable |
+| Split by evidence (2026-10-21) | Requirements that need no time are characterised by the Rust harness against the `a38dbca` C++ build loaded through QML. A requirement whose acceptance needs the explicit-advance test clock, an injected timing, a test hook or a decided member #286 lacks cannot run against the C++ through QML | Timing `parity` requirements take #286's own QtTest suites as their C++ evidence, as mapped in the traceability's Table B, and their Rust tests are written in Phase 3. Timing `fix` and `new` requirements are written in Phase 3 and recorded as "cannot run on C++". `tests/fixtures/tailscale/evidence.json` records each requirement's class (plan `2026-10-21-phase2-harness.md`) |
 
 ## Phase 0 — adopt Rust (decided)
 
@@ -119,10 +120,18 @@ it. They run green against the C++ branch first.
 6. **Split parity from fixes.** Parity tests must pass on the C++ branch.
    Each `fix` test must fail on the C++ branch, for the reason the defect
    describes, and pass on Rust. Record the expected failures in the scenario
-   files, so the cut-over check can name every behaviour change.
+   files, so the cut-over check can name every behaviour change. This holds
+   for the requirements the harness can run on the C++; the others follow
+   the "Split by evidence" decision (2026-10-21).
 
-Exit: all parity tests green on C++ for 50 consecutive runs, every `fix` test red on C++ for its stated reason, mutation score
-recorded as the baseline, and the scenario and corpus files committed.
+Exit: every `parity` scenario the harness runs on C++ passes on `a38dbca`
+for 50 consecutive runs, and every `fix` scenario it runs there fails for
+its stated reason in each of 50 runs. Every timing `parity` requirement
+names the #286 QtTest functions that are its C++ evidence. Every requirement
+that cannot run on C++ is recorded as such, with its reason, and its test is
+written in Phase 3. The evidence file classifies all 154 requirements, the
+mutation score is recorded as the baseline, and the scenario and corpus
+files are committed.
 
 ## Phase 2b — port the existing C++ harness
 
