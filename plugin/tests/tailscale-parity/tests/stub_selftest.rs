@@ -204,6 +204,29 @@ fn the_repeat_count(failures: &mut Vec<String>) {
     }
 }
 
+/// 10. C7_HARNESS_MAX_ITERATIONS is a whole number of at least 1; a child
+///     given anything else says so instead of waiting with the default cap.
+fn the_wait_cap(failures: &mut Vec<String>) {
+    for (value, want) in [
+        (None, Some(tailscale_parity::MAX_ITERATIONS)),
+        (Some("20000"), Some(20_000)),
+        (Some("20k"), None),
+        (Some("0"), None),
+        (Some(""), None),
+    ] {
+        let got = tailscale_parity::parse_max_iterations(value);
+        let ok = match (&got, want) {
+            (Ok(n), Some(w)) => *n == w,
+            (Err(e), None) => e.contains("C7_HARNESS_MAX_ITERATIONS"),
+            _ => false,
+        };
+        check(failures, ok, &format!("C7_HARNESS_MAX_ITERATIONS={value:?} gives {got:?}"));
+    }
+    let bad = [("C7_HARNESS_MAX_ITERATIONS", "20k")];
+    let r = runner::run_one(&stub(), STUB_IMPLEMENTATIONS, &selftest("scenarios/pass.json"), &bad);
+    verdict(failures, &r, false, &["C7_HARNESS_MAX_ITERATIONS"], error("C7_HARNESS_MAX_ITERATIONS"));
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -215,6 +238,7 @@ fn parent() -> i32 {
     the_run_all_filters(&mut failures);
     the_conclusion(&mut failures);
     the_repeat_count(&mut failures);
+    the_wait_cap(&mut failures);
     finish("stub_selftest", &failures)
 }
 
