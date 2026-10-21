@@ -19,8 +19,12 @@ use cxx::UniquePtr;
 use cxx_qt::casting::Upcast;
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQmlEngine, QString, QUrl};
 
-/// The default cap on event-loop iterations for one wait.
-pub const MAX_ITERATIONS: u64 = 50_000_000;
+/// The default cap on event-loop iterations for one wait. One iteration is
+/// a non-blocking `processEvents()` and a yield, about 10 µs here, so a wait
+/// never reached fails after about 10 s of one busy core. The waits the
+/// scenarios reach take under 300 iterations, 12 jobs in parallel included;
+/// the cap only turns a hang into a failure, and nothing asserts on time.
+pub const MAX_ITERATIONS: u64 = 1_000_000;
 
 /// The cap on event-loop iterations for one wait: [`MAX_ITERATIONS`], or
 /// `C7_HARNESS_MAX_ITERATIONS` for the self-tests of a wait never reached.
