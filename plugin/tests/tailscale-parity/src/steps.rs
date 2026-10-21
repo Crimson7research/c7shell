@@ -24,7 +24,7 @@ fn wanted(e: &Expect) -> Value {
     }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
-        (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count }),
+        (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count, "since": s.since }),
         (_, _, Some(r), _) => json!(r.raw),
         (_, _, _, Some(r)) => json!({ "requests": r.count }),
         _ => Value::Null,
@@ -38,6 +38,8 @@ pub(crate) struct Run<'a> {
     pub(crate) loaded: Option<Loaded>,
     pub(crate) contract: Contract,
     pub(crate) failing: Vec<Failing>,
+    /// Each mark's label and every counted signal's count at that step.
+    pub(crate) marks: BTreeMap<String, BTreeMap<String, u64>>,
 }
 
 impl Run<'_> {
@@ -83,6 +85,10 @@ impl Run<'_> {
             Step::Fake(op) => self.fake_op(op),
             Step::Barrier(b) => Err(format!("the {b:?} barrier needs a capability this implementation lacks")),
             Step::AdvanceMs(_) => Err("advance_ms needs the clock, which this implementation lacks".into()),
+            Step::Mark(label) => {
+                self.marks.insert(label.clone(), self.contract.signal_counts()?);
+                Ok(())
+            }
             Step::Expect(e) => self.expect(e),
         }
     }
@@ -166,6 +172,15 @@ impl Run<'_> {
         Ok(())
     }
 
+    /// How often signal `name` fired since load, or since mark `since`.
+    fn signal_count_since(&self, name: &str, since: Option<&str>) -> Result<u64, String> {
+        let now = self.contract.signal_count(name)?;
+        let Some(label) = since else { return Ok(now) };
+        let mark = self.marks.get(label).ok_or_else(|| format!("no mark `{label}` was reached"))?;
+        let then = mark.get(name).ok_or_else(|| format!("mark `{label}` counted no signal {name}"))?;
+        now.checked_sub(*then).ok_or_else(|| format!("{name} fell from {then} at mark `{label}` to {now}"))
+    }
+
     /// Whether every recorded request `m` matches passes `check`, with at
     /// least one: the first that fails is the actual value, as its bytes,
     /// and none at all reads null.
@@ -196,7 +211,7 @@ impl Run<'_> {
             }
             (ok, model::one_or_all(actual))
         } else if let Some(s) = &e.signal {
-            let n = self.contract.signal_count(&s.name)?;
+            let n = self.signal_count_since(&s.name, s.since.as_deref())?;
             (n == s.count, json!(n))
         } else if let Some(r) = &e.request {
             self.every_request(&r.matcher, |q| if q.raw == r.raw.0 { Ok(()) } else { Err("other bytes".into()) })

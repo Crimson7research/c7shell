@@ -5,7 +5,8 @@
 // Probe.reply before the emit returns.
 //
 // Commands, as JSON: {"op": "read", "name"}, {"op": "enum", "key"},
-// {"op": "call", "name", "args"}, {"op": "count", "name"}, {"op": "members"},
+// {"op": "call", "name", "args"}, {"op": "count", "name"}, {"op": "counts"}
+// (every counted signal's count, by name), {"op": "members"},
 // and on a model member {"op": "rows", "name", "row"},
 // {"op": "has_children", "name", "row"} and {"op": "data", "name", "row",
 // "role"} (row null for the root; role a name or "#<number>").
@@ -123,6 +124,8 @@ QtObject {
             if (!(c.name in root.counts))
                 throw new Error("no signal " + c.name + " is counted");
             return root.counts[c.name];
+        case "counts":
+            return Object.assign({}, root.counts);
         case "rows": {
             const m = model(c.name);
             return c.row === null ? m.rowCount() : m.rowCount(m.index(c.row, 0));

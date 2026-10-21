@@ -269,7 +269,15 @@ fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
     if let Err(e) = fake.set_script(scenario.fake.clone()) {
         return Outcome::Error(format!("fake.{e}"));
     }
-    let mut run = Run { app: &app, fake: &fake, qml, loaded: None, contract: Contract::new(), failing: Vec::new() };
+    let mut run = Run {
+        app: &app,
+        fake: &fake,
+        qml,
+        loaded: None,
+        contract: Contract::new(),
+        failing: Vec::new(),
+        marks: BTreeMap::new(),
+    };
     let result = scenario.steps.iter().enumerate().try_for_each(|(i, step)| {
         run.step(step).map_err(|e| format!("steps[{i}]: {e}"))?;
         run.exit_if_asked();

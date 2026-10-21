@@ -5,6 +5,8 @@
 //! `{"date": null}` and a valid one as `{"date": "<ISO>"}`, a model as
 //! `{"rows": n}`, a string list as an array.
 
+use std::collections::BTreeMap;
+
 use serde_json::{json, Value};
 
 use crate::probe;
@@ -58,6 +60,12 @@ impl Contract {
     pub fn signal_count(&self, name: &str) -> Result<u64, String> {
         let v = self.request(json!({ "op": "count", "name": name }))?;
         v.as_u64().ok_or_else(|| format!("count of {name} is {v}"))
+    }
+
+    /// Every counted signal's count since the driver loaded, by name.
+    pub fn signal_counts(&self) -> Result<BTreeMap<String, u64>, String> {
+        let v = self.request(json!({ "op": "counts" }))?;
+        serde_json::from_value(v.clone()).map_err(|e| format!("the counts {v}: {e}"))
     }
 
     /// `rowCount()` of model member `name`, or with `row` that row's child

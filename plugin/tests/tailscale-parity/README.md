@@ -181,6 +181,24 @@ exactly). With `body_json` its body parses as JSON equal to it and its
 must match. A failure's actual value is the first differing request's
 bytes, and the log says which part differed; no request reads null.
 
+### Counts since a mark (#307)
+
+A `{"mark": label}` step records the count of every signal the driver
+counts, and a `signal` expect with `"since": label` compares the count
+since that step instead of since load:
+
+```json
+{ "mark": "before-change" },
+{ "fake": { "push_watch_line": "{\"State\":6}" } },
+{ "wait": { "model": { "name": "peers", "row": 1, "values": { "online": false } } } },
+{ "expect": { "id": "one-move", "signal": { "name": "peers.rowsMoved", "count": 1, "since": "before-change" } } }
+```
+
+This is how R-GROUP-06 to 08 count "from just before" a change: how
+many signals the first fill emits is the implementation's choice. A
+label is named once, and `since` names an earlier mark, or the scenario
+is a format error.
+
 ### Bodies from capture files (#307)
 
 A reply body, a stream head's body or a `complete_held` body may be
