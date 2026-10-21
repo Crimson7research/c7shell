@@ -443,3 +443,44 @@ fn push_to_reaches_one_chosen_client() {
     assert_eq!(fake.push_line(b"one"), 1);
     assert_eq!(first.read_exactly(4), b"one\n");
 }
+
+#[test]
+fn r_fake_07_reports_what_the_barriers_read() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"ok"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    assert_eq!(fake.clients(), vec![]);
+    assert_eq!((fake.connected_count(), fake.accepted_total(), fake.disconnects()), (0, 0, 0));
+
+    let get: &[u8] = b"GET /q HTTP/1.1\r\n\r\n";
+    assert_eq!(get.len(), 19);
+    let mut one = Client::connect(fake.path());
+    one.write(get);
+    assert_eq!(one.read_exactly(2), b"ok");
+    let c1 = &fake.clients()[0];
+    assert_eq!((c1.id, c1.connected, c1.received, c1.written, c1.held), (1, true, 19, 2, false));
+    assert_eq!((fake.connected_count(), fake.accepted_total()), (1, 1));
+
+    assert_eq!(fake.push_line(b"abc"), 1);
+    assert_eq!(one.read_exactly(6), b"okabc\n");
+    assert_eq!(fake.clients()[0].written, 6);
+
+    one.write(b"GET /");
+    fake.wait_until("24 bytes received from client 1", |s| (s.clients()[0].received == 24).then_some(()));
+    assert_eq!(fake.requests().len(), 1, "a request without its delimiter was recorded");
+
+    let mut two = Client::connect(fake.path());
+    two.write(get);
+    assert_eq!(two.read_exactly(2), b"ok");
+    assert_eq!((fake.connected_count(), fake.accepted_total()), (2, 2));
+    let c2 = &fake.clients()[1];
+    assert_eq!((c2.id, c2.received, c2.written), (2, 19, 2));
+
+    let before = fake.disconnects();
+    drop(one);
+    fake.wait_until("client 1's disconnect handled", |s| (s.disconnects() == before + 1).then_some(()));
+    assert_eq!(fake.connected_count(), 1);
+    assert_eq!(fake.accepted_total(), 2);
+    assert!(!fake.clients()[0].connected);
+    assert!(fake.clients()[1].connected);
+}
