@@ -1,0 +1,5 @@
+# A C7 module whose Tailscale is a type, not a singleton: the import
+# resolves, but no backend object exists, as with a create() that returns
+# nullptr. The driver must report that rather than become ready.
+module C7
+Tailscale 1.0 Tailscale.qml

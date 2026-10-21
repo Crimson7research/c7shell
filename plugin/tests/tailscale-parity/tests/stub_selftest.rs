@@ -36,19 +36,18 @@ fn child_probe() -> i32 {
     i32::from(!ok)
 }
 
-/// Child: a C7 without Tailscale; the driver's failure is reported, not
-/// waited out.
-fn child_no_tailscale() -> i32 {
+/// Child: the driver over the C7 in `selftest/<dir>` must fail to load
+/// with `want` in the reason, reported at once, not waited out.
+fn child_load_fails(dir: &str, want: &str) -> i32 {
     let app = headless_app();
-    let dir = selftest("qml-no-tailscale");
-    match load_driver(&app, &dir) {
+    match load_driver(&app, &selftest(dir)) {
         Ok(_) => {
-            println!("NO-TAILSCALE loaded");
+            println!("LOAD-FAILS {dir} loaded");
             1
         }
         Err(e) => {
-            println!("NO-TAILSCALE {e}");
-            i32::from(!e.contains("Tailscale is not defined"))
+            println!("LOAD-FAILS {dir}: {e}");
+            i32::from(!e.contains(want))
         }
     }
 }
@@ -62,6 +61,10 @@ fn the_bridge(failures: &mut Vec<String>) {
     // A driver that throws while it starts says why, at once.
     let out = spawn_child("no-tailscale", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
     check(failures, out.status.success(), "a C7 without Tailscale fails to load with `Tailscale is not defined`");
+    // A Tailscale that resolves to no backend object fails too, rather than
+    // letting a scenario that reads only the fake pass with no backend.
+    let out = spawn_child("tailscale-type", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
+    check(failures, out.status.success(), "a C7 whose Tailscale is a type fails to load: no backend object");
 }
 
 /// 2. The implementation is named, and its module directory must exist.
@@ -218,7 +221,8 @@ fn parent() -> i32 {
 fn main() {
     let code = match child::child_arg().as_deref() {
         Some("probe") => child_probe(),
-        Some("no-tailscale") => child_no_tailscale(),
+        Some("no-tailscale") => child_load_fails("qml-no-tailscale", "Tailscale is not defined"),
+        Some("tailscale-type") => child_load_fails("qml-tailscale-type", "no backend object"),
         Some("scenario") => runner::child_main(),
         Some(other) => panic!("unknown child {other}"),
         None => parent(),
