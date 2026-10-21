@@ -232,7 +232,14 @@ fn scenarios_agree_with_the_evidence() {
                 s.id,
                 s.evidence
             );
-            assert_eq!(format!("{:?}", s.tag).to_lowercase(), e.tag, "{}: tag differs from {id}'s", s.id);
+            // As for a corpus case: a fix scenario runs what #286 does not
+            // do, so it names only fix requirements; a parity scenario may
+            // run a clause of a fix requirement that #286 already meets.
+            if s.tag == Tag::Fix {
+                assert_eq!(e.tag, "fix", "{}: a fix scenario names {id}, a {} requirement", s.id, e.tag);
+            } else {
+                assert!(e.tag == "parity" || e.tag == "fix", "{}: a parity scenario names {id}, a {}", s.id, e.tag);
+            }
             covered.insert(id.clone());
         }
         if s.evidence == EvidenceClass::HarnessOnCpp {
