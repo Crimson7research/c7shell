@@ -172,6 +172,23 @@ fn child_probe() -> i32 {
     i32::from(!ok)
 }
 
+/// Child: a C7 without Tailscale; the driver's failure is reported, not
+/// waited out.
+fn child_no_tailscale() -> i32 {
+    let app = headless_app();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("selftest/qml-no-tailscale");
+    match load_driver(&app, &dir) {
+        Ok(_) => {
+            println!("NO-TAILSCALE loaded");
+            1
+        }
+        Err(e) => {
+            println!("NO-TAILSCALE {e}");
+            i32::from(!e.contains("Tailscale is not defined"))
+        }
+    }
+}
+
 /// Child: #286's C7 with TS_SOCKET at an absent path, read from Rust.
 fn child_contract() -> i32 {
     let imp = match Implementation::from_env() {
@@ -217,6 +234,14 @@ fn parent() -> i32 {
     let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
     print!("{text}");
     check(&mut failures, out.status.success(), "a Probe round trip returns what the driver read and called");
+
+    // 1b. A driver that throws while it starts says why, at once.
+    let root = PrivateRoot::new();
+    let out =
+        child::isolated(&["--child=no-tailscale"], &root, &[("C7_HARNESS_MAX_ITERATIONS", "20000")]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
+    print!("{text}");
+    check(&mut failures, out.status.success(), "a C7 without Tailscale fails to load with `Tailscale is not defined`");
 
     // 2. The implementation is named, and its module directory must exist.
     let missing = Implementation::from_vars(Some("cpp-286"), None).unwrap_err();
@@ -296,6 +321,7 @@ fn main() {
     let code = match child::child_arg().as_deref() {
         Some("probe") => child_probe(),
         Some("contract") => child_contract(),
+        Some("no-tailscale") => child_no_tailscale(),
         Some("scenario") => runner::child_main(),
         Some(other) => panic!("unknown child {other}"),
         None => parent(),

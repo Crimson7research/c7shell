@@ -1,0 +1,4 @@
+# A C7 module without Tailscale, to test that the driver reports what
+# it could not reach rather than never becoming ready.
+module C7
+Other 1.0 Other.qml
