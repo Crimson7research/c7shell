@@ -145,6 +145,20 @@ query a list model member of `Tailscale` (`peers`, `exitNodes`). Give
 A `name` that is no model member is an error. A model `wait` never reached
 says what it last read.
 
+### Model signals (#307)
+
+Beside every `*Changed` signal, the driver counts each model member's
+`rowsInserted`, `rowsRemoved`, `rowsMoved`, `modelReset`, `dataChanged` and
+`layoutChanged` from the moment it loads, named `<member>.<signal>`. A
+`signal` wait or expect takes those names as it takes any other:
+
+```json
+{ "expect": { "id": "no-reset", "signal": { "name": "peers.modelReset", "count": 0 } } }
+```
+
+Each model member is read once, at load, and its signals are connected
+on that object: #286's `peers` and `exitNodes` are `CONSTANT`.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in
@@ -158,6 +172,7 @@ registers a static QML module `C7Harness` with one singleton, `Probe`
 (`src/probe.rs`). Rust emits `Probe.command(json)`; the driver runs it against
 `Tailscale` and calls `Probe.reply(json)` before the emit returns. The driver
 names no member: it counts every `*Changed` signal it finds on `Tailscale`,
-so the same driver serves #286's contract and the rewrite's.
+and every model member's own signals, so the same driver serves #286's
+contract and the rewrite's.
 
 No Quickshell code is copied or adapted here.

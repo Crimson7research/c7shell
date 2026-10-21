@@ -1,5 +1,6 @@
 // The generic driver (plan decision P7). It hard-codes no member of
-// Tailscale: it counts every *Changed signal it finds, and runs each command
+// Tailscale: it counts every *Changed signal it finds, and each model
+// member's own signals as "<member>.<signal>", and runs each command
 // Rust emits on Probe against Tailscale by name, answering through
 // Probe.reply before the emit returns.
 //
@@ -30,6 +31,9 @@ QtObject {
             delegate: QtObject {}
         }
     }
+    // The signals of a model member that are counted, as "<member>.<signal>".
+    readonly property var modelSignals: ["rowsInserted", "rowsRemoved", "rowsMoved", "modelReset", "dataChanged", "layoutChanged"]
+
     // What a delegate model item has beside the model's roles.
     readonly property var notRoles: ["index", "row", "column", "model", "hasModelChildren", "modelData"]
 
@@ -55,6 +59,15 @@ QtObject {
         return v;
     }
 
+    function count(name, s) {
+        root.counts[name] = 0;
+        s.connect(function () { root.counts[name] += 1; });
+    }
+
+    function isModel(v) {
+        return v !== null && typeof v === "object" && typeof v.rowCount === "function";
+    }
+
     function member(name) {
         if (!(name in Tailscale))
             throw new Error("Tailscale has no member " + name);
@@ -63,7 +76,7 @@ QtObject {
 
     function model(name) {
         const m = member(name);
-        if (m === null || typeof m !== "object" || typeof m.rowCount !== "function")
+        if (!isModel(m))
             throw new Error(name + " is not a model");
         return m;
     }
@@ -155,10 +168,13 @@ QtObject {
             for (const k in Tailscale) {
                 members += 1;
                 const s = Tailscale[k];
-                if (k.endsWith("Changed") && s && typeof s.connect === "function") {
-                    const name = k;
-                    root.counts[name] = 0;
-                    s.connect(function () { root.counts[name] += 1; });
+                if (k.endsWith("Changed") && s && typeof s.connect === "function")
+                    root.count(k, s);
+                // A model member is read once, here: #286's are CONSTANT,
+                // so the object counted is the one every read returns.
+                if (isModel(s)) {
+                    for (const sig of root.modelSignals)
+                        root.count(k + "." + sig, s[sig]);
                 }
             }
             if (Tailscale === null || typeof Tailscale !== "object" || members === 0) {
