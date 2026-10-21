@@ -66,8 +66,10 @@ C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_SCENARIOS=http-01-request-line-and-host \
 Each scenario runs in its own child process (a respawn of the test binary)
 with a cleared environment: the keep-list of
 `plugin/lib/testing/testmain.cpp`, a private `HOME`, `XDG_*`, `TMPDIR` and an
-empty `PATH`, dead bus addresses, `QT_QPA_PLATFORM=offscreen`, `TZ=UTC`
-(a date-time without a zone then reads the same on every host), and
+empty `PATH`, dead bus addresses, `QT_QPA_PLATFORM=offscreen`, `TZ=<+03>-3`
+(a fixed zone three hours east of UTC with no DST: a date-time without a
+zone then reads the same on every host, and a date built as local time
+from UTC fields is three hours off), and
 `TS_SOCKET` in the private root, where the fake listens. Nothing reaches the
 host's tailscaled or buses.
 
@@ -276,8 +278,10 @@ expect rows an implementation has; a shorter model fails at
 `<model>.count` and then is an error at the first missing row.
 `C7_SCENARIOS` and `C7_REPEAT` work as for the scenarios.
 
-Each child runs with `TZ=UTC`: #286 reads a date-time without a zone as
-local time, and the instant it then reads must not depend on the host.
+Each child runs with `TZ=<+03>-3`: #286 reads a date-time without a zone
+as local time, and the instant it then reads must not depend on the host.
+The zone is not UTC, so a case with a zone also catches an implementation
+that reads the instant right and then builds keyExpiry as local time.
 
 The captures are #286's (`plugin/lib/tailscale/tests/fixtures/` at
 `a38dbca`), whose names, users and addresses were already made up; the
