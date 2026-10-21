@@ -37,6 +37,18 @@ impl Contract {
         self.request(json!({ "op": "enum", "key": key }))
     }
 
+    /// A scenario value as the contract reports it: `{"enum": key}`
+    /// resolved to its integer, inside an array too.
+    pub fn resolve(&self, v: &Value) -> Result<Value, String> {
+        match v {
+            Value::Array(items) => items.iter().map(|i| self.resolve(i)).collect::<Result<_, _>>().map(Value::Array),
+            _ => match v.get("enum").and_then(Value::as_str) {
+                Some(key) => self.enum_value(key),
+                None => Ok(v.clone()),
+            },
+        }
+    }
+
     /// Calls invokable `name` with `args`.
     pub fn call(&self, name: &str, args: &[Value]) -> Result<Value, String> {
         self.request(json!({ "op": "call", "name": name, "args": args }))

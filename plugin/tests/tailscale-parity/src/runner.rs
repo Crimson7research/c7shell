@@ -355,15 +355,6 @@ impl Run<'_> {
         }
     }
 
-    /// A scenario value as the contract reports it: `{"enum": key}`
-    /// resolved to its integer.
-    fn resolve(&self, v: &Value) -> Result<Value, String> {
-        match v.get("enum").and_then(Value::as_str) {
-            Some(key) => self.contract.enum_value(key),
-            None => Ok(v.clone()),
-        }
-    }
-
     fn matching(&self, m: &Match) -> Vec<fake_tailscaled::Request> {
         self.fake.requests().into_iter().filter(|r| m.matches(r)).collect()
     }
@@ -389,7 +380,7 @@ impl Run<'_> {
             Wait::Contract(values) => {
                 let mut wanted = Vec::new();
                 for (member, v) in values {
-                    wanted.push((member.clone(), v.clone(), self.resolve(v)?));
+                    wanted.push((member.clone(), v.clone(), self.contract.resolve(v)?));
                 }
                 let what: Vec<String> = wanted.iter().map(|(m, v, _)| format!("{m} {v}")).collect();
                 let mut last = BTreeMap::new();
@@ -459,7 +450,7 @@ impl Run<'_> {
             let mut actual = serde_json::Map::new();
             for (member, v) in values {
                 let got = self.contract.read(member)?;
-                ok &= got == self.resolve(v)?;
+                ok &= got == self.contract.resolve(v)?;
                 actual.insert(member.clone(), got);
             }
             let actual = if actual.len() == 1 { actual.into_iter().next().unwrap().1 } else { Value::Object(actual) };

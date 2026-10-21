@@ -96,6 +96,24 @@ plan's "Scenario format", with every requirement it covers in
 --test scenario_format --test evidence` validates it without Qt. Then run it
 with `run.sh` and commit it with the result it has on `cpp-286`.
 
+## Kinds added after the plan
+
+The plan's "Scenario format" lists the step and expect kinds #306 shipped.
+These came later, each with its runner self-test under `selftest/`.
+
+### Array values (#307)
+
+A `contract` value in a `wait` or an `expect` may be an array of values the
+format compares, for a string-list member such as `issues`:
+
+```json
+{ "expect": { "id": "issues", "contract": { "issues": ["a", "", ""] } } }
+```
+
+The driver reads a list as a JSON array, so the comparison is element by
+element and in order. A failed one reports the array read as its actual
+value. `{"enum": key}` inside an array is resolved like any other.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in

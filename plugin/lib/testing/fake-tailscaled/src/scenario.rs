@@ -429,8 +429,9 @@ fn is_requirement_id(id: &str) -> bool {
         && number.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// A contract value a scenario can compare: a JSON scalar, `{"enum": name}`
-/// or `{"date": null | ISO string}`.
+/// A contract value a scenario can compare: a JSON scalar, `{"enum": name}`,
+/// `{"date": null | ISO string}`, or an array of such values (a string
+/// list, such as `issues`).
 pub fn check_value(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(map) if map.len() == 1 => match map.iter().next().unwrap() {
@@ -438,7 +439,8 @@ pub fn check_value(value: &Value) -> Result<(), String> {
             (k, Value::String(_) | Value::Null) if k == "date" => Ok(()),
             _ => Err(format!("{value} is not {{\"enum\": name}} or {{\"date\": null | string}}")),
         },
-        Value::Object(_) | Value::Array(_) => Err(format!("{value} is not a scalar, an enum or a date")),
+        Value::Array(items) => items.iter().try_for_each(check_value),
+        Value::Object(_) => Err(format!("{value} is not a scalar, an enum, a date or an array of them")),
         _ => Ok(()),
     }
 }
