@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "parse-14-wrong-string-and-bool",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Peer\":{\"n\":{\"ID\":\"nX1CNTRL\",\"HostName\":\"x\",\"TailscaleIPs\":null,\"Online\":\"yes\",\"ExitNodeOption\":null,\"DNSName\":5}}} yields exactly one peer, nX1CNTRL, with empty ip4, ip6 and dnsName, displayName x, and online and exitNodeOption false"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Peer": {
+        "n": {
+          "ID": "nX1CNTRL",
+          "HostName": "x",
+          "TailscaleIPs": null,
+          "Online": "yes",
+          "ExitNodeOption": null,
+          "DNSName": 5
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [
+      {"nodeId": "nX1CNTRL", "ip4": "", "ip6": "", "dnsName": "", "displayName": "x", "online": false, "exitNodeOption": false}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

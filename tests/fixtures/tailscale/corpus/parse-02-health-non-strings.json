@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "parse-02-health-non-strings",
+  "requirements": [
+    "R-PARSE-02"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Health\":[\"a\",null,3]} yields exactly [\"a\",\"\",\"\"]: an entry that is not a string is kept, in its place, as an empty string, and issueCount counts it (3)"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Health": [
+        "a",
+        null,
+        3
+      ]
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "issues": ["a", "", ""], "issueCount": 3}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

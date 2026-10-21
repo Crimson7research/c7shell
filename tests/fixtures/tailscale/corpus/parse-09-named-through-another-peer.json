@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "parse-09-named-through-another-peer",
+  "requirements": [
+    "R-PARSE-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "pointing ExitNodeStatus at peer ip-172-31-0-10 (status-exitnode.json, ID nahR6nX67r11CNTRL) names it host-5"
+  ],
+  "status": {
+    "file": "captures/status-exitnode.json"
+  },
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/ExitNodeStatus/ID",
+      "value": "nahR6nX67r11CNTRL"
+    }
+  ],
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "nahR6nX67r11CNTRL", "exitNodeName": "host-5", "exitNodeOnline": true}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

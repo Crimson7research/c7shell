@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "parse-02-health-null",
+  "requirements": [
+    "R-PARSE-02"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Health\":null} yields an empty health list: issues empty, issueCount 0"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Health": null
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "issues": [], "issueCount": 0}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

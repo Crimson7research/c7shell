@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "id": "parse-14-object-wrong-type",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Self\":\"me\",\"CurrentTailnet\":[\"t\"],\"User\":5,\"Peer\":{\"n\":{\"ID\":\"nX1CNTRL\",\"HostName\":\"x\",\"UserID\":3}}} yields backend state Running, an empty selfName, selfDnsName, selfIp4 and selfIp6, an empty tailnet and an invalid key expiry, and exactly one peer, nX1CNTRL, in Others with an empty ownerName",
+    "backend half: state Running, readError empty, selfName and tailnet empty, and the peers model has exactly one row, nX1CNTRL"
+  ],
+  "deferred": [
+    "\"the retry hook reads 0 retries armed\": phase3-only, the retry hook is a core-crate test hook"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": "me",
+      "CurrentTailnet": [
+        "t"
+      ],
+      "User": 5,
+      "Peer": {
+        "n": {
+          "ID": "nX1CNTRL",
+          "HostName": "x",
+          "UserID": 3
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "tailnet": "", "selfName": "", "selfIp4": "", "selfIp6": "", "keyExpiry": {"date": null}, "selfDnsName": "", "readError": ""},
+    "peers": [
+      {"nodeId": "nX1CNTRL", "group": 2, "ownerName": ""}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

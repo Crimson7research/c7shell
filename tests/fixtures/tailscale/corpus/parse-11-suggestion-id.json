@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "id": "parse-11-suggestion-id",
+  "requirements": [
+    "R-PARSE-11"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "given suggest-exit-node.json, once the backend is Running recommendedExitNodeId is nEwJFIats021CNTRL (the ID, not the Name), and it matches a nodeId in exitNodes"
+  ],
+  "deferred": [
+    "the change count, the 500 and malformed replies after a notification (a scenario), the arrival order and the retry hook (phase3-only)"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "suggest": {
+    "file": "captures/suggest-exit-node.json"
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "recommendedExitNodeId": "nEwJFIats021CNTRL"},
+    "exitNodes": [
+      {"nodeId": "nahR6nX67r11CNTRL"},
+      {"nodeId": "nEwJFIats021CNTRL"}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

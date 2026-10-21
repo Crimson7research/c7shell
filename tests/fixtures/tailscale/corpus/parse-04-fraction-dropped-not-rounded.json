@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "parse-04-fraction-dropped-not-rounded",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "the instant is kept to the millisecond; further fraction digits are dropped, not rounded: 2027-04-11T09:06:08.123999999Z yields 2027-04-11T09:06:08.123Z"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "2027-04-11T09:06:08.123999999Z"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"keyExpiry": {"date": "2027-04-11T09:06:08.123Z"}}
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "contract.keyExpiry",
+          "actual": {
+            "date": "2027-04-11T09:06:08.124Z"
+          }
+        }
+      ],
+      "reason": "#286 reads KeyExpiry with QDateTime::fromString(..., Qt::ISODate) (plugin/lib/tailscale/StatusParser.cpp:118), which rounds the fraction to the millisecond; R-PARSE-04 drops the further digits"
+    },
+    "rust": {"result": "pass"}
+  }
+}

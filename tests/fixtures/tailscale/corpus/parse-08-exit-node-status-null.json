@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "parse-08-exit-node-status-null",
+  "requirements": [
+    "R-PARSE-08"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "\"ExitNodeStatus\":null yields no exit node (status-idle.json with ExitNodeStatus null)"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "edits": [
+    {
+      "op": "add",
+      "path": "/ExitNodeStatus",
+      "value": null
+    }
+  ],
+  "expect": {
+    "contract": {"exitNodeActive": false, "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": false}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-09-exit-peer-gone",
+  "requirements": [
+    "R-PARSE-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "removing the exit peer from status-exitnode.json names the exit node by its id, never empty while the id is non-empty"
+  ],
+  "status": {
+    "file": "captures/status-exitnode.json"
+  },
+  "edits": [
+    {
+      "op": "remove",
+      "path": "/Peer/nodekey:00000000000000000000000000000000000000000000000000000000c7000009"
+    }
+  ],
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "nEwJFIats021CNTRL", "exitNodeName": "nEwJFIats021CNTRL", "exitNodeOnline": true}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

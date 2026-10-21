@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "id": "parse-14-null-string-and-object",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"NeedsLogin\",\"CurrentTailnet\":null,\"User\":null,\"Self\":{\"TailscaleIPs\":null,\"KeyExpiry\":5,\"UserID\":\"7\",\"DNSName\":null,\"HostName\":\"h\"}} yields backend state NeedsLogin, an empty tailnet, selfName h, an empty selfDnsName, empty selfIp4 and selfIp6, and an invalid key expiry",
+    "backend half: state NeedsLogin, readError empty, selfName h, selfIp4 and tailnet empty"
+  ],
+  "deferred": [
+    "\"the retry hook reads 0 retries armed\": phase3-only, the retry hook is a core-crate test hook"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "NeedsLogin",
+      "CurrentTailnet": null,
+      "User": null,
+      "Self": {
+        "TailscaleIPs": null,
+        "KeyExpiry": 5,
+        "UserID": "7",
+        "DNSName": null,
+        "HostName": "h"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "NeedsLogin"}, "tailnet": "", "selfName": "h", "selfIp4": "", "selfIp6": "", "keyExpiry": {"date": null}, "selfDnsName": "", "readError": ""},
+    "peers": []
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

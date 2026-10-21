@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-04-nanoseconds",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "2027-04-11T09:06:08.123456789Z yields 2027-04-11T09:06:08.123Z"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "2027-04-11T09:06:08.123456789Z"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"keyExpiry": {"date": "2027-04-11T09:06:08.123Z"}}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

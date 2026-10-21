@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "parse-05-self-hostname-only",
+  "requirements": [
+    "R-PARSE-05"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "a Self with only HostName \"omega\" yields selfName omega"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "omega"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"selfName": "omega"}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

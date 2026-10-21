@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "parse-09-status-without-id",
+  "requirements": [
+    "R-PARSE-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"ExitNodeStatus\":{\"Online\":true}} yields an exit node with an empty id and an empty name; through the contract exitNodeName reads the same strings"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "ExitNodeStatus": {
+        "Online": true
+      }
+    }
+  },
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": true}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

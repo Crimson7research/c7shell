@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "parse-12-other-health-kept",
+  "requirements": [
+    "R-PARSE-12"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "status-idle.json with DNS is not working appended to its Health list, after the warning: issues equals exactly [DNS is not working] and issueCount is 1"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "edits": [
+    {
+      "op": "add",
+      "path": "/Health/-",
+      "value": "DNS is not working"
+    }
+  ],
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "issues": ["DNS is not working"], "issueCount": 1}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

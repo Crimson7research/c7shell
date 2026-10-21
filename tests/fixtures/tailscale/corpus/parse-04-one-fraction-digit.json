@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-04-one-fraction-digit",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "an optional fraction of one to nine digits: 2027-04-11T09:06:08.5Z yields 2027-04-11T09:06:08.500Z"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "2027-04-11T09:06:08.5Z"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"keyExpiry": {"date": "2027-04-11T09:06:08.500Z"}}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

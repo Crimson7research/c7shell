@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "id": "parse-03-ipv6-listed-first",
+  "requirements": [
+    "R-PARSE-03"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "status-idle.json with the IPv6 address listed first: selfIp4 and selfIp6 change in neither"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/Self/TailscaleIPs",
+      "value": [
+        "fd7a:115c:a1e0::fd27:82d8",
+        "100.115.228.122"
+      ]
+    }
+  ],
+  "expect": {
+    "contract": {"selfIp4": "100.115.228.122", "selfIp6": "fd7a:115c:a1e0::fd27:82d8"}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}
