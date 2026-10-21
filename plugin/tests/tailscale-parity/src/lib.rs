@@ -109,6 +109,8 @@ pub fn load(app: &QGuiApplication, qml_dir: &Path, qml: &Path) -> Result<Loaded,
     let ready = wait_until(app, || {
         if failed.load(Ordering::SeqCst) {
             Some(Err(format!("{} did not load (see the QML errors above)", qml.display())))
+        } else if let Some(why) = probe::failure() {
+            Some(Err(format!("{} failed to start: {why}", qml.display())))
         } else if let Some(code) = loaded.exit_code() {
             Some(Err(format!("{} called Qt.exit({code}) before it was ready", qml.display())))
         } else {

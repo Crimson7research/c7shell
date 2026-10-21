@@ -35,6 +35,10 @@ pub mod qobject {
         /// The driver has connected its signal counters.
         #[qinvokable]
         fn ready(self: &Probe);
+
+        /// The driver could not start, and why.
+        #[qinvokable]
+        fn failed(self: &Probe, why: &QString);
     }
 
     impl cxx_qt::Initialize for Probe {}
@@ -43,6 +47,7 @@ pub mod qobject {
 thread_local! {
     static INSTANCE: Cell<*mut qobject::Probe> = const { Cell::new(std::ptr::null_mut()) };
     static READY: Cell<bool> = const { Cell::new(false) };
+    static FAILED: RefCell<Option<String>> = const { RefCell::new(None) };
     static REPLY: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
@@ -56,6 +61,7 @@ impl Drop for ProbeRust {
     fn drop(&mut self) {
         INSTANCE.with(|i| i.set(std::ptr::null_mut()));
         READY.with(|r| r.set(false));
+        FAILED.with(|f| f.borrow_mut().take());
     }
 }
 
@@ -76,11 +82,20 @@ impl qobject::Probe {
     fn ready(&self) {
         READY.with(|r| r.set(true));
     }
+
+    fn failed(&self, why: &QString) {
+        FAILED.with(|f| *f.borrow_mut() = Some(why.to_string()));
+    }
 }
 
 /// Whether the driver has said it is ready.
 pub fn is_ready() -> bool {
     READY.with(Cell::get)
+}
+
+/// Why the driver said it could not start, if it did.
+pub fn failure() -> Option<String> {
+    FAILED.with(|f| f.borrow().clone())
 }
 
 /// Emits `json` to the driver and returns its reply.

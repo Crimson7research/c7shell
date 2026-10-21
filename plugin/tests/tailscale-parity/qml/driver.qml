@@ -93,14 +93,21 @@ QtObject {
         }
     }
 
+    // An exception here (a C7 without Tailscale, say) is reported through
+    // Probe.failed, so the load ends at once and says why.
     Component.onCompleted: {
-        for (const k in Tailscale) {
-            const s = Tailscale[k];
-            if (k.endsWith("Changed") && s && typeof s.connect === "function") {
-                const name = k;
-                root.counts[name] = 0;
-                s.connect(function () { root.counts[name] += 1; });
+        try {
+            for (const k in Tailscale) {
+                const s = Tailscale[k];
+                if (k.endsWith("Changed") && s && typeof s.connect === "function") {
+                    const name = k;
+                    root.counts[name] = 0;
+                    s.connect(function () { root.counts[name] += 1; });
+                }
             }
+        } catch (e) {
+            Probe.failed(String(e));
+            return;
         }
         Probe.ready();
     }
