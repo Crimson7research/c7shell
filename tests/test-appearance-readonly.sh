@@ -73,7 +73,7 @@ Item {
 }
 QML
 printf 'import QtQuick\nQtObject {}\n' > "$tmp/Quickshell/Io/JsonAdapter.qml"
-printf 'import QtQuick\nQtObject { enum Error { Success, FileNotFound } }\n' \
+printf 'import QtQuick\nQtObject { enum Error { Success, Unknown, FileNotFound, PermissionDenied, NotAFile } }\n' \
   > "$tmp/Quickshell/Io/FileViewError.qml"
 cat > "$tmp/Quickshell/Io/Process.qml" <<'QML'
 import QtQuick
@@ -103,14 +103,20 @@ run() {
 }
 
 # The shell itself: it must still apply, export, push the wallpaper and persist.
+# Each write is checked right after the event that asks for it -- the QML test
+# logs a mark first -- so losing either write path fails on its own.
 shell=$(run shell)
-for want in 'hyprctl eval' 'python3 ' 'hyprctl hyprpaper wallpaper' 'write appearance.json'; do
+for want in 'hyprctl eval' 'python3 ' 'hyprctl hyprpaper wallpaper'; do
   grep -qF "$want" <<<"$shell" \
     || fail "the shell's own AppearanceStore no longer does \"$want\":\n$shell"
 done
+for event in adapterUpdated loadFailed; do
+  grep -A1 -xF "mark: $event" <<<"$shell" | grep -qxF 'write appearance.json' \
+    || fail "the shell's own AppearanceStore no longer writes appearance.json on $event:\n$shell"
+done
 
 # The picker's: it reads, and asks for nothing.
-picker=$(run picker --env=C7SHELL_APPEARANCE_READONLY=1)
+picker=$(run picker --env=C7SHELL_APPEARANCE_READONLY=1 | grep -v '^mark: ' || true)
 [[ -z $picker ]] || fail "a read-only AppearanceStore still has side effects:\n$picker"
 
 echo 'PASS: AppearanceStore read-only mode'

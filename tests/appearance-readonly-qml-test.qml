@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Services
 
 // Driven by tests/test-appearance-readonly.sh. Touches the store only after the
@@ -22,8 +23,10 @@ QtObject {
     const before = AppearanceStore.accent
     AppearanceStore.values.accent = "#00a149"    // palette-literal-ok: a test value, not a token
     AppearanceStore.values.wallpaper = "/tmp/c7-test.png"
+    Recorder.log("mark: adapterUpdated")
     Recorder.file.adapterUpdated()
-    Recorder.file.loadFailed(1)
+    Recorder.log("mark: loadFailed")
+    Recorder.file.loadFailed(FileViewError.FileNotFound)
     root.settle.start()
   }
 }
