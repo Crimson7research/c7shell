@@ -280,11 +280,15 @@ grep -qF "$un/conf/xdg-desktop-portal/hyprland-portals.conf" <<<"$out" \
 [[ -f $un/conf/arch-update/arch-update.conf ]] || fail 'uninstall deleted the user-owned arch-update config'
 grep -q 'PrivilegeElevationCommand=run0' <<<"$out" || fail "uninstall did not mention the arch-update line it left:\n$out"
 for left in 'Sudo = run0' "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts" \
-            "C7Shell colours in $un/conf/kdeglobals" "$un/conf/hypr/hyprlock-palette.conf"; do
+            "C7Shell colours in $un/conf/kdeglobals"; do
   grep -qF "$left" <<<"$out" || fail "uninstall did not list what it left: $left\n$out"
 done
+# The lock palette is c7shell's own, generated: left behind, it alone would
+# keep ~/.config/hypr alive and the next setup would skip the hypr part.
+[[ ! -e $un/conf/hypr/hyprlock-palette.conf ]] || fail 'uninstall left the generated lock palette'
 [[ -f $un/conf/quickshell/c7shell/shell.qml.new ]] || fail 'uninstall deleted the .new beside an edited file'
-grep -qF "$un/conf/quickshell/c7shell/shell.qml.new" <<<"$out" || fail "uninstall did not list the kept .new:\n$out"
+grep -A1 'parked for you to merge' <<<"$out" | grep -qF "$un/conf/quickshell/c7shell/shell.qml.new" \
+  || fail "uninstall did not list the kept .new as a version to merge:\n$out"
 # The rc files come back byte for byte, through the symlink.
 cmp -s "$un/dotfiles/bashrc" "$tmp/bashrc.orig" || fail "uninstall did not restore .bashrc:\n$(cat -A "$un/dotfiles/bashrc")"
 cmp -s "$un/zdot/.zshrc" "$tmp/zshrc.orig" || fail "uninstall did not restore .zshrc:\n$(cat -A "$un/zdot/.zshrc")"
@@ -301,6 +305,7 @@ mkdir -p "$un/state"; printf 'quickshell/c7shell/x.qml\t%s\n' "$(printf 'x\n' | 
 echo x > "$un/conf/quickshell/c7shell/x.qml"
 u --uninstall >/dev/null 2>&1 || fail 'uninstall of the last file failed'
 [[ ! -e $un/conf/quickshell ]] || fail "uninstall left the directories it emptied:\n$(find "$un/conf/quickshell")"
+[[ ! -e $un/state/manifest ]] || fail 'uninstall kept a manifest with every row removed'
 [[ -d $un/conf ]] || fail 'uninstall removed the config dir itself'
 
 # An empty config dir is still the config dir: pruning stops below it.
@@ -321,11 +326,13 @@ out=$(HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup
 # is left whole, and the run says so with exit 1.
 ro=$tmp/ro; mkdir -p "$ro/home"
 printf 'a\n\n%s\nz' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$ro/home/.bashrc"
+chmod 640 "$ro/home/.bashrc"
 printf 'hypr/none\t0\n' > "$lone/state/manifest"
 HOME=$ro/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 \
   || fail 'uninstall failed on an rc file without a final newline'
 [[ $(od -An -c "$ro/home/.bashrc" | tr -s ' ') == ' a \n z' ]] \
   || fail "uninstall did not restore an rc file without a final newline:\n$(od -c "$ro/home/.bashrc")"
+[[ $(stat -c %a "$ro/home/.bashrc") == 640 ]] || fail "uninstall changed an rc file's mode to $(stat -c %a "$ro/home/.bashrc")"
 printf 'a\n%s\n' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$ro/home/.bashrc"
 chmod 444 "$ro/home/.bashrc"; printf 'hypr/none\t0\n' > "$lone/state/manifest"
 rc=0; out=$(HOME=$ro/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall 2>&1) || rc=$?
@@ -342,10 +349,32 @@ u --uninstall >/dev/null 2>&1 || true
 
 grep -q '^\.\./outside' "$un/state/manifest" || fail 'uninstall dropped the row it refused to follow'
 
-# Nothing installed is a sentence, not a failure.
-out=$(HOME=$un/home XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$tmp/never "$setup" --uninstall 2>&1) \
+# No manifest -- an install older than it, a wiped ~/.local/state -- removes no
+# config file, but still takes out the sudo line and lists what is left.
+nm=$tmp/nomanifest; mkdir -p "$nm/home"
+printf 'a\n\n%s\n' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$nm/home/.bashrc"
+out=$(HOME=$nm/home XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$tmp/never "$setup" --uninstall 2>&1) \
   || fail "uninstall with no install recorded failed:\n$out"
-grep -qi 'nothing to remove' <<<"$out" || fail "uninstall with no install recorded did not say so:\n$out"
+grep -q 'no install recorded' <<<"$out" || fail "uninstall with no install recorded did not say so:\n$out"
+grep -qF 'c7shell: sudo asks' "$nm/home/.bashrc" && fail 'uninstall with no manifest left the sudo line'
+
+# A manifest names no config dir, so a run against another one -- or with a
+# part moved aside -- must keep the rows it found nothing for.
+other=$tmp/otherconf; mkdir -p "$other/state"
+printf 'hypr/hyprland.lua\t%s\n' "$(echo v1 | sha256sum | cut -d' ' -f1)" > "$other/state/manifest"
+HOME=$nm/home XDG_CONFIG_HOME=$other/elsewhere C7SHELL_STATE=$other/state "$setup" --uninstall >/dev/null 2>&1 \
+  || fail 'uninstall against an empty config dir failed'
+grep -q '^hypr/hyprland.lua' "$other/state/manifest" || fail 'uninstall erased the rows of files it never saw'
+
+# A file it cannot remove keeps its row and fails the run.
+ro2=$tmp/rodir; mkdir -p "$ro2/conf/hypr" "$ro2/state"; echo v1 > "$ro2/conf/hypr/hyprland.lua"
+printf 'hypr/hyprland.lua\t%s\n' "$(echo v1 | sha256sum | cut -d' ' -f1)" > "$ro2/state/manifest"
+chmod 555 "$ro2/conf/hypr"
+rc=0; out=$(HOME=$nm/home XDG_CONFIG_HOME=$ro2/conf C7SHELL_STATE=$ro2/state "$setup" --uninstall 2>&1) || rc=$?
+chmod 755 "$ro2/conf/hypr"
+((rc == 1)) || fail "a file uninstall could not remove did not exit 1 (got $rc):\n$out"
+grep -q '^hypr/hyprland.lua' "$ro2/state/manifest" || fail 'uninstall dropped the row of a file it could not remove'
+grep -q 'removed 0 ' <<<"$out" || fail "uninstall counted a file it could not remove:\n$out"
 
 # --- and none of the above escaped into a real home -----------------------
 # The isolation above is the whole reason this file cannot damage the machine

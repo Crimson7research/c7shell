@@ -400,17 +400,20 @@ and 4 when it copied only some parts.
 
 To switch to another setup, run `c7shell-setup --uninstall` before you remove
 the package; the command ships in it. It reads the same manifest. Each shipped
-file you have not edited is removed, with any `<file>.new` beside it, and so is
-the run0 `sudo` line setup added to `~/.bashrc` or `~/.zshrc` (through a
-symlink if the file is one). Edited files stay, and so does the `.new` beside
-one, since that is the version you were asked to merge. Files you added, empty
-directories you made, and `.bak-<stamp>` backups stay too, and so do files
-reached through a symlinked directory, such as a dotfiles repo linked in as
-`~/.config/hypr`. It lists what it kept, the run0 lines in your arch-update and
-paru configs, and the theme files setup exported (the C7Shell colours in
-`kdeglobals`, `hypr/hyprlock-palette.conf`, `C7Shell.colors`), which other
-desktops read too. Add `--dry-run` to see the list first. It exits 0, or 1 when
-it could not edit an rc file, which it then names.
+file you have not edited is removed, with any `<file>.new` beside it, and so are
+the generated `hypr/hyprlock-palette.conf` and the run0 `sudo` line setup added
+to `~/.bashrc` or `~/.zshrc` (through a symlink if the file is one). Edited
+files stay, and so does the `.new` beside one, since that is the version you
+were asked to merge. Files you added, empty directories you made, and
+`.bak-<stamp>` backups stay too, and so do files reached through a symlinked
+directory, such as a dotfiles repo linked in as `~/.config/hypr`. It lists what
+it kept and what else setup left: the run0 lines in your arch-update and paru
+configs, the C7Shell colours in `kdeglobals` and `C7Shell.colors`, which other
+desktops read too, and `~/.local/share/c7shell/scripts`. Without a manifest (an
+install older than it, or a cleared `~/.local/state`) it removes no config
+file, but still takes out the `sudo` line and lists the rest. Add `--dry-run`
+to see the list first. It exits 0, or 1 when it could not remove a file or edit
+an rc file, which it then names.
 
 ## What is where
 
