@@ -12,6 +12,11 @@
 #      from the root with --manifest-path), and no other file under plugin/
 #   5. a build of the whole workspace, every target, leaves no plugin/target
 #      behind
+#   5b. the same build passes under makepkg's environment: RUSTFLAGS set,
+#      which replaces .cargo/config.toml's rustflags and with them the rust-lld
+#      pin, and -flto=auto in CFLAGS, CXXFLAGS and LDFLAGS, which makes GCC
+#      write cxx-qt's C++ as LTO objects ld.lld cannot read. PKGBUILD check()
+#      runs this suite in exactly that environment.
 #   6. the fake crate's tests pass
 #   7. they pass 50 consecutive runs
 # Skips, with the reason, when cargo is not on PATH, the rule
@@ -88,6 +93,22 @@ echo "PASS: /target/ and /plugin/target/ are ignored, no other file under plugin
 run_logged 'cargo build' in_plugin cargo build --locked --workspace --all-targets
 [[ ! -e $plugin/target ]] || fail "a cargo build created plugin/target"
 echo "PASS: a build of the whole workspace leaves no plugin/target"
+
+# 5b. the same build under makepkg's environment -------------------------------
+# The values of /etc/makepkg.conf and /etc/makepkg.conf.d/rust.conf on Arch.
+# Its own target directory, so a changed RUSTFLAGS does not rebuild the main
+# one each run.
+makepkg_env=(
+  RUSTFLAGS='-C force-frame-pointers=yes'
+  CFLAGS='-march=x86-64 -O2 -pipe -fno-plt -flto=auto'
+  CXXFLAGS='-march=x86-64 -O2 -pipe -fno-plt -flto=auto -Wp,-D_GLIBCXX_ASSERTIONS'
+  LDFLAGS='-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -flto=auto'
+  CARGO_TARGET_DIR="$repo/target/makepkg"
+)
+run_logged "cargo build under makepkg's environment" \
+  env "${makepkg_env[@]}" bash -c '. "$1" && cd "$2" && cargo build --locked --workspace --all-targets' \
+  _ "$repo/tests/fixtures/cargo-env.sh" "$plugin"
+echo "PASS: the workspace builds under makepkg's RUSTFLAGS and LTO flags"
 
 # 6. the fake's tests ----------------------------------------------------------
 run_logged 'the fake tailscaled tests' in_plugin cargo test --locked -p fake-tailscaled
