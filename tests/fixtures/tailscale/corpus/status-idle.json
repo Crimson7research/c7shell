@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "id": "status-idle",
+  "requirements": [
+    "R-PARSE-02",
+    "R-PARSE-03",
+    "R-PARSE-04",
+    "R-PARSE-05",
+    "R-PARSE-06",
+    "R-PARSE-07",
+    "R-PARSE-08",
+    "R-PARSE-12",
+    "R-GROUP-01",
+    "R-GROUP-02",
+    "R-GROUP-03",
+    "R-GROUP-04",
+    "R-GROUP-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "R-PARSE-02: status-idle.json yields backend state Running and tailnet example.com",
+    "R-PARSE-03: selfIp4 100.115.228.122 and selfIp6 fd7a:115c:a1e0::fd27:82d8; every peer's ip4 and ip6 by the same rule",
+    "R-PARSE-04: status-idle.json, a real tailscaled capture, yields keyExpiry 2027-04-11T09:06:08Z",
+    "R-PARSE-05: the peer with hostName ip-172-31-0-10 has displayName host-5 and dnsName host-5.example-tailnet.ts.net; the peer xi has an empty dnsName and displayName xi; selfName is host-6",
+    "R-PARSE-06: the gamma row has nodeId nPFCxlUqVJ11CNTRL, ip4 100.67.243.58, ip6 fd7a:115c:a1e0::8d19:e3a4 and online true",
+    "R-PARSE-07: status-idle.json describes the peer set: its 20 peers are listed",
+    "R-PARSE-08: status-idle.json yields no exit node (exitNodeActive false, exitNodeId and exitNodeName empty, exitNodeOnline false)",
+    "R-PARSE-12: its only health entry is the suppressed warning, so issues is exactly empty and issueCount 0",
+    "R-GROUP-01: 10 peers in group 0, 8 in group 1 and 2 in group 2; the gamma row's group role reads 1",
+    "R-GROUP-02: beta has group 2 and ownerName Second Example; every Mine row (and every Tagged row) has an empty ownerName",
+    "R-GROUP-03: a group-0 row comes first and the last group-0 row is offline; every row in the defined order (group, online first, display name, host name case-insensitively, nodeId)",
+    "R-GROUP-04: every row's ten roles; pentest-exit-node has exitNodeOption true and beta false; gamma reads hostName gamma, dnsName host-1.example-tailnet.ts.net, displayName host-1, group 1",
+    "R-GROUP-09: exitNodes has exactly 2 rows, each with exitNodeOption true, equal to the peers rows filtered on exitNodeOption in the same order"
+  ],
+  "deferred": [
+    "R-PARSE-02: the one parsed health entry containing --accept-routes (cpp-suite: the contract suppresses it)",
+    "R-PARSE-05: the parsed Self DNS name with its trailing dot (cpp-suite: the contract strips it, R-UI-07)",
+    "R-PARSE-07: whether a Peer section is present (phase3-only: not on #286's contract)",
+    "R-GROUP-04: the role-name table has exactly ten entries (cpp-suite: roleNames() is not invokable from QML)",
+    "R-GROUP-09: exitNodes is a different object from peers (no driver op compares two objects yet)"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}, "tailnet": "example.com", "selfName": "host-6", "selfIp4": "100.115.228.122", "selfIp6": "fd7a:115c:a1e0::fd27:82d8", "keyExpiry": {"date": "2027-04-11T09:06:08.000Z"}, "issues": [], "issueCount": 0, "exitNodeActive": false, "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": false},
+    "peers": [
+      {"hostName": "kappa", "displayName": "host-3", "ip4": "100.71.118.170", "ip6": "fd7a:115c:a1e0::72c9:b7f5", "dnsName": "host-3.example-tailnet.ts.net", "online": true, "group": 0, "ownerName": "", "nodeId": "nxtun9Kzu811CNTRL", "exitNodeOption": false},
+      {"hostName": "iota", "displayName": "iota", "ip4": "100.114.238.31", "ip6": "fd7a:115c:a1e0::1687:7452", "dnsName": "iota.example-tailnet.ts.net", "online": true, "group": 0, "ownerName": "", "nodeId": "nn3szBqi5U11CNTRL", "exitNodeOption": false},
+      {"hostName": "mu", "displayName": "mu", "ip4": "100.119.215.89", "ip6": "fd7a:115c:a1e0::3016:83db", "dnsName": "mu.example-tailnet.ts.net", "online": true, "group": 0, "ownerName": "", "nodeId": "nyJAzB3WKI11CNTRL", "exitNodeOption": false},
+      {"hostName": "eta", "displayName": "host-2", "ip4": "100.71.1.191", "ip6": "fd7a:115c:a1e0::abd4:5509", "dnsName": "host-2.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "nBcNxIxCj411CNTRL", "exitNodeOption": false},
+      {"hostName": "kappa", "displayName": "host-4", "ip4": "100.103.175.161", "ip6": "fd7a:115c:a1e0::612c:53fe", "dnsName": "host-4.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "nDerqYtF7K11CNTRL", "exitNodeOption": false},
+      {"hostName": "omicron", "displayName": "omicron", "ip4": "100.78.238.89", "ip6": "fd7a:115c:a1e0::ebcf:11c2", "dnsName": "omicron.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "nL9lyia6ep11CNTRL", "exitNodeOption": false},
+      {"hostName": "pi", "displayName": "pi", "ip4": "100.81.210.141", "ip6": "fd7a:115c:a1e0::2d91:b6c4", "dnsName": "pi.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "nvY8sFZWMU11CNTRL", "exitNodeOption": false},
+      {"hostName": "theta", "displayName": "theta", "ip4": "100.101.227.45", "ip6": "fd7a:115c:a1e0::30bb:696d", "dnsName": "theta.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "npRGdoB9uH11CNTRL", "exitNodeOption": false},
+      {"hostName": "zeta", "displayName": "zeta", "ip4": "100.81.62.41", "ip6": "fd7a:115c:a1e0::453a:d2d5", "dnsName": "zeta.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "npntlhHzOT11CNTRL", "exitNodeOption": false},
+      {"hostName": "zeta", "displayName": "zeta-1", "ip4": "100.76.118.136", "ip6": "fd7a:115c:a1e0::adca:409c", "dnsName": "zeta-1.example-tailnet.ts.net", "online": false, "group": 0, "ownerName": "", "nodeId": "n6mrWkr1v221CNTRL", "exitNodeOption": false},
+      {"hostName": "alpha", "displayName": "alpha", "ip4": "100.73.145.243", "ip6": "fd7a:115c:a1e0::3f4a:504e", "dnsName": "alpha.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nXPjaBnB4R11CNTRL", "exitNodeOption": false},
+      {"hostName": "delta", "displayName": "delta", "ip4": "100.104.75.196", "ip6": "fd7a:115c:a1e0::893e:eb22", "dnsName": "delta.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nhzjerksV911CNTRL", "exitNodeOption": false},
+      {"hostName": "epsilon", "displayName": "epsilon", "ip4": "100.116.184.152", "ip6": "fd7a:115c:a1e0::20a0:ccc3", "dnsName": "epsilon.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "n5iK8aK8di11CNTRL", "exitNodeOption": false},
+      {"hostName": "gamma", "displayName": "host-1", "ip4": "100.67.243.58", "ip6": "fd7a:115c:a1e0::8d19:e3a4", "dnsName": "host-1.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nPFCxlUqVJ11CNTRL", "exitNodeOption": false},
+      {"hostName": "ip-172-31-0-10", "displayName": "host-5", "ip4": "100.98.27.43", "ip6": "fd7a:115c:a1e0::cc33:d3c6", "dnsName": "host-5.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nahR6nX67r11CNTRL", "exitNodeOption": true},
+      {"hostName": "nu", "displayName": "nu", "ip4": "100.81.129.198", "ip6": "fd7a:115c:a1e0::80b4:112a", "dnsName": "nu.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "n75BOin0bw11CNTRL", "exitNodeOption": false},
+      {"hostName": "pentest-exit-node", "displayName": "pentest-exit-node", "ip4": "100.124.183.145", "ip6": "fd7a:115c:a1e0::bff4:b239", "dnsName": "pentest-exit-node.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nEwJFIats021CNTRL", "exitNodeOption": true},
+      {"hostName": "xi", "displayName": "xi", "ip4": "100.75.178.17", "ip6": "fd7a:115c:a1e0::a8e4:71de", "dnsName": "", "online": true, "group": 1, "ownerName": "", "nodeId": "n9WUb4ald311CNTRL", "exitNodeOption": false},
+      {"hostName": "lambda", "displayName": "lambda", "ip4": "100.70.33.83", "ip6": "fd7a:115c:a1e0::9ca4:f8a4", "dnsName": "lambda.example-tailnet.ts.net", "online": true, "group": 2, "ownerName": "Third Example", "nodeId": "ndQcXgXG7N21CNTRL", "exitNodeOption": false},
+      {"hostName": "beta", "displayName": "beta", "ip4": "100.83.47.228", "ip6": "fd7a:115c:a1e0::b5fc:e704", "dnsName": "beta.example-tailnet.ts.net", "online": false, "group": 2, "ownerName": "Second Example", "nodeId": "nquG7aDp5821CNTRL", "exitNodeOption": false}
+    ],
+    "exitNodes": [
+      {"hostName": "ip-172-31-0-10", "displayName": "host-5", "ip4": "100.98.27.43", "ip6": "fd7a:115c:a1e0::cc33:d3c6", "dnsName": "host-5.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nahR6nX67r11CNTRL", "exitNodeOption": true},
+      {"hostName": "pentest-exit-node", "displayName": "pentest-exit-node", "ip4": "100.124.183.145", "ip6": "fd7a:115c:a1e0::bff4:b239", "dnsName": "pentest-exit-node.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nEwJFIats021CNTRL", "exitNodeOption": true}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

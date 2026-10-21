@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "status-exitnode-offline",
+  "requirements": [
+    "R-PARSE-08",
+    "R-PARSE-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "R-PARSE-08: status-exitnode-offline.json yields online false, although the peer reads Online (its exitNodes row's online is true)",
+    "R-PARSE-09: the exit node is still named pentest-exit-node through its peer"
+  ],
+  "status": {
+    "file": "captures/status-exitnode-offline.json"
+  },
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "nEwJFIats021CNTRL", "exitNodeName": "pentest-exit-node", "exitNodeOnline": false},
+    "exitNodes": [
+      {"nodeId": "nahR6nX67r11CNTRL", "displayName": "host-5", "online": true},
+      {"nodeId": "nEwJFIats021CNTRL", "displayName": "pentest-exit-node", "online": true}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}
