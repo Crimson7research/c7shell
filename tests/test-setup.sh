@@ -252,7 +252,9 @@ echo mine > "$un/conf/hypr/monitors.lua"
 # manifest, but they keep the part's directory alive, so they must be named.
 echo '{}' > "$un/conf/hypr/displays-state.json"
 echo old > "$un/conf/hypr/hyprland.lua.bak-20260101000000"
-mkdir -p "$un/conf/gtk-3.0"; printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$un/conf/gtk-3.0/settings.ini"
+mkdir -p "$un/conf/gtk-3.0" "$un/conf/gtk-4.0"; printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$un/conf/gtk-3.0/settings.ini"
+# A settings.ini without the export's key is somebody else's, not a leftover.
+printf '[Settings]\ngtk-font-name=Sans 10\n' > "$un/conf/gtk-4.0/settings.ini"
 # The portal part now lives in a dotfiles repo, reached through a symlink.
 mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
 ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
@@ -268,6 +270,12 @@ out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
   || fail "uninstall --dry-run removed files:\n$out"
 grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall --dry-run edited .bashrc'
 grep -q '^would remove' <<<"$out" || fail "uninstall --dry-run did not say would:\n$out"
+grep -qF "hypr/hyprlock-palette.conf" <<<"$out" || fail "uninstall --dry-run did not preview the lock palette:\n$out"
+# What the dry run would remove is not also what it says stays.
+also=$(sed -n '/^Also still in the c7shell parts/,/^$/p' <<<"$out")
+for f in hypr/hyprland.lua hypr/hyprlock-palette.conf; do
+  grep -qxF "  $un/conf/$f" <<<"$also" && fail "uninstall --dry-run listed $f as both removed and left:\n$out"
+done
 
 out=$(u --uninstall 2>&1) || fail "uninstall failed:\n$out"
 for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf; do
@@ -283,6 +291,7 @@ done
 grep -qF 'shell.qml' <<<"$also" && fail "a file already listed as kept was listed twice:\n$out"
 grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$out" \
   || fail "uninstall did not list a file the theme export writes:\n$out"
+grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
 [[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
 [[ -d $un/conf/hypr/wallpapers ]] || fail 'uninstall deleted an empty directory the user made'
 [[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
@@ -327,6 +336,23 @@ printf 'hypr/x.lua\t%s\n' "$(sha256sum < "$lone/conf/hypr/x.lua" | cut -d' ' -f1
 HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 \
   || fail 'uninstall of a lone file failed'
 [[ -d $lone/conf && ! -e $lone/conf/hypr ]] || fail 'uninstall pruned past, or short of, the config dir'
+
+# The lock palette alone does not keep hypr/ alive, and through a symlinked
+# hypr/ it is the user's file and stays.
+mkdir -p "$lone/conf/hypr"; echo p > "$lone/conf/hypr/hyprlock-palette.conf"; printf 'hypr/gone\t0\n' > "$lone/state/manifest"
+HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || true
+[[ ! -e $lone/conf/hypr ]] || fail 'uninstall left hypr/ behind with only the lock palette gone from it'
+mkdir -p "$lone/dots/hypr"; echo p > "$lone/dots/hypr/hyprlock-palette.conf"; ln -s ../dots/hypr "$lone/conf/hypr"
+HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || true
+[[ -f $lone/dots/hypr/hyprlock-palette.conf ]] || fail 'uninstall deleted a lock palette through a symlinked hypr/'
+rm "$lone/conf/hypr"
+
+# A manifest it cannot rewrite fails the run.
+mkdir -p "$lone/conf/hypr"; echo x > "$lone/conf/hypr/k.lua"
+printf 'hypr/k.lua\t0000\n' > "$lone/state/manifest"; chmod 555 "$lone/state"
+rc=0; HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || rc=$?
+chmod 755 "$lone/state"; rm -r "$lone/conf/hypr"
+((rc == 1)) || fail "a manifest uninstall could not rewrite did not exit 1 (got $rc)"
 
 # A row whose file is gone but whose .new is there keeps the .new.
 mkdir -p "$lone/conf/hypr"; echo merged > "$lone/conf/hypr/y.lua.new"

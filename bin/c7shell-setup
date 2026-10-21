@@ -79,7 +79,8 @@ inside_conf() {
   [[ $(realpath -m -- "$1") == "$(realpath -m -- "$conf")/$2" && ! -L $1 ]]
 }
 
-# Sets removed, kept, parked, behind, failed, dirs (the parents of what went)
+# Sets removed, kept, parked, behind, failed, gone (what went, or under
+# --dry-run would go), dirs (the parents of what went)
 # and rows (every manifest row except those of the files removed) for the
 # caller. A row whose file is not there stays: the manifest does not say which
 # config dir it describes, so a run against another XDG_CONFIG_HOME, or with a
@@ -95,7 +96,7 @@ uninstall_files() {
       behind+=("$f")
     elif [[ -f $f && $(sha256sum -- "$f" | cut -d' ' -f1) == "$h" ]]; then
       if remove "$f" && { [[ ! -e $f.new ]] || remove "$f.new"; }; then
-        removed=$((removed + 1)); dirs+=("${f%/*}"); continue
+        removed=$((removed + 1)); dirs+=("${f%/*}"); gone+=("$f" "$f.new"); continue
       fi
       failed+=("$f")
     else
@@ -117,7 +118,7 @@ remove() { run rm -f -- "$1" 2>/dev/null && [[ $dry == 1 || ! -e $1 ]]; }
 remove_generated() {
   local f=$conf/hypr/hyprlock-palette.conf
   [[ -f $f ]] && inside_conf "$f" hypr/hyprlock-palette.conf || return 0
-  if remove "$f"; then dirs+=("${f%/*}"); else failed+=("$f"); fi
+  if remove "$f"; then dirs+=("${f%/*}"); gone+=("$f"); else failed+=("$f"); fi
 }
 
 # The directories the removals emptied, deepest first, up to but never
@@ -168,18 +169,24 @@ report_leftovers() {
   grep -qsx 'PrivilegeElevationCommand=run0' "$au" && left+=("PrivilegeElevationCommand=run0 in $au")
   grep -qsE '^[[:space:]]*Sudo[[:space:]]*=[[:space:]]*run0' "$pc" && left+=("Sudo = run0 in $pc")
   grep -qs 'C7Shell' "$conf/kdeglobals" && left+=("the C7Shell colours in $conf/kdeglobals")
-  for b in "$conf/kcminputrc" "$conf/gtk-3.0/settings.ini" "$conf/gtk-4.0/settings.ini" \
-           "$conf/imv/config" "$data/../color-schemes/C7Shell.colors"; do
-    [[ -e $b ]] && left+=("$(realpath -m -- "$b")   (the theme export writes to it)")
+  # Each file named only while it holds a key the export sets.
+  for b in "$conf/kcminputrc:^cursorTheme=" \
+           "$conf/gtk-3.0/settings.ini:^gtk-application-prefer-dark-theme" \
+           "$conf/gtk-4.0/settings.ini:^gtk-application-prefer-dark-theme" \
+           "$conf/imv/config:^overlay_background_alpha" "$data/../color-schemes/C7Shell.colors:."; do
+    grep -qs -- "${b##*:}" "${b%:*}" && left+=("$(realpath -m -- "${b%:*}")   (the theme export writes to it)")
   done
-  command -v gsettings >/dev/null && left+=('the GNOME color-scheme setting (gsettings org.gnome.desktop.interface color-scheme)')
+  b=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null) || b=
+  [[ -z $b || $b == "'default'" ]] \
+    || left+=("the GNOME color-scheme setting, now $b (gsettings org.gnome.desktop.interface color-scheme)")
   while IFS= read -r b; do left+=("$b"); done \
     < <(compgen -G "$conf/*.bak-*"; compgen -G "$conf/quickshell/*.bak-*")
   [[ -d $data/scripts ]] && left+=("$data/scripts")
   for part in "${parts[@]}"; do
     [[ -d $conf/$part && ! -L $conf/$part ]] || continue
     while IFS= read -r -d '' b; do
-      listed "$b" ${kept[@]+"${kept[@]}"} ${parked[@]+"${parked[@]}"} ${failed[@]+"${failed[@]}"} || rest+=("$b")
+      listed "$b" ${kept[@]+"${kept[@]}"} ${parked[@]+"${parked[@]}"} ${failed[@]+"${failed[@]}"} \
+        ${gone[@]+"${gone[@]}"} || rest+=("$b")
     done < <(find "$conf/$part" -type f -print0 | sort -z)
   done
   list 'Left as they are -- they may be your own choice, so remove them by hand if not:' \
@@ -194,12 +201,19 @@ listed() { local x=$1 y; shift; for y; do [[ $x == "$y" ]] && return 0; done; re
 # Keeps the rows of the files that stay, so a later setup or upgrade still
 # knows which of them are edits; no rows left, no manifest.
 rewrite_manifest() {
+  local m=$state/manifest
   ((dry)) && return 0
-  if (($#)); then printf '%s\n' "$@" > "$state/manifest"; else rm -f -- "$state/manifest"; fi
+  if (($#)); then
+    # Temp and rename, as setup writes it: an interrupted run keeps the old one.
+    printf '%s\n' "$@" > "$m.tmp.$$" 2>/dev/null && mv -f -- "$m.tmp.$$" "$m" 2>/dev/null \
+      || { rm -f -- "$m.tmp.$$"; failed+=("$m"); }
+  else
+    rm -f -- "$m" 2>/dev/null && [[ ! -e $m ]] || failed+=("$m")
+  fi
 }
 
 uninstall_config() {
-  local removed=0 kept=() parked=() behind=() dirs=() rows=() failed=() rc
+  local removed=0 kept=() parked=() behind=() dirs=() rows=() failed=() gone=() rc
   # The rc line and the leftovers do not need the manifest: an install older
   # than it, or a wiped ~/.local/state, still gets both.
   if [[ -f $state/manifest ]]; then
@@ -210,7 +224,8 @@ uninstall_config() {
     printf '%s %d unedited c7shell files from %s\n' "$(would remove removed)" "$removed" "$conf"
     # The rows of what stays are kept, so a later setup or upgrade still knows
     # those files as edits.
-    ((${#rows[@]} == 0)) || printf '%s %d rows in %s, for the files that stay\n' \
+    ((${#rows[@]} == 0)) || listed "$state/manifest" ${failed[@]+"${failed[@]}"} \
+      || printf '%s %d rows in %s, for the files that stay\n' \
       "$(would keep kept)" "${#rows[@]}" "$state/manifest"
   else
     printf 'no install recorded in %s, so no config files %s\n' "$state/manifest" "$(would 'be removed' 'are removed')"
