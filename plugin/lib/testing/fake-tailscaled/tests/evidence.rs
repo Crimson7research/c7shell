@@ -256,6 +256,30 @@ fn scenarios_agree_with_the_evidence() {
     }
 }
 
+/// Every requirement #307 runs on a38dbca is named by a scenario or a
+/// corpus case.
+#[test]
+fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
+    let ev = loaded();
+    let fixtures = repo().join("tests/fixtures/tailscale");
+    let mut named = BTreeSet::new();
+    for entry in std::fs::read_dir(fixtures.join("scenarios")).into_iter().flatten() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "json") {
+            named.extend(Scenario::load(&path).unwrap().requirements);
+        }
+    }
+    let cases = Case::load_dir(&fixtures.join("corpus"), fake_tailscaled::scenario::IMPLEMENTATIONS).unwrap();
+    named.extend(cases.into_iter().flat_map(|c| c.requirements));
+    let runs_in_307 = |r: &&evidence::Entry| {
+        (r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(307))
+            || r.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp && d.pr == Some(307))
+    };
+    let missing: Vec<&str> =
+        ev.requirements.iter().filter(runs_in_307).map(|r| r.id.as_str()).filter(|id| !named.contains(*id)).collect();
+    assert!(missing.is_empty(), "assigned to #307, but no scenario or corpus case runs: {missing:?}");
+}
+
 /// A corpus case runs harness-on-cpp clauses of the requirements it names.
 /// A `fix` case expects what #286 does not do, so every requirement it
 /// names is a `fix` one; a `parity` case may name a `fix` requirement whose
