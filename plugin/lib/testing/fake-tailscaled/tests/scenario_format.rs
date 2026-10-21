@@ -604,7 +604,9 @@ fn it_rejects_request_parts_with_a_bad_match_an_empty_header_name_or_another_kin
     assert_names(&e, "request_parts.headers[0]");
     let e = rejected(with_request_parts(json!({ "match": { "method": "PATCH", "target": "/a" } })));
     assert_names(&e, "starts_with");
-    let e = rejected(with_steps(json!([{ "expect": { "id": "two", "requests": { "match": { "method": "GET", "target": "/a" }, "count": 1 },
-        "request_parts": { "match": { "method": "GET", "target": "/a" }, "starts_with": "GET " } } }])));
+    let e = rejected(with_steps(
+        json!([{ "expect": { "id": "two", "requests": { "match": { "method": "GET", "target": "/a" }, "count": 1 },
+        "request_parts": { "match": { "method": "GET", "target": "/a" }, "starts_with": "GET " } } }]),
+    ));
     assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
 }
