@@ -248,6 +248,11 @@ mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
 printf '[bin]\nSudo = run0\n' > "$un/conf/paru/paru.conf.keep"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
+# What the shell itself writes, and what an upgrade backs up per file: in no
+# manifest, but they keep the part's directory alive, so they must be named.
+echo '{}' > "$un/conf/hypr/displays-state.json"
+echo old > "$un/conf/hypr/hyprland.lua.bak-20260101000000"
+mkdir -p "$un/conf/gtk-3.0"; printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$un/conf/gtk-3.0/settings.ini"
 # The portal part now lives in a dotfiles repo, reached through a symlink.
 mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
 ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
@@ -269,7 +274,15 @@ for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf; do
   [[ ! -e $un/conf/$gone ]] || fail "uninstall left $gone:\n$out"
 done
 [[ -f $un/conf/quickshell/c7shell/shell.qml ]] || fail 'uninstall deleted an edited file'
-grep -qF "$un/conf/quickshell/c7shell/shell.qml" <<<"$out" || fail "uninstall did not name the edited file it kept:\n$out"
+grep -A1 'Kept, because you edited them' <<<"$out" | grep -qxF "  $un/conf/quickshell/c7shell/shell.qml" \
+  || fail "uninstall did not name the edited file it kept:\n$out"
+also=$(sed -n '/^Also still in the c7shell parts/,/^$/p' <<<"$out")
+for f in hypr/monitors.lua hypr/displays-state.json hypr/hyprland.lua.bak-20260101000000; do
+  grep -qxF "  $un/conf/$f" <<<"$also" || fail "uninstall did not list $f as still in a part:\n$out"
+done
+grep -qF 'shell.qml' <<<"$also" && fail "a file already listed as kept was listed twice:\n$out"
+grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$out" \
+  || fail "uninstall did not list a file the theme export writes:\n$out"
 [[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
 [[ -d $un/conf/hypr/wallpapers ]] || fail 'uninstall deleted an empty directory the user made'
 [[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
@@ -346,6 +359,8 @@ echo keep > "$un/outside"
 printf '../outside\t%s\n' "$(sha256sum < "$un/outside" | cut -d' ' -f1)" > "$un/state/manifest"
 u --uninstall >/dev/null 2>&1 || true
 [[ -f $un/outside ]] || fail 'uninstall followed a ../ row out of the config dir'
+out=$(u --uninstall 2>&1) || true
+grep -qF "a ../ in the manifest" <<<"$out" || fail "a ../ row was not labelled as one:\n$out"
 
 grep -q '^\.\./outside' "$un/state/manifest" || fail 'uninstall dropped the row it refused to follow'
 

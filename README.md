@@ -402,18 +402,29 @@ To switch to another setup, run `c7shell-setup --uninstall` before you remove
 the package; the command ships in it. It reads the same manifest. Each shipped
 file you have not edited is removed, with any `<file>.new` beside it, and so are
 the generated `hypr/hyprlock-palette.conf` and the run0 `sudo` line setup added
-to `~/.bashrc` or `~/.zshrc` (through a symlink if the file is one). Edited
-files stay, and so does the `.new` beside one, since that is the version you
-were asked to merge. Files you added, empty directories you made, and
-`.bak-<stamp>` backups stay too, and so do files reached through a symlinked
-directory, such as a dotfiles repo linked in as `~/.config/hypr`. It lists what
-it kept and what else setup left: the run0 lines in your arch-update and paru
-configs, the C7Shell colours in `kdeglobals` and `C7Shell.colors`, which other
-desktops read too, and `~/.local/share/c7shell/scripts`. Without a manifest (an
-install older than it, or a cleared `~/.local/state`) it removes no config
-file, but still takes out the `sudo` line and lists the rest. Add `--dry-run`
-to see the list first. It exits 0, or 1 when it could not remove a file or edit
-an rc file, which it then names.
+to `~/.bashrc` or `${ZDOTDIR:-~}/.zshrc` (through a symlink if the file is one).
+Everything else stays, and it lists all of it:
+
+- files you edited, and the `.new` beside one, which is the version you were
+  asked to merge;
+- files that resolve outside `~/.config`, such as a dotfiles repo linked in as
+  `~/.config/hypr`;
+- every other file still in `hypr`, `quickshell/c7shell` or
+  `xdg-desktop-portal`: the shell's own state such as `displays-state.json`
+  and `appearance.json`, per-file `.bak-<stamp>` copies, and your own files.
+  While any of them is there, the next `c7shell-setup` skips that part;
+- the run0 lines in your arch-update and paru configs, the files the theme
+  export rewrote (`kdeglobals`, `kcminputrc`, the GTK `settings.ini` files,
+  `imv/config`, `C7Shell.colors`) and the GNOME `color-scheme` setting, which
+  other desktops read too;
+- `.bak-<stamp>` backups of whole parts, and `~/.local/share/c7shell/scripts`.
+
+The manifest keeps the rows of the files that stay, so a later setup or upgrade
+still knows them as edits; it is deleted once none are left. Without a manifest
+(an install older than it, or a cleared `~/.local/state`) it removes no config
+file, but still takes out the `sudo` line and lists the rest. Add `--dry-run` to
+see the list first. It exits 0; 1 when it could not remove a file or edit an rc
+file, which it then names; 2 on bad options.
 
 ## What is where
 

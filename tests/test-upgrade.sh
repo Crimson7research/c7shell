@@ -172,6 +172,11 @@ grep -q "would write $greetd_conf" <<<"$out" || fail "--dry-run did not plan the
 # For real, with a stub in front of the real sudo: a test must never reach for
 # root, and must never sit on a password prompt either.
 printf '#!/bin/sh\nexec "$@"\n' > "$tmp/bin/sudo"; chmod +x "$tmp/bin/sudo"
+# The sudo stub passes straight through, so systemctl needs a stub too: the
+# real one asks polkit for a password, and every unanswered prompt counts
+# towards pam_faillock locking the account.
+printf '#!/bin/sh\necho "$*" >> "%s"\n' "$tmp/systemctl.log" > "$tmp/bin/systemctl"
+chmod +x "$tmp/bin/systemctl"
 export PATH="$tmp/bin:$PATH"
 out=$("$upgrade" --config-only --no-doctor 2>&1) || true
 grep -q 'pointing greetd at the c7shell greeter' <<<"$out" \
@@ -208,8 +213,6 @@ rm -f "$greetd_conf"
 # manager was somebody's choice and is only advised about.
 dm_link=$tmp/root/etc/systemd/system/display-manager.service
 mkdir -p "${dm_link%/*}"
-printf '#!/bin/sh\necho "$*" >> "%s"\n' "$tmp/systemctl.log" > "$tmp/bin/systemctl"
-chmod +x "$tmp/bin/systemctl"
 
 : > "$tmp/systemctl.log"
 ln -sf /usr/lib/systemd/system/sddm.service "$dm_link"

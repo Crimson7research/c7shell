@@ -65,7 +65,12 @@ rc_files=("${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc")
 # parts is the user's and stays. The command ships in the package, so it has
 # to run before `pacman -R c7shell`.
 sudo_marker='# c7shell: sudo asks through polkit (run0)'
+
+# would <dry-run verb> <done verb> -- the verb for a report line.
 would() { if ((dry)); then printf 'would %s' "$1"; else printf '%s' "$2"; fi; }
+
+# list <heading> <item>... -- a report section, printed only when it has items.
+list() { (($# > 1)) || return 0; printf '\n%s\n' "$1"; shift; printf '  %s\n' "$@"; }
 
 # Only a file at exactly $conf/<rel> is ours. Through a symlinked directory --
 # a dotfile manager's ~/.config/hypr -- the file lives in the user's own tree,
@@ -143,31 +148,48 @@ drop_sudo_line() {
        { print }
        END { if (pend) print "" }' "$target" > "$tmpf" \
      && { [[ -z $(tail -c1 -- "$target") ]] || truncate -s -1 -- "$tmpf"; } \
-     && chmod --reference="$target" -- "$tmpf" && mv -f -- "$tmpf" "$target"; then
+     && chmod --reference="$target" -- "$tmpf" \
+     && { ((EUID)) || chown --reference="$target" -- "$tmpf"; } \
+     && mv -f -- "$tmpf" "$target"; then
     return 0
   fi
   rm -f -- "$tmpf"
   return 1
 }
 
-# What setup may have written that uninstall cannot claim: lines and files
-# without a marker or a manifest row, and the backups. The theme export wrote
-# the palette into files other desktops read too, so the next setup inherits
-# it until they go. Named only where they are actually there.
+# What setup may have written that uninstall cannot claim: lines without a
+# marker, the files the theme export rewrote (other desktops read them too, so
+# the next setup inherits the palette until they go), the backups, and every
+# other file still under the parts -- the shell's own state, per-file backups,
+# the user's files. Named only where they are actually there: a part whose
+# directory survives is one the next setup skips.
 report_leftovers() {
-  local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=() b
+  local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=() rest=() b part
   grep -qsx 'PrivilegeElevationCommand=run0' "$au" && left+=("PrivilegeElevationCommand=run0 in $au")
   grep -qsE '^[[:space:]]*Sudo[[:space:]]*=[[:space:]]*run0' "$pc" && left+=("Sudo = run0 in $pc")
   grep -qs 'C7Shell' "$conf/kdeglobals" && left+=("the C7Shell colours in $conf/kdeglobals")
-  b=$data/../color-schemes/C7Shell.colors
-  [[ -e $b ]] && left+=("$(realpath -m -- "$b")")
+  for b in "$conf/kcminputrc" "$conf/gtk-3.0/settings.ini" "$conf/gtk-4.0/settings.ini" \
+           "$conf/imv/config" "$data/../color-schemes/C7Shell.colors"; do
+    [[ -e $b ]] && left+=("$(realpath -m -- "$b")   (the theme export writes to it)")
+  done
+  command -v gsettings >/dev/null && left+=('the GNOME color-scheme setting (gsettings org.gnome.desktop.interface color-scheme)')
   while IFS= read -r b; do left+=("$b"); done \
     < <(compgen -G "$conf/*.bak-*"; compgen -G "$conf/quickshell/*.bak-*")
   [[ -d $data/scripts ]] && left+=("$data/scripts")
-  ((${#left[@]})) || return 0
-  printf '\nLeft as they are -- they may be your own choice, so remove them by hand if not:\n'
-  printf '  %s\n' "${left[@]}"
+  for part in "${parts[@]}"; do
+    [[ -d $conf/$part && ! -L $conf/$part ]] || continue
+    while IFS= read -r -d '' b; do
+      listed "$b" ${kept[@]+"${kept[@]}"} ${parked[@]+"${parked[@]}"} ${failed[@]+"${failed[@]}"} || rest+=("$b")
+    done < <(find "$conf/$part" -type f -print0 | sort -z)
+  done
+  list 'Left as they are -- they may be your own choice, so remove them by hand if not:' \
+    ${left[@]+"${left[@]}"}
+  list 'Also still in the c7shell parts (until these go, the next c7shell-setup skips the part):' \
+    ${rest[@]+"${rest[@]}"}
 }
+
+# listed <item> <list>... -- whether the item is one of the list.
+listed() { local x=$1 y; shift; for y; do [[ $x == "$y" ]] && return 0; done; return 1; }
 
 # Keeps the rows of the files that stay, so a later setup or upgrade still
 # knows which of them are edits; no rows left, no manifest.
@@ -186,8 +208,12 @@ uninstall_config() {
     prune_dirs ${dirs[@]+"${dirs[@]}"}
     rewrite_manifest ${rows[@]+"${rows[@]}"}
     printf '%s %d unedited c7shell files from %s\n' "$(would remove removed)" "$removed" "$conf"
+    # The rows of what stays are kept, so a later setup or upgrade still knows
+    # those files as edits.
+    ((${#rows[@]} == 0)) || printf '%s %d rows in %s, for the files that stay\n' \
+      "$(would keep kept)" "${#rows[@]}" "$state/manifest"
   else
-    printf 'no install recorded in %s, so no config files are removed\n' "$state/manifest"
+    printf 'no install recorded in %s, so no config files %s\n' "$state/manifest" "$(would 'be removed' 'are removed')"
   fi
   for rc in "${rc_files[@]}"; do
     grep -qsF "$sudo_marker" "$rc" || continue
@@ -197,14 +223,13 @@ uninstall_config() {
   done
   list 'Kept, because you edited them:' ${kept[@]+"${kept[@]}"}
   list 'Kept, the new versions an upgrade parked for you to merge:' ${parked[@]+"${parked[@]}"}
-  list "Kept, because they are reached through a symlink and live outside $conf:" ${behind[@]+"${behind[@]}"}
+  list "Kept, because they resolve outside $conf (a symlink, or a ../ in the manifest):" ${behind[@]+"${behind[@]}"}
   report_leftovers
   ((${#failed[@]} == 0)) && return 0
   printf '\nc7shell-setup: could not change these; remove them, or the line ending in\n"%s", by hand:\n' "$sudo_marker" >&2
   printf '  %s\n' "${failed[@]}" >&2
   return 1
 }
-list() { (($# > 1)) || return 0; printf '\n%s\n' "$1"; shift; printf '  %s\n' "$@"; }
 if ((uninstall)); then
   ((force == 0)) || { echo 'c7shell-setup: --uninstall takes no --force' >&2; exit 2; }
   uninstall_config || exit 1
