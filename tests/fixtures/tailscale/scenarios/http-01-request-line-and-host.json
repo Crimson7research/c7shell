@@ -6,7 +6,7 @@
   "evidence": "harness-on-cpp",
   "clauses": [
     "Every request starts with `<METHOD> <path> HTTP/1.1`, carries `Host: local-tailscaled.sock` and, without a body, no other header: the four requests of the backend's opening pass, each recorded as exactly its request line, the Host line and CRLFCRLF",
-    "tailscaled would accept that request: 200 replies to those requests bring the contract to Running"
+    "tailscaled would accept that request: 200 replies to those requests bring the contract to Running, with readError and writeError still empty once every request is recorded"
   ],
   "deferred": [
     "exactly one request after the read and fake barriers: needs the read barrier (cpp-suite: tst_localapiclient.cpp::sendsAHostHeaderTailscaledAccepts; Phase 3: the transport test)"
@@ -37,6 +37,7 @@
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/prefs" } } } },
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
     { "wait": { "fake": { "connected": 1 } } },
+    { "expect": { "id": "no-failure", "contract": { "readError": "", "writeError": "" } } },
     { "expect": { "id": "status-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/status" },
       "raw": "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } },
     { "expect": { "id": "prefs-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/prefs" },

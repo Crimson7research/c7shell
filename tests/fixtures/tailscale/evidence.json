@@ -15,7 +15,7 @@
       "tag": "parity",
       "class": "harness-on-cpp",
       "pr": 306,
-      "runs": "the four requests of the backend's opening pass, each recorded as exactly its request line, `Host: local-tailscaled.sock` and CRLFCRLF; and \"tailscaled would accept that request\", rendered as 200 replies bringing `state` to `Running`",
+      "runs": "the four requests of the backend's opening pass, each recorded as exactly its request line, `Host: local-tailscaled.sock` and CRLFCRLF; and \"tailscaled would accept that request\", rendered as 200 replies bringing `state` to `Running`, with `readError` and `writeError` still empty once every request is recorded (a failure processed later is the deferred clause)",
       "deferred": [
         {
           "clause": "exactly one request after the read and fake barriers, and exactly one reply and no failure after the read barrier",
