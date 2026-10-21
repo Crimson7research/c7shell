@@ -9,7 +9,7 @@
   ],
   "deferred": [
     "the QML delegate half: harness-on-cpp, #309",
-    "the row the insert names: the driver reads no signal arguments; the rows after it are read instead"
+    "not deferred, but not read either: the row the insert names, since the driver counts signals without their arguments; the rows after the change are read instead"
   ],
   "needs": [],
   "fake": { "rules": [

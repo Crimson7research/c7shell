@@ -10,7 +10,7 @@
   ],
   "deferred": [
     "R-GROUP-06: the QML delegate half (the delegate survives a re-sort, a join and a leave; a rebuilt model makes a new one): harness-on-cpp, #309",
-    "R-GROUP-07: which row the one dataChanged names: the driver counts signals and reads no arguments (cpp-suite: tst_peermodel.cpp)"
+    "R-GROUP-07: not deferred, but not read either: which row the one dataChanged names, since the driver counts signals without their arguments (#286's tst_peermodel.cpp checks the row); the row's new values are read instead"
   ],
   "needs": [],
   "fake": { "rules": [

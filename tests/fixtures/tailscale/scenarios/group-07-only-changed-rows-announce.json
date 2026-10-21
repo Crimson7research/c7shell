@@ -10,7 +10,7 @@
     "Setting an empty list leaves 0 rows, one rowsRemoved and no reset: a served status with \"Peer\":{}, counted once the row count reads 0"
   ],
   "deferred": [
-    "which row the one dataChanged names: the driver reads no signal arguments (cpp-suite: tst_peermodel.cpp)",
+    "not deferred, but not read either: which row the one dataChanged names, since the driver counts signals without their arguments (#286's tst_peermodel.cpp checks the row); the renamed row's ownerName is read instead",
     "nAAA1CNTRL going offline: group-06-offline-row-moves"
   ],
   "needs": [],
