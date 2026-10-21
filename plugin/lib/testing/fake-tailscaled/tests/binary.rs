@@ -187,51 +187,55 @@ fn it_refuses_a_script_file_it_cannot_load() {
     assert!(!path.exists(), "the socket outlived a refused start");
 }
 
-#[test]
-fn every_command_once() {
-    let dir = TestDir::new();
-    let path = dir.socket();
-    let mut bin = Bin::start(&["--socket", path.to_str().unwrap()]);
-    assert_eq!(bin.line()["event"], json!("listening"));
-    assert_eq!(bin.ok(json!({ "cmd": "set-script", "script": rules() })), Value::Null);
+const WATCH_HEAD: &[u8] = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
 
-    // A watch stream, and a watch line pushed to it.
-    let mut watch = Client::connect(&path);
+/// A watch stream, and each push command reaching it. Returns the stream,
+/// client 1, which must stay open.
+fn every_push(bin: &mut Bin, path: &std::path::Path) -> Client {
+    let mut watch = Client::connect(path);
     watch.write(&get("/localapi/v0/watch-ipn-bus?mask=18"));
-    let head = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
-    watch.read_exactly(head.len());
+    watch.read_exactly(WATCH_HEAD.len());
     assert_eq!(bin.ok(json!({ "cmd": "connected" })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-watch-line", "bytes": "{}" })), json!(1));
-    assert_eq!(&watch.read_exactly(head.len() + 8)[head.len()..], b"3\r\n{}\n\r\n");
+    let head = WATCH_HEAD.len();
+    assert_eq!(&watch.read_exactly(head + 8)[head..], b"3\r\n{}\n\r\n");
     assert_eq!(bin.ok(json!({ "cmd": "push-line", "bytes": "l" })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-chunk", "bytes": { "hex": "ff" } })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-to", "client": 1, "bytes": "t" })), json!(true));
-    assert_eq!(&watch.read_exactly(head.len() + 8 + 4)[head.len() + 8..], b"l\n\xfft");
+    assert_eq!(&watch.read_exactly(head + 8 + 4)[head + 8..], b"l\n\xfft");
+    watch
+}
 
-    // A held request, completed.
-    let mut held = Client::connect(&path);
+/// A held request completed (client 2), and a hold armed by command and
+/// closed (client 3).
+fn every_hold(bin: &mut Bin, path: &std::path::Path) {
+    let mut held = Client::connect(path);
     held.write(&get("/h"));
     bin.poll(json!({ "cmd": "held-count" }), |r| r == &json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "complete-held", "bytes": "done" })), json!(1));
     assert_eq!(held.read_until_closed(), b"done");
 
-    // A hold armed by command.
     assert_eq!(bin.ok(json!({ "cmd": "hold-next", "fragment": "/r " })), Value::Null);
-    let mut armed = Client::connect(&path);
+    let mut armed = Client::connect(path);
     armed.write(&get("/r"));
     bin.poll(json!({ "cmd": "held-count" }), |r| r == &json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "close-client", "client": 3 })), json!(true));
     assert_eq!(armed.read_until_closed(), b"");
     assert_eq!(bin.ok(json!({ "cmd": "close-client", "client": 3 })), json!(false));
+}
 
-    // A split reply, resumed.
-    let mut split = Client::connect(&path);
+/// A split reply, resumed (client 4).
+fn a_resume(bin: &mut Bin, path: &std::path::Path) {
+    let mut split = Client::connect(path);
     split.write(&get("/s"));
     assert_eq!(split.read_exactly(3), b"HTT");
     bin.poll(json!({ "cmd": "clients" }), |r| r[3]["parked"] == json!(true));
     assert_eq!(bin.ok(json!({ "cmd": "resume", "label": "go" })), json!(1));
     assert!(split.read_until_closed().ends_with(b"\r\n\r\nsplit"));
+}
 
+/// The reports after every_push, every_hold and a_resume.
+fn the_reports(bin: &mut Bin) {
     let clients = bin.poll(json!({ "cmd": "clients" }), |r| r[3]["connected"] == json!(false));
     assert_eq!(
         clients[0],
@@ -246,6 +250,19 @@ fn every_command_once() {
                 "raw": "GET /h HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n",
                 "recorded": "GET /h HTTP/1.1\r\nHost: local-tailscaled.sock" })
     );
+}
+
+#[test]
+fn every_command_once() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let mut bin = Bin::start(&["--socket", path.to_str().unwrap()]);
+    assert_eq!(bin.line()["event"], json!("listening"));
+    assert_eq!(bin.ok(json!({ "cmd": "set-script", "script": rules() })), Value::Null);
+    let _watch = every_push(&mut bin, &path);
+    every_hold(&mut bin, &path);
+    a_resume(&mut bin, &path);
+    the_reports(&mut bin);
     assert!(bin.finish().success());
 }
 
