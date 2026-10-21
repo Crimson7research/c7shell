@@ -8,7 +8,10 @@ in-process fake tailscaled (`plugin/lib/testing/fake-tailscaled`) through
 `docs/superpowers/plans/2026-10-21-phase2-harness.md`.
 
 Run every cargo command from `plugin/`: cargo reads `.cargo/config.toml` (the
-target directory and the rust-lld pin) from the working directory.
+target directory and the rust-lld pin) from the working directory. From the
+root, `cargo --manifest-path plugin/Cargo.toml` misses both and builds into
+`plugin/target`, which git ignores and `tests/test-c7-plugin.sh` skips, but
+without rust-lld.
 
 ## Build the reference
 
@@ -16,10 +19,27 @@ target directory and the rust-lld pin) from the working directory.
 plugin/tests/tailscale-parity/build-reference.sh
 ```
 
-It builds #286's `C7` at `a38dbca` with #286's own CMake, in a git worktree
-under `${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`, and
-prints the directory to pass as `C7_QML_DIR` as its last line. A second run
-rebuilds nothing. `C7_REFERENCE_CACHE` moves the cache.
+It builds #286's `C7` at `a38dbca` with #286's own CMake, from that commit's
+`plugin/` tree extracted with `git archive` under
+`${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`, and prints
+the directory to pass as `C7_QML_DIR` as its last line. A second run rebuilds
+nothing. `C7_REFERENCE_CACHE` moves the cache. It only reads the repository:
+it registers no worktree and fetches nothing. When the commit is missing it
+fails and names the `git fetch` to run.
+
+An earlier version registered a git worktree at
+`<cache>/<sha>/src`. That record in the shared repository's
+`.git/worktrees/` is no longer used; `git worktree remove --force
+<cache>/<sha>/src` drops it with the directory.
+
+## The gate is manual for now
+
+`run.sh` is not part of `for t in tests/*.sh`: the reference build is not
+something the suite makes. `tests/test-tailscale-parity.sh` runs the
+harness self-tests and the scenarios when the reference build is already in
+the cache (or `C7_QML_DIR` names one), and skips with the reason when it is
+not. The 50-run gate (`run.sh --repeat 50`) and the parallel stress are run
+by hand until a later PR wires the reference build into the suite.
 
 ## Run
 

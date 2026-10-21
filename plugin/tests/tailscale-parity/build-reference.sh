@@ -4,10 +4,12 @@
 # holding C7/qmldir) as its last line. Run it directly:
 #   plugin/tests/tailscale-parity/build-reference.sh
 #
-# The source is a detached git worktree of this repository at that commit,
-# under ${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference}/<sha>,
-# built there with #286's own CMake. A second run rebuilds only what changed.
-# It never touches another checkout of #286.
+# The source is that commit's plugin/ tree, extracted with `git archive` into
+# ${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference}/<sha>/tree,
+# and built there with #286's own CMake. A second run rebuilds only what
+# changed. It only reads the repository: no worktree is registered and
+# nothing is fetched, so nothing is written to its .git. It never touches
+# another checkout of #286.
 set -euo pipefail
 shopt -s inherit_errexit
 
@@ -18,28 +20,26 @@ cache=${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-re
 
 fail() { printf 'build-reference: %s\n' "$1" >&2; exit 2; }
 
-if ! git -C "$repo" cat-file -e "$sha^{commit}" 2>/dev/null; then
-  git -C "$repo" fetch --quiet origin feat/tailscale-backend >&2 || true
-  git -C "$repo" cat-file -e "$sha^{commit}" 2>/dev/null \
-    || fail "commit $sha is not in $repo, and fetching origin feat/tailscale-backend did not bring it"
-fi
+git -C "$repo" cat-file -e "$sha^{commit}" 2>/dev/null \
+  || fail "commit $sha is not in $repo; run: git -C $repo fetch origin feat/tailscale-backend"
 
-mkdir -p -- "$(dirname -- "$cache")"
-if [[ ! -e $cache/src/.git ]]; then
-  # --force: a worktree registered at this path whose directory was removed
-  # is taken over rather than refused. Nothing else is pruned, so other
-  # checkouts' worktree records are left alone.
-  git -C "$repo" worktree add --quiet --force --detach "$cache/src" "$sha" >&2
+# The stamp names the commit the tree was extracted from, and is written
+# last, so a tree without it is a partial extraction and is redone.
+stamp=$cache/tree/.c7-reference-sha
+if [[ ! -f $stamp || $(<"$stamp") != "$sha" ]]; then
+  rm -rf -- "$cache/tree" "$cache/tree.partial"
+  mkdir -p -- "$cache/tree.partial"
+  git -C "$repo" archive --format=tar "$sha" plugin | tar -x -C "$cache/tree.partial"
+  printf '%s\n' "$sha" >"$cache/tree.partial/.c7-reference-sha"
+  mv -- "$cache/tree.partial" "$cache/tree"
 fi
-[[ $(git -C "$cache/src" rev-parse HEAD) == "$sha" ]] || fail "$cache/src is not at $sha"
-[[ -z $(git -C "$cache/src" status --porcelain) ]] || fail "$cache/src has local changes"
 
 gen=()
 if command -v ninja >/dev/null; then gen=(-G Ninja); fi
-if [[ ! -f $cache/build/CMakeCache.txt ]]; then
-  cmake -S "$cache/src/plugin" -B "$cache/build" "${gen[@]}" -DCMAKE_BUILD_TYPE=Debug >&2
+if [[ ! -f $cache/out/CMakeCache.txt ]]; then
+  cmake -S "$cache/tree/plugin" -B "$cache/out" "${gen[@]}" -DCMAKE_BUILD_TYPE=Debug >&2
 fi
-cmake --build "$cache/build" --target c7 --parallel "$(nproc)" >&2
+cmake --build "$cache/out" --target c7 --parallel "$(nproc)" >&2
 
-[[ -f $cache/build/qml/C7/qmldir ]] || fail "the build left no $cache/build/qml/C7/qmldir"
-echo "$cache/build/qml"
+[[ -f $cache/out/qml/C7/qmldir ]] || fail "the build left no $cache/out/qml/C7/qmldir"
+echo "$cache/out/qml"

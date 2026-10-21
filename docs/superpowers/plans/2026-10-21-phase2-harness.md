@@ -116,8 +116,9 @@ scenarios do not (both run only clauses with no clock and no hook).
   never copied.
 - No sudo. Nothing is written outside `/home/joren/git/c7shell-306` except
   cargo's caches (`~/.cargo`) and the reference-build cache
-  (`${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`). That
-  includes the git worktree metadata git keeps for that cache's checkout.
+  (`${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`). The
+  reference source is extracted there with `git archive`, so nothing is
+  written to the repository's `.git` (see "Implementation notes").
 - Every cargo command runs with its working directory in `plugin/`
   (`cd plugin && cargo ...`, or `(cd "$repo/plugin" && cargo ...)` in a
   script), never `cargo --manifest-path plugin/Cargo.toml` from the root.
@@ -1045,11 +1046,15 @@ also in the commit that made it.
    when `ninja` is on `PATH`, as `tests/test-c7-plugin.sh` does, and builds
    with `cmake --build ... --parallel $(nproc)` (make here). The first build
    took a few minutes; a second run is a no-op (`Built target c7`, 0.2 s).
-4. **No `git worktree prune`.** Pruning edits the shared repository's
-   records of other checkouts' worktrees. `build-reference.sh` instead runs
-   `git worktree add --force --detach`, which takes over a worktree that is
-   registered at the cache path but whose directory is gone, and touches
-   nothing else.
+4. **No worktree at all.** The plan's `git worktree prune` and `git
+   worktree add` both write the shared repository's `.git/worktrees/`, and
+   its `git fetch` writes refs, outside the cache the task allows. After
+   review, `build-reference.sh` extracts the commit's `plugin/` tree with
+   `git archive a38dbca plugin | tar -x` into `<cache>/<sha>/tree` (a stamp
+   file, written last, names the commit), builds into `<cache>/<sha>/out`,
+   and fails with the `git fetch` to run when the commit is missing. The
+   worktree the first version registered at `<cache>/<sha>/src` is left
+   for the owner to drop (`git worktree remove --force <path>`).
 5. **`.qmlls.ini` is committed.** cxx-qt-build 0.10 writes
    `plugin/tests/tailscale-parity/.qmlls.ini` whenever the file is missing.
    Ignoring it would fail `tests/test-c7-plugin.sh` check 1, and leaving it
