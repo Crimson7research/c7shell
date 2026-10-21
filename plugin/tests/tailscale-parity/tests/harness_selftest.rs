@@ -119,9 +119,28 @@ fn runner_verdicts(failures: &mut Vec<String>) {
     let filtered = runner::run_all(&stub, STUB_IMPLEMENTATIONS, &selftest("scenarios"), 1, Some("nothing-by-this-id"));
     check(
         failures,
-        filtered.as_ref().is_err_and(|e| e.contains("no scenarios found")),
-        "a filter matching nothing finds no scenarios",
+        filtered.as_ref().is_err_and(|e| e.contains("no scenario has the id nothing-by-this-id")),
+        &format!("a filter matching nothing is an error naming the id: {filtered:?}"),
     );
+    // An id in the filter that names no scenario is an error naming it.
+    let typo = runner::run_all(&stub, STUB_IMPLEMENTATIONS, &selftest("scenarios"), 1, Some("pass,typo"));
+    check(
+        failures,
+        typo.as_ref().is_err_and(|e| e.contains("no scenario has the id typo")),
+        &format!("a filter id naming no scenario: {typo:?}"),
+    );
+    // C7_REPEAT is a whole number of at least 1; anything else is refused.
+    for (value, want) in
+        [(None, Some(1)), (Some("3"), Some(3)), (Some(" 2 "), None), (Some("0"), None), (Some("x"), None)]
+    {
+        let got = runner::parse_repeat(value);
+        let ok = match (&got, want) {
+            (Ok(n), Some(w)) => *n == w,
+            (Err(e), None) => e.contains("C7_REPEAT"),
+            _ => false,
+        };
+        check(failures, ok, &format!("C7_REPEAT={value:?} gives {got:?}"));
+    }
 }
 
 /// Reports one check; returns whether it passed.
