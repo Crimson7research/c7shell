@@ -78,9 +78,7 @@ main() {
   grep -q C7VT-INSTALL-OK "$run/serial.log" \
     || { tail -n 200 "$run/serial.log" >&2; echo 'build-base: archinstall failed' >&2; exit 1; }
   mv "$run/base.qcow2" "$C7VT_CACHE/base.qcow2"
-  echo "$key" > "$C7VT_CACHE/base.inputs"
-  # The key that replaced these (#271).
-  rm -f "$C7VT_CACHE/base.iso.version" "$C7VT_CACHE/base.archinstall.json"
+  base_stamp "$vm" "$key"
 }
 
 main "$@"

@@ -196,32 +196,57 @@ C7VT_SOCAT=$tmp/socat-ev qmp_quit "$tmp/sock" >/dev/null || fail 'qmp: an event 
 # Every checked-in file the base is built from, and the host firmware it boots,
 # is part of the key; a change to any of them rebuilds the base (#271).
 (
+  set -e
   fake=$tmp/vmcopy; cp -r "$vm" "$fake"
   echo fw1 > "$tmp/ovmf"; C7VT_OVMF=$tmp/ovmf
   k0=$(base_inputs_hash "$fake")
   [[ $k0 =~ ^[0-9a-f]{64}$ ]] || fail "base_inputs_hash: not a sha256: $k0"
   [[ $(base_inputs_hash "$fake") == "$k0" ]] || fail 'base_inputs_hash: must be stable'
   for f in iso.version archinstall.json cloud-init/user-data.in cloud-init/meta-data build-base.sh; do
-    cp "$fake/$f" "$tmp/orig"; echo '# changed' >> "$fake/$f"
+    cp -p "$fake/$f" "$tmp/orig"; echo '# changed' >> "$fake/$f"
     [[ $(base_inputs_hash "$fake") != "$k0" ]] || fail "base_inputs_hash: must change with $f"
-    cp "$tmp/orig" "$fake/$f"
+    rm "$fake/$f"
+    if base_inputs_hash "$fake" >/dev/null 2>&1; then fail "base_inputs_hash: a missing $f must fail"; fi
+    cp -p "$tmp/orig" "$fake/$f"
   done
+  [[ $(base_inputs_hash "$fake") == "$k0" ]] || fail 'base_inputs_hash: restoring the inputs must restore the key'
   echo fw2 > "$tmp/ovmf"
   [[ $(base_inputs_hash "$fake") != "$k0" ]] || fail 'base_inputs_hash: must change with the firmware'
-  rm "$tmp/ovmf"
+  echo fw1 > "$tmp/ovmf2"; C7VT_OVMF=$tmp/ovmf2
+  [[ $(base_inputs_hash "$fake") == "$k0" ]] || fail 'base_inputs_hash: the same firmware at another path is no change'
+  rm "$tmp/ovmf2"
   if base_inputs_hash "$fake" >/dev/null 2>&1; then fail 'base_inputs_hash: a missing firmware must fail'; fi
-  echo fw1 > "$tmp/ovmf"
+  echo fw1 > "$tmp/ovmf"; C7VT_OVMF=$tmp/ovmf
 
-  # step_base rebuilds only when the stored key differs from the inputs'.
-  C7VT_CACHE=$tmp/bcache; mkdir -p "$C7VT_CACHE"; vm=$fake rebuild=0
+  # base_stamp writes what step_base reads back, and the stamps a checkout from
+  # before #271 compares.
+  C7VT_CACHE=$tmp/bcache; mkdir -p "$C7VT_CACHE"; vm=$fake
+  touch -d '-1 min' "$C7VT_CACHE/base.qcow2"
+  base_stamp "$vm" "$k0"
+  cmp -s "$vm/iso.version" "$C7VT_CACHE/base.iso.version" || fail 'base_stamp: must keep the old iso.version stamp'
+  cmp -s "$vm/archinstall.json" "$C7VT_CACHE/base.archinstall.json" || fail 'base_stamp: must keep the old archinstall.json stamp'
+  base_current "$vm" || fail 'base_current: a freshly stamped base is current'
+
+  # step_base rebuilds unless the base is current and no rebuild was asked for.
   printf '%s\n' '#!/bin/sh' "touch '$tmp/built'" > "$vm/build-base.sh"
-  touch "$C7VT_CACHE/base.qcow2"; base_inputs_hash "$vm" > "$C7VT_CACHE/base.inputs"
-  rm -f "$tmp/built"; step_base
-  [[ ! -e $tmp/built ]] || fail 'step_base: a matching key must reuse the base'
-  echo stale > "$C7VT_CACHE/base.inputs"; step_base
-  [[ -e $tmp/built ]] || fail 'step_base: a different key must rebuild the base'
-  rm -f "$tmp/built" "$C7VT_CACHE/base.inputs"; step_base
-  [[ -e $tmp/built ]] || fail 'step_base: no stored key must rebuild the base'
+  base_stamp "$vm" "$(base_inputs_hash "$vm")"
+  built() { rm -f "$tmp/built"; rebuild=$1; step_base; [[ -e $tmp/built ]]; }
+  if built 0; then fail 'step_base: a current base must be reused'; fi
+  built 1 || fail 'step_base: --rebuild-base must rebuild a current base'
+  echo stale > "$C7VT_CACHE/base.inputs"
+  built 0 || fail 'step_base: a different key must rebuild the base'
+  rm "$C7VT_CACHE/base.inputs"
+  built 0 || fail 'step_base: no stored key must rebuild the base'
+  base_stamp "$vm" "$(base_inputs_hash "$vm")"; rm "$C7VT_CACHE/base.qcow2"
+  built 0 || fail 'step_base: no base image must rebuild it'
+  # A pre-#271 checkout rebuilt base.qcow2 and left the key behind.
+  touch -d '-1 min' "$C7VT_CACHE/base.qcow2"; base_stamp "$vm" "$(base_inputs_hash "$vm")"
+  touch "$C7VT_CACHE/base.qcow2"
+  built 0 || fail 'step_base: a base newer than its key must rebuild'
+  rm "$tmp/ovmf"
+  exec 9>&-  # step_base holds base.lock; the nested run would wait on it forever.
+  set +e; ( rebuild=0; step_base ) >/dev/null 2>&1; s=$?; set -e
+  [[ $s == 2 ]] || fail "step_base: unhashable inputs are a host problem (exit 2), got $s"
 ) || exit 1
 
 # --- archinstall.json -------------------------------------------------------

@@ -79,11 +79,10 @@ step_base() {
   # Two runs must not rebuild the base under each other's overlays.
   exec 9> "$C7VT_CACHE/base.lock"
   flock 9
-  local key
-  key=$(base_inputs_hash "$vm") \
-    || { echo 'run.sh: cannot hash the base image inputs' >&2; exit 2; }
-  if ((rebuild)) || [[ ! -f $C7VT_CACHE/base.qcow2 ]] \
-     || [[ $(cat "$C7VT_CACHE/base.inputs" 2>/dev/null) != "$key" ]]; then
+  local status=0
+  base_current "$vm" || status=$?
+  ((status != 2)) || { echo 'run.sh: cannot hash the base image inputs' >&2; exit 2; }
+  if ((rebuild || status)); then
     "$vm/build-base.sh"
   fi
 }
