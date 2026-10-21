@@ -33,7 +33,8 @@ env: C7SHELL_SHARE (default /usr/share/c7shell)
 
 exit: 0 all parts installed, 3 nothing done because a target already exists,
       4 some parts installed and others left alone because they already exist
-      --uninstall: 0 done or nothing to remove, 2 bad options
+      --uninstall: 0 done or nothing to remove, 1 an rc file could not be
+      edited, 2 bad options
 USAGE
 }
 
@@ -61,8 +62,8 @@ rc_files=("${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc")
 # --uninstall (#19): the manifest is the list of files this script wrote, with
 # the hash each had when it did. A file whose hash still matches is unedited
 # and goes, with the .new an upgrade parked beside it; anything else under the
-# parts is the user's and stays. It needs no package installed, so a machine
-# that already removed c7shell can still clean up after it.
+# parts is the user's and stays. The command ships in the package, so it has
+# to run before `pacman -R c7shell`.
 sudo_marker='# c7shell: sudo asks through polkit (run0)'
 would() { if ((dry)); then printf 'would %s' "$1"; else printf '%s' "$2"; fi; }
 
@@ -73,20 +74,23 @@ inside_conf() {
   [[ $(realpath -m -- "$1") == "$(realpath -m -- "$conf")/$2" && ! -L $1 ]]
 }
 
-# Sets removed, kept, behind and dirs (the parents of what went) for the caller.
+# Sets removed, kept, behind, dirs (the parents of what went) and rows (the
+# manifest rows still describing a file that stays) for the caller. A .new goes
+# only with an unedited file: beside an edited one it is the version the user
+# was told to merge, and may already hold that merge.
 uninstall_files() {
   local rel h f
   while IFS=$'\t' read -r rel h; do
     [[ -n $rel ]] || continue
     f=$conf/$rel
     [[ -e $f || -e $f.new ]] || continue
-    if ! inside_conf "$f" "$rel"; then behind+=("$f"); continue; fi
-    [[ -e $f.new ]] && run rm -f -- "$f.new"
-    [[ -f $f ]] || continue
-    if [[ $(sha256sum -- "$f" | cut -d' ' -f1) == "$h" ]]; then
-      run rm -f -- "$f"; removed=$((removed + 1)); dirs+=("${f%/*}")
+    if ! inside_conf "$f" "$rel"; then behind+=("$f"); rows+=("$rel"$'\t'"$h"); continue; fi
+    if [[ -f $f && $(sha256sum -- "$f" | cut -d' ' -f1) == "$h" ]]; then
+      run rm -f -- "$f" "$f.new"; removed=$((removed + 1)); dirs+=("${f%/*}")
     else
-      kept+=("$f")
+      [[ -f $f ]] && kept+=("$f")
+      [[ -e $f.new ]] && kept+=("$f.new")
+      rows+=("$rel"$'\t'"$h")
     fi
   done < "$state/manifest"
 }
@@ -102,33 +106,42 @@ prune_dirs() {
   done < <(printf '%s\n' "$@" | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2- | uniq)
 }
 
-# Setup appended "\n<line>\n"; take out the line and the blank before it. awk
-# in the C locale passes any byte through, where grep calls a file with one
-# invalid UTF-8 byte binary and drops the line. Written through, not renamed:
-# an rc file is often a dotfile manager's symlink. Any failure leaves it alone.
+# Setup appended "\n<line>\n"; take out the line and the blank before it, and
+# nothing else, byte for byte. awk in the C locale passes any byte through,
+# where grep calls a file with one invalid UTF-8 byte binary and drops the
+# line. The result replaces the real file by rename, so a failure leaves it
+# whole; the rename is of the symlink's target, so a dotfile manager's link
+# stays a link.
 drop_sudo_line() {
-  local rc=$1 tmpf
-  tmpf=$(mktemp) || return 1
+  local target tmpf
+  target=$(realpath -- "$1") && [[ -w $target ]] || return 1
+  tmpf=$(mktemp "$target.c7shell.XXXXXX") || return 1
   if LC_ALL=C awk -v m="$sudo_marker" '
        pend { pend = 0; if (index($0, m)) next; print "" }
        $0 == "" { pend = 1; next }
        index($0, m) { next }
        { print }
-       END { if (pend) print "" }' "$rc" > "$tmpf"; then
-    cat -- "$tmpf" > "$rc"
-  else
-    printf 'c7shell-setup: could not edit %s; remove the line ending in "%s" by hand\n' "$rc" "$sudo_marker" >&2
+       END { if (pend) print "" }' "$target" > "$tmpf" \
+     && { [[ -z $(tail -c1 -- "$target") ]] || truncate -s -1 -- "$tmpf"; } \
+     && chmod --reference="$target" -- "$tmpf" && mv -f -- "$tmpf" "$target"; then
+    return 0
   fi
   rm -f -- "$tmpf"
+  return 1
 }
 
-# What setup may have written that uninstall cannot claim: lines without a
-# marker, and the backups. Named only where they are actually there.
+# What setup may have written that uninstall cannot claim: lines and files
+# without a marker or a manifest row, and the backups. The theme export wrote
+# the palette into files other desktops read too, so the next setup inherits
+# it until they go. Named only where they are actually there.
 report_leftovers() {
-  local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=()
+  local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=() b
   grep -qsx 'PrivilegeElevationCommand=run0' "$au" && left+=("PrivilegeElevationCommand=run0 in $au")
   grep -qsE '^[[:space:]]*Sudo[[:space:]]*=[[:space:]]*run0' "$pc" && left+=("Sudo = run0 in $pc")
-  local b
+  grep -qs 'C7Shell' "$conf/kdeglobals" && left+=("the C7Shell colours in $conf/kdeglobals")
+  for b in "$conf/hypr/hyprlock-palette.conf" "$data/../color-schemes/C7Shell.colors"; do
+    [[ -e $b ]] && left+=("$(realpath -m -- "$b")")
+  done
   while IFS= read -r b; do left+=("$b"); done \
     < <(compgen -G "$conf/*.bak-*"; compgen -G "$conf/quickshell/*.bak-*")
   [[ -d $data/scripts ]] && left+=("$data/scripts")
@@ -137,21 +150,29 @@ report_leftovers() {
   printf '  %s\n' "${left[@]}"
 }
 
+# Keeps the rows of the files that stay, so a later setup or upgrade still
+# knows which of them are edits; no rows left, no manifest.
+rewrite_manifest() {
+  ((dry)) && return 0
+  if (($#)); then printf '%s\n' "$@" > "$state/manifest"; else rm -f -- "$state/manifest"; fi
+}
+
 uninstall_config() {
-  local removed=0 kept=() behind=() dirs=() rc
+  local removed=0 kept=() behind=() dirs=() rows=() failed=() rc
   if [[ ! -f $state/manifest ]]; then
     echo "c7shell-setup: nothing to remove -- no install recorded in $state/manifest"
     return 0
   fi
   uninstall_files
   prune_dirs ${dirs[@]+"${dirs[@]}"}
+  rewrite_manifest ${rows[@]+"${rows[@]}"}
   printf '%s %d unedited c7shell files from %s\n' "$(would remove removed)" "$removed" "$conf"
   for rc in "${rc_files[@]}"; do
     grep -qsF "$sudo_marker" "$rc" || continue
-    printf '%s the run0 sudo line from %s\n' "$(would remove removing)" "$rc"
-    ((dry)) || drop_sudo_line "$rc"
+    if ((dry)); then printf 'would remove the run0 sudo line from %s\n' "$rc"
+    elif drop_sudo_line "$rc"; then printf 'removed the run0 sudo line from %s\n' "$rc"
+    else failed+=("$rc"); fi
   done
-  run rm -f -- "$state/manifest"
   if ((${#kept[@]})); then
     printf '\nKept, because you edited them:\n'; printf '  %s\n' "${kept[@]}"
   fi
@@ -160,10 +181,14 @@ uninstall_config() {
     printf '  %s\n' "${behind[@]}"
   fi
   report_leftovers
+  ((${#failed[@]} == 0)) && return 0
+  printf '\nc7shell-setup: could not edit these; remove the line ending in "%s" by hand:\n' "$sudo_marker" >&2
+  printf '  %s\n' "${failed[@]}" >&2
+  return 1
 }
 if ((uninstall)); then
   ((force == 0)) || { echo 'c7shell-setup: --uninstall takes no --force' >&2; exit 2; }
-  uninstall_config
+  uninstall_config || exit 1
   exit 0
 fi
 

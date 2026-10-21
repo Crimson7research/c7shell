@@ -90,3 +90,17 @@ the selection.
 
 MSG
 }
+
+# Runs as root while pacman removes the package, so it can only tell the user
+# what stays: their copies in ~/.config are theirs, and the command that would
+# have taken them out (c7shell-setup --uninstall) goes with the package.
+pre_remove() {
+  cat <<'MSG'
+
+c7shell is being removed. Your copies of its configs stay in each user's
+~/.config (hypr, quickshell/c7shell, xdg-desktop-portal). To take them out
+cleanly, reinstall c7shell, run `c7shell-setup --uninstall` as that user, and
+remove the package again.
+
+MSG
+}

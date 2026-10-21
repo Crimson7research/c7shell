@@ -398,16 +398,19 @@ outright instead, `c7shell-setup --force` still backs them up to
 so it can never eat local edits by accident. It exits 3 when it copied nothing
 and 4 when it copied only some parts.
 
-To switch to another setup, `c7shell-setup --uninstall` takes c7shell's config
-out of the way. It reads the same manifest. Each shipped file you have not
-edited is removed, with any `<file>.new` beside it. The run0 `sudo` line setup
-added to `~/.bashrc` or `~/.zshrc` is removed too, through a symlink if the
-file is one. Edited files, files you added, empty directories you made, and
-`.bak-<stamp>` backups stay. Files reached through a symlinked directory, such
-as a dotfiles repo linked in as `~/.config/hypr`, stay too: they live outside
-`~/.config`. It lists what it kept, and the run0 lines it found in your
-arch-update and paru configs, which it leaves because it cannot tell them from
-your own choice. Add `--dry-run` to see the list first.
+To switch to another setup, run `c7shell-setup --uninstall` before you remove
+the package; the command ships in it. It reads the same manifest. Each shipped
+file you have not edited is removed, with any `<file>.new` beside it, and so is
+the run0 `sudo` line setup added to `~/.bashrc` or `~/.zshrc` (through a
+symlink if the file is one). Edited files stay, and so does the `.new` beside
+one, since that is the version you were asked to merge. Files you added, empty
+directories you made, and `.bak-<stamp>` backups stay too, and so do files
+reached through a symlinked directory, such as a dotfiles repo linked in as
+`~/.config/hypr`. It lists what it kept, the run0 lines in your arch-update and
+paru configs, and the theme files setup exported (the C7Shell colours in
+`kdeglobals`, `hypr/hyprlock-palette.conf`, `C7Shell.colors`), which other
+desktops read too. Add `--dry-run` to see the list first. It exits 0, or 1 when
+it could not edit an rc file, which it then names.
 
 ## What is where
 
