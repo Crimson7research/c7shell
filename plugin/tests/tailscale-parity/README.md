@@ -66,7 +66,8 @@ C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_SCENARIOS=http-01-request-line-and-host \
 Each scenario runs in its own child process (a respawn of the test binary)
 with a cleared environment: the keep-list of
 `plugin/lib/testing/testmain.cpp`, a private `HOME`, `XDG_*`, `TMPDIR` and an
-empty `PATH`, dead bus addresses, `QT_QPA_PLATFORM=offscreen`, and
+empty `PATH`, dead bus addresses, `QT_QPA_PLATFORM=offscreen`, `TZ=UTC`
+(a date-time without a zone then reads the same on every host), and
 `TS_SOCKET` in the private root, where the fake listens. Nothing reaches the
 host's tailscaled or buses.
 
