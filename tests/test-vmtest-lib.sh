@@ -149,6 +149,18 @@ host_step() { exit 2; }
 set +e; ( phase host 5 host_step ) >/dev/null 2>&1; s=$?; set -e
 [[ $s == 2 ]] || fail "phase: a step's exit 2 must stay 2, got $s"
 
+# A dead QEMU leaves no QMP socket, but its serial log is still on disk and
+# is the only thing that says why the phase failed (#272).
+mkdir -p "$tmp/deadrun"; echo 'kernel panic' > "$tmp/deadrun/serial.log"
+( run=$tmp/deadrun; save_evidence dead )
+grep -qx 'kernel panic' "$results/dead-serial-tail.log" 2>/dev/null \
+  || fail 'save_evidence: must keep the serial tail when QEMU is down'
+mkdir -p "$tmp/noserial"
+( run=$tmp/noserial; save_evidence noserial )
+[[ ! -e $results/noserial-serial-tail.log ]] || fail 'save_evidence: no serial log, no empty serial tail'
+( run=''; save_evidence norun ) || fail 'save_evidence: no run dir yet must not fail'
+[[ ! -e $results/norun-serial-tail.log ]] || fail 'save_evidence: no run dir, no serial tail'
+
 # finish must report PASS even when stopping the VM fails.
 mkdir -p "$tmp/frun"; : > "$results/summary.txt"
 vm_stop() { return 1; }
