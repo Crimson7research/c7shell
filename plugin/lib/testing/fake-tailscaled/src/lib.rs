@@ -14,6 +14,7 @@ mod bytes;
 pub mod control;
 mod reply;
 mod request;
+pub mod scenario;
 mod script;
 mod server;
 
