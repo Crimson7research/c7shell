@@ -235,6 +235,9 @@ printf '# caf\xe9\nalias please="sudo !!"\n' > "$un/dotfiles/bashrc"
 ln -s ../dotfiles/bashrc "$un/home/.bashrc"
 printf 'setopt autocd\n' > "$un/zdot/.zshrc"
 cp "$un/dotfiles/bashrc" "$tmp/bashrc.orig"; cp "$un/zdot/.zshrc" "$tmp/zshrc.orig"
+# gsettings is the host's dconf; a stub answers for it, as c7shell set it.
+mkdir -p "$un/bin"; printf '#!/bin/sh\necho "'"'"'prefer-dark'"'"'"\n' > "$un/bin/gsettings"; chmod +x "$un/bin/gsettings"
+export PATH="$un/bin:$PATH"
 u() { HOME=$un/home ZDOTDIR=$un/zdot XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$un/state \
         C7SHELL_SUDO_SNIPPET=$tmp/sn.sh "$setup" "$@"; }
 u >/dev/null 2>&1
@@ -262,6 +265,9 @@ ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
 # setup writes paru.conf only where paru is installed; this test must not
 # depend on the machine it runs on.
 rm -f "$un/conf/paru/paru.conf"; mv "$un/conf/paru/paru.conf.keep" "$un/conf/paru/paru.conf"
+
+printf '[Mouse]\ncursorTheme=Bibata\n' > "$un/conf/kcminputrc"
+cp "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig"; cp "$un/conf/paru/paru.conf" "$tmp/pc.orig"
 
 if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'; fi
 
@@ -292,6 +298,11 @@ grep -qF 'shell.qml' <<<"$also" && fail "a file already listed as kept was liste
 grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$out" \
   || fail "uninstall did not list a file the theme export writes:\n$out"
 grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
+grep -qF "$un/conf/kcminputrc   (the theme export writes to it)" <<<"$out" || fail "uninstall did not list kcminputrc:\n$out"
+grep -qF "color-scheme setting, now 'prefer-dark'" <<<"$out" || fail "uninstall did not list the gsettings key:\n$out"
+# Listed is all: the unmarked run0 lines are the user's to remove.
+cmp -s "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig" || fail 'uninstall changed arch-update.conf'
+cmp -s "$un/conf/paru/paru.conf" "$tmp/pc.orig" || fail 'uninstall changed paru.conf'
 [[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
 [[ -d $un/conf/hypr/wallpapers ]] || fail 'uninstall deleted an empty directory the user made'
 [[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
@@ -353,6 +364,16 @@ printf 'hypr/k.lua\t0000\n' > "$lone/state/manifest"; chmod 555 "$lone/state"
 rc=0; HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || rc=$?
 chmod 755 "$lone/state"; rm -r "$lone/conf/hypr"
 ((rc == 1)) || fail "a manifest uninstall could not rewrite did not exit 1 (got $rc)"
+
+# An unreadable manifest stops the run: read as empty, it would be deleted.
+mkdir -p "$lone/conf/hypr"; echo x > "$lone/conf/hypr/u.lua"
+printf 'hypr/u.lua\t%s\n' "$(sha256sum < "$lone/conf/hypr/u.lua" | cut -d' ' -f1)" > "$lone/state/manifest"
+chmod 000 "$lone/state/manifest"
+rc=0; HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || rc=$?
+chmod 644 "$lone/state/manifest"
+((rc == 1)) || fail "an unreadable manifest did not exit 1 (got $rc)"
+[[ -s $lone/state/manifest && -f $lone/conf/hypr/u.lua ]] || fail 'uninstall acted on a manifest it could not read'
+rm -r "$lone/conf/hypr"
 
 # A row whose file is gone but whose .new is there keeps the .new.
 mkdir -p "$lone/conf/hypr"; echo merged > "$lone/conf/hypr/y.lua.new"

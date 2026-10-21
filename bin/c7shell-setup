@@ -33,8 +33,9 @@ env: C7SHELL_SHARE (default /usr/share/c7shell)
 
 exit: 0 all parts installed, 3 nothing done because a target already exists,
       4 some parts installed and others left alone because they already exist
-      --uninstall: 0 done or nothing to remove, 1 a file it meant to remove
-      or an rc file it meant to edit could not be changed, 2 bad options
+      --uninstall: 0 done or nothing to remove, 1 a file it meant to remove,
+      an rc file it meant to edit or the manifest could not be changed or
+      read, 2 bad options
 USAGE
 }
 
@@ -195,6 +196,9 @@ report_leftovers() {
     ${rest[@]+"${rest[@]}"}
 }
 
+# plural <n> <noun> -- "1 row", "2 rows".
+plural() { if (($1 == 1)); then printf '1 %s' "$2"; else printf '%d %ss' "$1" "$2"; fi; }
+
 # listed <item> <list>... -- whether the item is one of the list.
 listed() { local x=$1 y; shift; for y; do [[ $x == "$y" ]] && return 0; done; return 1; }
 
@@ -216,17 +220,22 @@ uninstall_config() {
   local removed=0 kept=() parked=() behind=() dirs=() rows=() failed=() gone=() rc
   # The rc line and the leftovers do not need the manifest: an install older
   # than it, or a wiped ~/.local/state, still gets both.
-  if [[ -f $state/manifest ]]; then
+  if [[ -f $state/manifest && ! -r $state/manifest ]]; then
+    # Read as empty, it would remove nothing and then delete the manifest --
+    # the baseline of every file still installed.
+    printf 'c7shell-setup: cannot read %s; nothing changed\n' "$state/manifest" >&2
+    return 1
+  elif [[ -f $state/manifest ]]; then
     uninstall_files
     remove_generated
     prune_dirs ${dirs[@]+"${dirs[@]}"}
     rewrite_manifest ${rows[@]+"${rows[@]}"}
     printf '%s %d unedited c7shell files from %s\n' "$(would remove removed)" "$removed" "$conf"
     # The rows of what stays are kept, so a later setup or upgrade still knows
-    # those files as edits.
+    # those files as edits; so are rows whose file is not in this config dir.
     ((${#rows[@]} == 0)) || listed "$state/manifest" ${failed[@]+"${failed[@]}"} \
-      || printf '%s %d rows in %s, for the files that stay\n' \
-      "$(would keep kept)" "${#rows[@]}" "$state/manifest"
+      || printf '%s %s in %s: for the files that stay, and any not found in %s\n' \
+      "$(would keep kept)" "$(plural ${#rows[@]} row)" "$state/manifest" "$conf"
   else
     printf 'no install recorded in %s, so no config files %s\n' "$state/manifest" "$(would 'be removed' 'are removed')"
   fi
@@ -241,7 +250,7 @@ uninstall_config() {
   list "Kept, because they resolve outside $conf (a symlink, or a ../ in the manifest):" ${behind[@]+"${behind[@]}"}
   report_leftovers
   ((${#failed[@]} == 0)) && return 0
-  printf '\nc7shell-setup: could not change these; remove them, or the line ending in\n"%s", by hand:\n' "$sudo_marker" >&2
+  printf '\nc7shell-setup: could not change these. Remove a listed config file, or the line\nending in "%s" from a listed rc file, by hand; a listed manifest is left as it\nwas, which is safe:\n' "$sudo_marker" >&2
   printf '  %s\n' "${failed[@]}" >&2
   return 1
 }
