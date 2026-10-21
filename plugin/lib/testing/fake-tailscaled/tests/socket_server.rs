@@ -291,3 +291,155 @@ fn a_wait_that_is_never_reached_fails_naming_it() {
     let fake = Fake::start(dir.socket());
     fake.wait_until_within("something that never happens", std::time::Duration::ZERO, |_| None::<()>);
 }
+
+/// Waits until the fake counts exactly `n` connected clients.
+fn wait_connected(fake: &Fake, n: usize) {
+    fake.wait_until(&format!("{n} connected clients"), |s| (s.connected_count() == n).then_some(()));
+}
+
+/// Waits until the fake has recorded `n` requests.
+fn wait_requests(fake: &Fake, n: usize) {
+    fake.wait_until(&format!("{n} requests recorded"), |s| (s.requests().len() == n).then_some(()));
+}
+
+const STATUS_GET: &[u8] = b"GET /status HTTP/1.1\r\n\r\n";
+
+#[test]
+fn r_fake_02_pushes_exact_bytes_and_holds_a_request() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"handled"), AfterReply::CloseAfterReply, Some(b"\r\n\r\n"));
+
+    // Exact bytes, half a line at a time.
+    let mut client = Client::connect(fake.path());
+    wait_connected(&fake, 1);
+    assert_eq!(fake.push_chunk(b"{\"half\":"), 1);
+    assert_eq!(client.read_exactly(8), b"{\"half\":");
+    assert_eq!(fake.push_chunk(b"1}\n"), 1);
+    assert_eq!(client.read_exactly(11), b"{\"half\":1}\n");
+    drop(client);
+    wait_connected(&fake, 0);
+
+    // A hold: recorded, unanswered, connected, and skipped by a push.
+    fake.hold_next(b"/status ");
+    let mut first = Client::connect(fake.path());
+    first.write(STATUS_GET);
+    wait_requests(&fake, 1);
+    assert_eq!(fake.held_count(), 1);
+    assert_eq!(fake.push_line(b"pushed"), 0);
+    assert_eq!(fake.wait_until("the held client's written report", |s| Some(s.written(2))), 0);
+    assert_eq!(fake.complete_held(b"completed"), 1);
+    assert_eq!(first.read_until_closed(), b"completed");
+
+    // The hold was one-shot: the next GET is answered by the handler.
+    let mut second = Client::connect(fake.path());
+    second.write(STATUS_GET);
+    assert_eq!(second.read_until_closed(), b"handled");
+    assert_eq!(fake.held_count(), 0);
+
+    // Holds accumulate.
+    fake.hold_next(b"/status ");
+    let mut third = Client::connect(fake.path());
+    third.write(STATUS_GET);
+    wait_requests(&fake, 3);
+    assert_eq!(fake.held_count(), 1);
+    fake.hold_next(b"/status ");
+    let mut fourth = Client::connect(fake.path());
+    fourth.write(STATUS_GET);
+    wait_requests(&fake, 4);
+    assert_eq!(fake.held_count(), 2);
+    assert_eq!(fake.complete_held(b"both"), 2);
+    assert_eq!(third.read_until_closed(), b"both");
+    assert_eq!(fourth.read_until_closed(), b"both");
+
+    // A completion reaches only what is held when it runs: the hold armed
+    // before it still holds the request sent after it.
+    fake.hold_next(b"/status ");
+    let mut held = Client::connect(fake.path());
+    held.write(STATUS_GET);
+    wait_requests(&fake, 5);
+    assert_eq!(fake.held_count(), 1);
+    fake.hold_next(b"/status ");
+    assert_eq!(fake.complete_held(b"once"), 1);
+    assert_eq!(held.read_until_closed(), b"once");
+    let mut fifth = Client::connect(fake.path());
+    fifth.write(STATUS_GET);
+    wait_requests(&fake, 6);
+    assert_eq!(fake.held_count(), 1);
+    let id = fake.requests()[5].client;
+    assert_eq!(fake.wait_until("the fifth client's written report", |s| Some(s.written(id))), 0);
+    assert!(fifth.is_open());
+    assert!(fifth.got().is_empty(), "the fifth client received {:?}", fifth.got());
+}
+
+#[test]
+fn a_hold_matches_only_its_fragment() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"handled"), AfterReply::CloseAfterReply, Some(b"\r\n\r\n"));
+    fake.hold_next(b"/status ");
+    let mut other = Client::connect(fake.path());
+    other.write(b"GET /status?x HTTP/1.1\r\n\r\n");
+    assert_eq!(other.read_until_closed(), b"handled");
+    assert_eq!(fake.held_count(), 0);
+    // Still armed for the request that matches.
+    let mut held = Client::connect(fake.path());
+    held.write(STATUS_GET);
+    wait_requests(&fake, 2);
+    assert_eq!(fake.held_count(), 1);
+    // A held client that goes away is no longer held.
+    drop(held);
+    fake.wait_until("the held client gone", |s| (s.held_count() == 0).then_some(()));
+    assert_eq!(fake.complete_held(b"late"), 0);
+}
+
+#[test]
+fn completing_with_keep_open_leaves_the_client_connected() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"k"), AfterReply::KeepOpen, Some(b"\n"));
+    fake.hold_next(b"x");
+    let mut client = Client::connect(fake.path());
+    client.write(b"x\n");
+    wait_requests(&fake, 1);
+    assert_eq!(fake.complete_held(b"done"), 1);
+    assert_eq!(client.read_exactly(4), b"done");
+    client.write(b"y\n");
+    assert_eq!(client.read_exactly(5), b"donek");
+}
+
+#[test]
+fn r_fake_06_pushes_lines_to_every_client_like_an_event_socket() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let mut first = Client::connect(fake.path());
+    let mut second = Client::connect(fake.path());
+    wait_connected(&fake, 2);
+    assert_eq!(fake.push_line(b"workspace>>2"), 2);
+    assert_eq!(first.read_until(|g| g.ends_with(b"\n")), b"workspace>>2\n");
+    assert_eq!(second.read_until(|g| g.ends_with(b"\n")), b"workspace>>2\n");
+}
+
+#[test]
+fn r_fake_06_says_when_a_line_reached_nobody() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    assert_eq!(fake.push_line(b"workspace>>2"), 0);
+}
+
+#[test]
+fn push_to_reaches_one_chosen_client() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let mut first = Client::connect(fake.path());
+    let mut second = Client::connect(fake.path());
+    wait_connected(&fake, 2);
+    assert!(fake.push_to(2, b"two"));
+    assert_eq!(second.read_exactly(3), b"two");
+    assert!(!fake.push_to(99, b"nobody"));
+    drop(second);
+    wait_connected(&fake, 1);
+    assert!(!fake.push_to(2, b"gone"));
+    assert_eq!(fake.push_line(b"one"), 1);
+    assert_eq!(first.read_exactly(4), b"one\n");
+}
