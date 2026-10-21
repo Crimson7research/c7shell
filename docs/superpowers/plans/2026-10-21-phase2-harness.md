@@ -1,7 +1,9 @@
 # Plan: Phase 2, PR 1 (#306): fake tailscaled, scenario format and harness
 
-Status: draft for #306, the first of the five Phase 2 PRs (#306 to #310) of
-epic #287. Parent issue: #290.
+Status: implemented on `feat/fake-tailscaled-306` (2026-10-21), for #306, the
+first of the five Phase 2 PRs (#306 to #310) of epic #287. Parent issue:
+#290. "Implementation notes" at the end records where the work departed
+from this plan, and why.
 
 Inputs, read before starting:
 
@@ -367,7 +369,7 @@ the code, with the paths listed. The fake's tests run from `plugin/`:
 `plugin/lib/testing/fake-tailscaled/{Cargo.toml,src/lib.rs}`; modify
 `.gitignore`.
 
-- [ ] **Test.** `tests/test-fake-tailscaled.sh` sources
+- [x] **Test.** `tests/test-fake-tailscaled.sh` sources
   `tests/fixtures/harness.sh`. It prints `SKIP: cargo is not on PATH` and
   exits 0 when `command -v cargo` fails. Otherwise it fails unless:
   1. `plugin/Cargo.toml` declares `[workspace]`.
@@ -386,15 +388,15 @@ the code, with the paths listed. The fake's tests run from `plugin/`:
   `tests/test-fake-tailscaled.sh` gives `plugin/Cargo.toml declares no
   [workspace]`. Commit it alone:
   `test(fake-tailscaled): guard the Cargo workspace layout`.
-- [ ] **Code.** Create the files in the file map. The fake crate starts
+- [x] **Code.** Create the files in the file map. The fake crate starts
   with an empty `lib.rs` (crate docs only). Add `/target/` to `.gitignore`
   under a `# cargo build (plugin/.cargo/config.toml sets target-dir)`
   comment. Run `(cd plugin && cargo generate-lockfile)` once.
-- [ ] **Prove.** `tests/test-fake-tailscaled.sh && tests/test-c7-plugin.sh &&
+- [x] **Prove.** `tests/test-fake-tailscaled.sh && tests/test-c7-plugin.sh &&
   tests/test-native-boundary.sh && tests/test-native-boundary-selftest.sh`.
   All pass. `git status --short` shows no file under `target/` and none under
   `plugin/target/`.
-- [ ] **Commit.** `build(plugin): start the Cargo workspace beside the CMake build`.
+- [x] **Commit.** `build(plugin): start the Cargo workspace beside the CMake build`.
 
 ### Task 2: the fake binds its socket (R-FAKE-05, R-FAKE-06)
 
@@ -414,7 +416,7 @@ impl Fake {
 impl Drop for Fake { /* stop accepting, disconnect every client, remove the socket file it bound */ }
 ```
 
-- [ ] **Tests** (each `r_fake_05_...` or `r_fake_06_...`, ported from the
+- [x] **Tests** (each `r_fake_05_...` or `r_fake_06_...`, ported from the
   `tst_fakesocketserver.cpp` function named, with the same assertions):
   - `r_fake_06_listens_at_the_given_path_for_this_user_only`: listening;
     the socket's mode has no group or other bits; a missing parent directory
@@ -431,14 +433,14 @@ impl Drop for Fake { /* stop accepting, disconnect every client, remove the sock
 
   They fail to compile without `Fake`. Commit:
   `test(fake-tailscaled): the fake binds, refuses and frees its socket`.
-- [ ] **Code.** `std::os::unix::net::UnixListener`. Refuse when
+- [x] **Code.** `std::os::unix::net::UnixListener`. Refuse when
   `symlink_metadata(path)` succeeds. Create parents with mode 0700. Bind,
   then set the socket's mode to 0600, and record its inode. Drop: set a
   closing flag, wake `accept` by connecting to the path, join the acceptor,
   `shutdown(Both)` every client, join the readers, and remove the path only
   if it still has the recorded inode.
-- [ ] **Prove.** `cd plugin && cargo test --locked -p fake-tailscaled --test socket_server`.
-- [ ] **Commit.** `feat(fake-tailscaled): bind a private socket and refuse a taken path`.
+- [x] **Prove.** `cd plugin && cargo test --locked -p fake-tailscaled --test socket_server`.
+- [x] **Commit.** `feat(fake-tailscaled): bind a private socket and refuse a taken path`.
 
 ### Task 3: framing, handler and records (R-FAKE-01, R-FAKE-06)
 
@@ -454,7 +456,7 @@ impl Fake {
 }
 ```
 
-- [ ] **Tests:**
+- [x] **Tests:**
   - `r_fake_01_frames_a_request_with_its_declared_body`: R-FAKE-01's
     acceptance, word for word. The partial PATCH records nothing once the
     fake has received all 50 bytes (read through the received report,
@@ -474,13 +476,13 @@ impl Fake {
     is #286's shape, and headers keep their case and order.
 
   Commit: `test(fake-tailscaled): frame requests and record every byte`.
-- [ ] **Code.** One reader thread per client. Each read appends to that
+- [x] **Code.** One reader thread per client. Each read appends to that
   client's buffer and to its received count, then frames on the delimiter;
   with `Content-Length` in the head, the body is taken too. A hold check
   comes before the handler (Task 4). Every state change does a
   `notify_all` on one `Condvar`.
-- [ ] **Prove.** `cd plugin && cargo test --locked -p fake-tailscaled`.
-- [ ] **Commit.** `feat(fake-tailscaled): frame, answer and record requests`.
+- [x] **Prove.** `cd plugin && cargo test --locked -p fake-tailscaled`.
+- [x] **Commit.** `feat(fake-tailscaled): frame, answer and record requests`.
 
 ### Task 4: push, hold and complete (R-FAKE-02, R-FAKE-06)
 
@@ -488,7 +490,7 @@ impl Fake {
 `push_to(ClientId, &[u8]) -> bool`, `hold_next(&[u8])`,
 `complete_held(&[u8]) -> usize`, `held_count() -> usize`.
 
-- [ ] **Tests:** `r_fake_02_pushes_exact_bytes_and_holds_a_request`, the
+- [x] **Tests:** `r_fake_02_pushes_exact_bytes_and_holds_a_request`, the
   whole R-FAKE-02 acceptance in its order. That covers the split `{"half":`
   push, a push to a held client returning 0 while its written report stays
   0, `complete_held` returning 1, the one-shot hold, holds accumulating to
@@ -496,11 +498,11 @@ impl Fake {
   `r_fake_06_pushes_lines_to_every_client_like_an_event_socket` and
   `r_fake_06_says_when_a_line_reached_nobody`. Commit:
   `test(fake-tailscaled): push bytes and hold requests`.
-- [ ] **Code.** Writes go through a per-client writer lock. A push skips
+- [x] **Code.** Writes go through a per-client writer lock. A push skips
   held clients and parked ones (Task 7). It returns how many clients took
   the bytes.
-- [ ] **Prove.** As Task 3.
-- [ ] **Commit.** `feat(fake-tailscaled): push to clients and hold a request in flight`.
+- [x] **Prove.** As Task 3.
+- [x] **Commit.** `feat(fake-tailscaled): push to clients and hold a request in flight`.
 
 ### Task 5: the reports the barriers read (R-FAKE-07)
 
@@ -508,23 +510,23 @@ impl Fake {
 connected, received, written, held, parked, stream), `connected_count()`,
 `accepted_total()`, `disconnects()`.
 
-- [ ] **Test:** `r_fake_07_reports_what_the_barriers_read`, R-FAKE-07's
+- [x] **Test:** `r_fake_07_reports_what_the_barriers_read`, R-FAKE-07's
   acceptance step by step: 19 received, 2 written, 1 connected, 1 accepted;
   6 written after the `abc` push; 24 received and no new request after
   `GET /`; a second client; a disconnect handled (`disconnects()` moves)
   leaves 1 connected and 2 accepted. Commit:
   `test(fake-tailscaled): report bytes and clients for the barriers`.
-- [ ] **Code.** Counters in the shared state, updated before `notify_all`.
+- [x] **Code.** Counters in the shared state, updated before `notify_all`.
   Replace Task 3's stub.
-- [ ] **Prove.** As Task 3.
-- [ ] **Commit.** `feat(fake-tailscaled): report received and written bytes per client`.
+- [x] **Prove.** As Task 3.
+- [x] **Commit.** `feat(fake-tailscaled): report received and written bytes per client`.
 
 ### Task 6: close one chosen client (R-FAKE-03) and destroy (R-FAKE-06)
 
 **Interface:** `close_client(ClientId) -> bool`;
 `client_holding(&[u8]) -> Option<ClientId>`.
 
-- [ ] **Tests:**
+- [x] **Tests:**
   - `r_fake_03_drops_one_chosen_client`. The fake's half of R-FAKE-03, with
     a raw test client standing in for the transport: a held GET of
     `/status` plus a keep-open client that has already been answered.
@@ -539,10 +541,10 @@ connected, received, written, held, parked, stream), `connected_count()`,
     `tests/test-c7-plugin.sh`.
 
   Commit: `test(fake-tailscaled): close one client and keep serving the rest`.
-- [ ] **Code.** `shutdown(Both)` on that client's stream, and mark it
+- [x] **Code.** `shutdown(Both)` on that client's stream, and mark it
   disconnected when its reader sees end of file.
-- [ ] **Prove.** `tests/test-fake-tailscaled.sh`. It prints 50 passing runs.
-- [ ] **Commit.** `feat(fake-tailscaled): drop one chosen client on demand`.
+- [x] **Prove.** `tests/test-fake-tailscaled.sh`. It prints 50 passing runs.
+- [x] **Commit.** `feat(fake-tailscaled): drop one chosen client on demand`.
 
 ### Task 7: scripted HTTP replies
 
@@ -554,7 +556,7 @@ delimiter and per-rule keep-open), `push_watch_line(&[u8]) -> usize` (writes
 `<hex len>\r\n<line>\n\r\n` to every stream client), `resume(&str) ->
 usize`, and `Request::unmatched`.
 
-- [ ] **Tests.** A raw client sends a request and asserts the exact bytes
+- [x] **Tests.** A raw client sends a request and asserts the exact bytes
   received, then end of file or still open, for:
   - `Content-Length` (the header added, body exact);
   - a declared wrong length (`Content-Length: 99` and 9 bytes, then close);
@@ -575,12 +577,12 @@ usize`, and `Request::unmatched`.
 
   Also a `Bytes` round trip: a string, hex, and `{"json": ...}` serialised
   compactly. Commit: `test(fake-tailscaled): script every reply shape the scenarios need`.
-- [ ] **Code.** `ReplySpec::encode() -> (Vec<u8>, Vec<Split>)`, pure. The
+- [x] **Code.** `ReplySpec::encode() -> (Vec<u8>, Vec<Split>)`, pure. The
   rule engine runs inside the handler path. A parked client holds the
   remaining bytes and its label.
-- [ ] **Prove.** As Task 3, plus
+- [x] **Prove.** As Task 3, plus
   `cd plugin && cargo clippy --locked -p fake-tailscaled -- -D warnings`.
-- [ ] **Commit.** `feat(fake-tailscaled): replay scripted LocalAPI replies`.
+- [x] **Commit.** `feat(fake-tailscaled): replay scripted LocalAPI replies`.
 
 ### Task 8: the standalone binary (P2)
 
@@ -597,7 +599,7 @@ The commands are `requests`, `clients`, `connected`, `accepted`,
 of process, a client waits by polling `requests` or `clients`, a bounded
 poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
 
-- [ ] **Tests** (they spawn `env!("CARGO_BIN_EXE_fake-tailscaled")` in a
+- [x] **Tests** (they spawn `env!("CARGO_BIN_EXE_fake-tailscaled")` in a
   `TestDir`):
   - the listening event, and the refusal (exit 2, `already exists`);
   - every command once;
@@ -609,16 +611,16 @@ poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
     `requests()` (compared as `Bytes` JSON).
 
   Commit: `test(fake-tailscaled): run the fake as a standalone binary`.
-- [ ] **Code.** `control::serve` reads lines in a loop on the main thread.
+- [x] **Code.** `control::serve` reads lines in a loop on the main thread.
   The binary's `main` parses arguments by hand (no `clap`).
-- [ ] **Prove.** As Task 3.
-- [ ] **Commit.** `feat(fake-tailscaled): a standalone binary controlled over stdin`.
+- [x] **Prove.** As Task 3.
+- [x] **Commit.** `feat(fake-tailscaled): a standalone binary controlled over stdin`.
 
 ### Task 9: the scenario format
 
 **Files:** create `src/scenario.rs`, `tests/scenario_format.rs`.
 
-- [ ] **Tests:** `Scenario::load(path)` accepts a full inline example of
+- [x] **Tests:** `Scenario::load(path)` accepts a full inline example of
   each step and expect kind. It rejects each of these, with an error naming
   the field:
   - an unknown field;
@@ -637,17 +639,17 @@ poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
   Plus `every_committed_scenario_validates`, which loads every
   `tests/fixtures/tailscale/scenarios/*.json` and passes with none there
   yet. Commit: `test(fake-tailscaled): define and validate the scenario format`.
-- [ ] **Code.** `serde` types (`#[serde(deny_unknown_fields)]`), `Script`
+- [x] **Code.** `serde` types (`#[serde(deny_unknown_fields)]`), `Script`
   built from `fake.rules`, `Scenario::derived_needs()`, `validate()`.
-- [ ] **Prove.** As Task 3.
-- [ ] **Commit.** `feat(fake-tailscaled): load and validate scenario files`.
+- [x] **Prove.** As Task 3.
+- [x] **Commit.** `feat(fake-tailscaled): load and validate scenario files`.
 
 ### Task 10: the evidence classification
 
 **Files:** create `src/evidence.rs`, `tests/evidence.rs`,
 `tests/fixtures/tailscale/evidence.json`.
 
-- [ ] **Tests** (they read the spec and the traceability file from the
+- [x] **Tests** (they read the spec and the traceability file from the
   repository, through `CARGO_MANIFEST_DIR`):
   - The IDs equal the spec's `### R-...` headings above "Contract
     additions": exactly 154, each once. Each `tag` equals the heading's.
@@ -675,13 +677,13 @@ poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
     and a `harness-on-cpp` scenario declares `pass` or `fail` on `cpp-286`.
 
   Commit: `test(fake-tailscaled): check the evidence classification against the spec`.
-- [ ] **Code.** Write `evidence.json` by applying "the procedure" to every
+- [x] **Code.** Write `evidence.json` by applying "the procedure" to every
   requirement, reading each acceptance criterion in full. Take each
   `cpp-suite` `tests` list from Table B. Write `src/evidence.rs` (types and
   the two markdown readers: headings, and Table B rows).
-- [ ] **Prove.** As Task 3. Then hand-check five random entries per area
+- [x] **Prove.** As Task 3. Then hand-check five random entries per area
   against the procedure, and record which ones in the PR description.
-- [ ] **Commit.** `feat(fake-tailscaled): classify all 154 requirements by evidence`.
+- [x] **Commit.** `feat(fake-tailscaled): classify all 154 requirements by evidence`.
 
 ### Task 11: the reference build and harness bring-up
 
@@ -690,7 +692,7 @@ poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
 `tests/harness_selftest.rs`, `build-reference.sh`, `README.md`); add it to
 the workspace `members` (not `default-members`).
 
-- [ ] **Test.** `tests/harness_selftest.rs` (`harness = false`) runs these
+- [x] **Test.** `tests/harness_selftest.rs` (`harness = false`) runs these
   bring-up checks:
   1. `import C7Harness` resolves in the test binary, and a `Probe` round
      trip returns what the driver sent. This proves P7, or stops the task
@@ -708,7 +710,7 @@ the workspace `members` (not `default-members`).
   Run `cd plugin && cargo test --locked -p tailscale-parity --test harness_selftest`.
   It fails: nothing builds yet. Commit:
   `test(tailscale-parity): load a C7 module and read Tailscale from Rust`.
-- [ ] **Code:**
+- [x] **Code:**
   - `probe.rs`: a `#[qml_element] #[qml_singleton]` `Probe` with
     `#[qsignal] fn command(json: QString)`, `#[qinvokable] fn reply(json:
     &QString)` and `#[qinvokable] fn ready()`. `cxx_qt::Initialize` stores
@@ -741,17 +743,17 @@ the workspace `members` (not `default-members`).
     - Check `$cache/build/qml/C7/qmldir`, and print `$cache/build/qml` as
       the last line.
     - Never touch `/home/joren/git/c7shell-286`.
-- [ ] **Prove.**
+- [x] **Prove.**
   `qml=$(plugin/tests/tailscale-parity/build-reference.sh | tail -1) && cd plugin && C7_IMPL=cpp-286 C7_QML_DIR=$qml cargo test --locked -p tailscale-parity --test harness_selftest`.
   It passes. A second `build-reference.sh` rebuilds nothing (Ninja: "no
   work to do"). `shellcheck plugin/tests/tailscale-parity/*.sh` prints
   nothing.
-- [ ] **Stop condition.** If cxx-qt 0.10 cannot register a static QML module
+- [x] **Stop condition.** If cxx-qt 0.10 cannot register a static QML module
   in a test binary, or a Rust-emitted signal does not run the QML handler
   before `emit` returns, stop and report. That is a spike-class failure
   ("Spike failure: stop and re-decide"). The fallback to propose is a
   dynamic `C7Harness` plugin staged like the spike's `C7Spike`.
-- [ ] **Commit.** `feat(tailscale-parity): build #286's C7 and drive it from Rust`.
+- [x] **Commit.** `feat(tailscale-parity): build #286's C7 and drive it from Rust`.
 
 ### Task 12: the scenario runner
 
@@ -759,7 +761,7 @@ the workspace `members` (not `default-members`).
 `selftest/qml/C7/{qmldir,Tailscale.qml}`, `selftest/scenarios/*.json`,
 `tests/scenarios.rs`; extend `tests/harness_selftest.rs`.
 
-- [ ] **Tests.** `harness_selftest` runs each `selftest/scenarios/*.json`
+- [x] **Tests.** `harness_selftest` runs each `selftest/scenarios/*.json`
   against the stub (`C7_QML_DIR=<crate>/selftest/qml`, implementation name
   `stub`, no capabilities, `C7_HARNESS_MAX_ITERATIONS` small). It asserts
   the runner's verdict:
@@ -782,7 +784,7 @@ the workspace `members` (not `default-members`).
   through `Qt.application.arguments`, which the child sets). It asserts the
   private root is removed afterwards. Commit:
   `test(tailscale-parity): pin the runner's verdicts on a stub C7`.
-- [ ] **Code.** Child: load the scenario, start the `Fake` at `TS_SOCKET`
+- [x] **Code.** Child: load the scenario, start the `Fake` at `TS_SOCKET`
   with its script, start the app and engine (import path `C7_QML_DIR`
   only, `QML_IMPORT_PATH` and `QML2_IMPORT_PATH` removed), run the steps,
   and print one `C7-SCENARIO-RESULT <json>` line. Parent: list the
@@ -795,11 +797,11 @@ the workspace `members` (not `default-members`).
   `qml=$(build-reference.sh | tail -1)`, then `cd plugin && C7_IMPL=cpp-286
   C7_QML_DIR=$qml C7_REPEAT=${repeat:-1} cargo test --locked -p
   tailscale-parity --test scenarios`.
-- [ ] **Prove.** `cd plugin && cargo test --locked -p tailscale-parity --test harness_selftest`.
+- [x] **Prove.** `cd plugin && cargo test --locked -p tailscale-parity --test harness_selftest`.
   With no scenario files yet,
   `plugin/tests/tailscale-parity/run.sh` fails with `no scenarios found`. An
   empty run is a failure, not a pass.
-- [ ] **Commit.** `feat(tailscale-parity): run scenarios in a private child per scenario`.
+- [x] **Commit.** `feat(tailscale-parity): run scenarios in a private child per scenario`.
 
 ### Task 13: the parity scenario, R-HTTP-01
 
@@ -860,12 +862,12 @@ the opening pass sends four of them (watch, `/status`, `/prefs`,
 }
 ```
 
-- [ ] **Test.** Commit the file:
+- [x] **Test.** Commit the file:
   `test(tailscale-parity): R-HTTP-01 request line and Host header, parity`.
-- [ ] **Prove it runs.** `plugin/tests/tailscale-parity/run.sh`: `ok
+- [x] **Prove it runs.** `plugin/tests/tailscale-parity/run.sh`: `ok
   http-01-request-line-and-host (cpp-286: pass, as declared)`. `cargo test
   -p fake-tailscaled --test scenario_format --test evidence` still passes.
-- [ ] **Prove it bites.** This step is not committed. Edit the Host value to
+- [x] **Prove it bites.** This step is not committed. Edit the Host value to
   `local-tailscaled.sock.` and the runner reports a mismatch on
   `status-request` showing both byte strings. Swap the `/prefs` rule to
   answer `[]` and the run is an error ("wait never reached: state Running"),
@@ -943,9 +945,9 @@ implementations, so the failure is that one value and never a timeout.
 }
 ```
 
-- [ ] **Test.** Commit the file:
+- [x] **Test.** Commit the file:
   `test(tailscale-parity): R-HTTP-09 error body kept in writeError, fix`.
-- [ ] **Prove.** `plugin/tests/tailscale-parity/run.sh` prints `ok
+- [x] **Prove.** `plugin/tests/tailscale-parity/run.sh` prints `ok
   http-09-error-body-in-write-error (cpp-286: fail as declared:
   write-error-keeps-the-daemons-words)`. Edit `failing[0].actual` (not
   committed) and the runner reports a mismatch. Revert it.
@@ -954,19 +956,19 @@ implementations, so the failure is that one value and never a timeout.
 
 ### Task 15: gates and wrap-up
 
-- [ ] `tests/test-fake-tailscaled.sh` passes: layout guards, the fake's
+- [x] `tests/test-fake-tailscaled.sh` passes: layout guards, the fake's
   tests, and 50 consecutive runs.
-- [ ] `plugin/tests/tailscale-parity/run.sh --repeat 50` passes: 50 runs of
+- [x] `plugin/tests/tailscale-parity/run.sh --repeat 50` passes: 50 runs of
   each scenario, matching its declaration in each.
-- [ ] `cd plugin && C7_IMPL=cpp-286 C7_QML_DIR=$qml cargo test --locked -p tailscale-parity --test harness_selftest`
+- [x] `cd plugin && C7_IMPL=cpp-286 C7_QML_DIR=$qml cargo test --locked -p tailscale-parity --test harness_selftest`
   passes, 50 consecutive times in a loop.
-- [ ] Coverage, on stable:
+- [x] Coverage, on stable:
   `cd plugin && cargo llvm-cov --locked -p fake-tailscaled --fail-under-lines 90`
   (the binary is covered through `CARGO_BIN_EXE_*`). Paste the summary into
   the PR description. Branch coverage needs the dated nightly and is not
   this PR's gate.
-- [ ] `cd plugin && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings`.
-- [ ] `tests/test-c7-plugin.sh`, `tests/test-native-boundary.sh` and
+- [x] `cd plugin && cargo fmt --check && cargo clippy --locked --workspace --all-targets -- -D warnings`.
+- [x] `tests/test-c7-plugin.sh`, `tests/test-native-boundary.sh` and
   `tests/test-native-boundary-selftest.sh` pass. Then the whole suite:
   `for t in tests/*.sh; do "$t"; done` (this checkout includes `5d04913`,
   so `tests/test-upgrade.sh` is safe to run).
@@ -1024,3 +1026,83 @@ implementations, so the failure is that one value and never a timeout.
 - Phase 3 adds the `rust` implementation's capabilities to
   `implementation.rs`, and the clock, barrier and retry hooks behind them.
   It then runs every scenario with `C7_IMPL=rust`.
+
+## Implementation notes (2026-10-21)
+
+Where the implementation departed from the plan above, and why. Each is
+also in the commit that made it.
+
+1. **Cargo reports the target directory unnormalised.** `cargo metadata`
+   prints `"target_directory":"<repo>/plugin/../target"`, so the guard in
+   `tests/test-fake-tailscaled.sh` resolves the path (`realpath -m`)
+   before it compares it with `<repo>/target`. Check 5 (no `plugin/target`
+   after a build) still catches a target directory inside `plugin/`.
+2. **A watch line's chunk length counts its newline.** `push_watch_line`
+   writes `<hex(len + 1)>\r\n<line>\n\r\n`, so `{"a":1}` goes out as
+   `8\r\n{"a":1}\n\r\n`. The plan's example gave `7`, the length without the
+   newline, which is malformed chunked framing.
+3. **No ninja on this host.** `build-reference.sh` passes `-G Ninja` only
+   when `ninja` is on `PATH`, as `tests/test-c7-plugin.sh` does, and builds
+   with `cmake --build ... --parallel $(nproc)` (make here). The first build
+   took a few minutes; a second run is a no-op (`Built target c7`, 0.2 s).
+4. **No `git worktree prune`.** Pruning edits the shared repository's
+   records of other checkouts' worktrees. `build-reference.sh` instead runs
+   `git worktree add --force --detach`, which takes over a worktree that is
+   registered at the cache path but whose directory is gone, and touches
+   nothing else.
+5. **`.qmlls.ini` is committed.** cxx-qt-build 0.10 writes
+   `plugin/tests/tailscale-parity/.qmlls.ini` whenever the file is missing.
+   Ignoring it would fail `tests/test-c7-plugin.sh` check 1, and leaving it
+   untracked dirties the tree, so a portable one (a relative `buildDir`) is
+   committed and the builder leaves it alone.
+6. **`plugin/rustfmt.toml`** sets `max_width = 120`, the width the code is
+   written to; `cargo fmt --check` passes with it.
+7. **The child's environment is reported in its result line**, as a map in
+   `C7-SCENARIO-RESULT`, not through `Qt.application.arguments`. The self-test
+   asserts every name is on the keep-list, a private variable, a dead bus
+   address, `QT_QPA_PLATFORM` or `TS_SOCKET`, and that `TS_SOCKET`, `HOME`,
+   `XDG_RUNTIME_DIR`, `TMPDIR` and `PATH` lie under the private root. The
+   child gets the scenario path and module directory as arguments and no
+   `C7_IMPL`; it parses the scenario with the new `Scenario::read` (no
+   validation; the parent has already validated it with `load_for`).
+8. **`Qt.exit(code)` during a scenario ends the child** with that code and no
+   result line. That is how the "child crashes" self-test stages a crash
+   (the stub's `quit(3)`), and the parent reports `no result line`.
+9. **The unmatched-request self-test runs against #286**
+   (`selftest/scenarios-cpp/unmatched.json`), because the QML stub does no
+   I/O: a script without a `/prefs` rule makes #286's opening pass request
+   it, and the runner reports `GET /localapi/v0/prefs` as an error. The
+   stub self-tests add one case, an unknown member, which is an error too.
+10. **Task 13's second bite proof.** A `/prefs` answered `[]` still brings
+    #286 to `Running`: #286 reads a non-object `/prefs` as defaults, the
+    defect R-CONN-14 fixes. A `/prefs` answered 500 is used instead, and the
+    run is an error (`wait never reached: state {"enum":"Running"}`), not a
+    pass. The Host edit is a mismatch on `status-request`; the child's log
+    shows the wanted and the actual bytes (a log line added test-first).
+11. **Scenario validation, beyond the list in Task 9.** `start` must be the
+    first step and appear once; a `parity` scenario cannot declare `fail` on
+    `cpp-286`; `rust` declares `pass` or, while it lacks a capability the
+    scenario needs, `cannot-run` (the rewrite has no capabilities until Phase
+    3, so "a `fix` declares `pass` on `rust`" holds only for scenarios with
+    no needs); a declared `fail` or `cannot-run` must give a `reason`.
+12. **The evidence file.** 81 `harness-on-cpp` (2 in #306, the rest in #307
+    to #309), 37 `cpp-suite`, 25 `phase3-only`, 6 `fake-self`, 5 `none`.
+    Entries carry `pr` and `runs` (harness-on-cpp), and the file carries
+    `notes` stating how the procedure was applied: the transport's own
+    outcomes are `outside-module`, the request bytes it sends are not (the
+    fake records them when a backend pass or action sends them), and values
+    of one published snapshot are read once a positive wait has seen that
+    snapshot. R-UI-02 and R-UI-13 are `harness-on-cpp`, not `phase3-only` as
+    "Worked entries" said: their parity sub-checks (the 24 names, the five
+    signatures) run on `a38dbca`, and only the exact-set clauses, deferred as
+    `phase3-only` (`added-member`), need the additions. One check was added:
+    every `harness-on-cpp` entry assigned to #306 has a scenario.
+13. **`shellcheck` is not installed on this host**, so Task 11's
+    `shellcheck plugin/tests/tailscale-parity/*.sh` was not run.
+14. **Results.** `tests/test-fake-tailscaled.sh`: the layout guards, the
+    fake's tests and 50 consecutive runs pass. `run.sh --repeat 50`: 50/50,
+    R-HTTP-01 passing and R-HTTP-09 failing as declared in every run.
+    `harness_selftest`: 50/50. `cargo llvm-cov -p fake-tailscaled`: 94.61%
+    lines (1225 lines, 66 missed), 94.15% regions. `cargo fmt --check` and
+    `cargo clippy --workspace --all-targets -- -D warnings` are clean.
+
