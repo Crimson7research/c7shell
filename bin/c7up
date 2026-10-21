@@ -465,17 +465,44 @@ do_run() {
     done
   }
 
+  # The first log line a phase writes. The log is per day, so it also holds
+  # the earlier phases of this run and every earlier run.
+  log_end() { echo $(( $(wc -l < "$log") + 1 )); }
+
+  # phase_failed <source> <program> <status> <first line> -- what the wizard
+  # shows for a failed phase: the end of that phase's own output, which keeps
+  # the detail pacman and flatpak print around their error line, then how the
+  # program exited. Above it go the error lines that scrolled out of that end:
+  # paru builds every package before it installs any, so its error is often
+  # far above a tail that reads like success, and a tail of the whole day's
+  # log was all the wizard used to show (#116). yay and pikaur prefix theirs
+  # with "->" or "::", and flatpak capitalises.
+  phase_failed() {
+    local status out errs
+    case $1:$3 in
+      # root_run's own codes: the session died, not pacman.
+      pacman:125) status="c7up: there was no root session to run the update (status 125)" ;;
+      pacman:126) status="c7up: the root session ended during the update (status 126)" ;;
+      *) status="c7up: $2 exited with status $3" ;;
+    esac
+    printf '%s\n' "$status" >> "$log"
+    out=$(tail -n "+$4" "$log")
+    errs=$(head -n -15 <<<"$out" \
+           | grep -iE '^[[:space:]]*(->|::|==>)?[[:space:]]*(error|fatal|failed)' | tail -10)
+    failed=$1
+    fail_text=${errs:+$errs$'\n...\n'}$(tail -15 <<<"$out")
+    emit "$(printf '{"ev":"phase","source":%s,"state":"failed"}' "$(j "$1")")"
+  }
+
   # -- repo ------------------------------------------------------------------
   if ((pac_n > 0)); then
     emit '{"ev":"phase","source":"pacman","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     if root_run sync ${ignore[@]+"${ignore[@]}"} 2>&1 | stream pacman 0; then
       emit "$(printf '{"ev":"phase","source":"pacman","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_packages"
     else
-      failed=pacman
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"pacman","state":"failed"}'
+      phase_failed pacman pacman "${PIPESTATUS[0]}" "$from"
     fi
   fi
 
@@ -484,7 +511,7 @@ do_run() {
   # half-applied system is exactly the partial upgrade the flow exists to avoid.
   if [[ -z $failed ]] && ((aur_n > 0)) && [[ -n $aur_helper ]]; then
     emit '{"ev":"phase","source":"aur","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     local -a aurargs=(--color never "${devel_flag[@]}" -Sua --noconfirm
                       --sudo "$libdir/c7up-sudo")
     # paru and yay spell "do not open a menu" differently; pikaur opens none.
@@ -497,31 +524,29 @@ do_run() {
       emit "$(printf '{"ev":"phase","source":"aur","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_aur"
     else
-      failed=aur
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"aur","state":"failed"}'
+      phase_failed aur "$aur_helper" "${PIPESTATUS[0]}" "$from"
     fi
   fi
 
   # -- flatpak ---------------------------------------------------------------
   if [[ -z $failed ]] && ((fp_n > 0)) && [[ -n $flatpak_ok ]]; then
     emit '{"ev":"phase","source":"flatpak","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     if flatpak update -y </dev/null 2>&1 | stream flatpak "$((pac_n + aur_n))"; then
       emit "$(printf '{"ev":"phase","source":"flatpak","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_flatpak"
     else
-      failed=flatpak
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"flatpak","state":"failed"}'
+      phase_failed flatpak flatpak "${PIPESTATUS[0]}" "$from"
     fi
   fi
 
   cat "$statedir"/last_updates_check_{packages,aur,flatpak} > "$statedir/last_updates_check"
 
   if [[ -n $failed ]]; then
-    # pacman rolls its own transaction back; nothing is left half-applied, and
-    # saying so is the difference between "retry" and "reinstall the machine".
+    # A failed pacman phase rolls its own transaction back; an AUR or flatpak
+    # failure leaves what finished before it installed. `failed` says which,
+    # and the wizard words it accordingly -- the difference between "retry"
+    # and "reinstall the machine".
     emit "$(printf '{"ev":"done","ok":false,"failed":%s,"done":%s,"total":%s,"secs":%s,"log":%s,"error":%s,"actions":%s}' \
       "$(j "$failed")" "$(cat "$progress")" "$total" "$(( $(date +%s) - started ))" "$(j "$log")" \
       "$(j "$fail_text")" \
