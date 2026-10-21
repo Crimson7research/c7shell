@@ -11,16 +11,20 @@
 //! each is tested by the `r_fake_0N_*` tests under `tests/`.
 
 mod bytes;
+mod client;
 pub mod control;
 pub mod evidence;
+mod listener;
 mod reply;
 mod request;
 pub mod scenario;
 mod script;
+mod scripted;
 mod server;
 
 pub use bytes::{decode_hex, encode_hex, Body, Bytes};
+pub use client::ClientReport;
 pub use reply::{canonical_reason, Chunked, Encoded, Framing, ReplySpec, Split, Then};
 pub use request::Request;
 pub use script::{Match, Rule, Script, Times};
-pub use server::{AfterReply, ClientId, ClientReport, Fake, Handler, State, FAILURE_BOUND, MAX_WRITE};
+pub use server::{AfterReply, ClientId, Fake, Handler, State, FAILURE_BOUND, MAX_WRITE};

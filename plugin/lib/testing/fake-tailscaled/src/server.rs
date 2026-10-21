@@ -5,20 +5,20 @@
 //! before #286) specify it. It re-implements the semantics of #286's
 //! `plugin/lib/testing/fakesocketserver.{h,cpp}` from those requirements.
 
-use std::fs::{self, DirBuilder};
-use std::io::{ErrorKind, Read, Write};
+use std::fs;
 use std::net::Shutdown;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::reply::{watch_chunk, Encoded, Then};
+use crate::client::{ClientEntry, ClientReport};
+use crate::listener::{accept_loop, bind};
 use crate::request::{declared_body_size, Request};
-use crate::script::{Action, Compiled, Script};
+use crate::script::{Compiled, Script};
 
 /// The bound on every wait in the fake and its tests. A passing test never
 /// reaches it; it only turns a hang into a failure. Nothing asserts on time.
@@ -48,111 +48,20 @@ pub enum AfterReply {
     KeepOpen,
 }
 
-/// What the fake reports about one client, for the barriers (R-FAKE-07).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClientReport {
-    pub id: ClientId,
-    pub connected: bool,
-    /// Bytes consumed from the client, whether or not they form a request.
-    pub received: usize,
-    /// Bytes written to the client: replies, completions and pushes.
-    pub written: usize,
-    pub held: bool,
-    /// A scripted reply is part-written and waits for its release.
-    pub parked: bool,
-    /// A scripted watch stream: watch lines reach it.
-    pub stream: bool,
-}
-
-/// The rest of a split reply, waiting for `label`.
-pub(crate) struct Parked {
-    label: String,
-    rest: Vec<u8>,
-    /// Later splits, as offsets into `rest`.
-    splits: Vec<(usize, String)>,
-    then: Then,
-}
-
-/// One accepted client.
-pub(crate) struct ClientEntry {
-    pub(crate) id: ClientId,
-    pub(crate) stream: Arc<UnixStream>,
-    pub(crate) connected: bool,
-    /// The fake has closed it: nothing it sends afterwards is a request.
-    pub(crate) closed: bool,
-    pub(crate) received: usize,
-    pub(crate) written: usize,
-    /// Its request is held: recorded, unanswered, connected.
-    pub(crate) held: bool,
-    pub(crate) parked: Option<Parked>,
-    pub(crate) watch: bool,
-    pending: Vec<u8>,
-    /// Writes that failed through the fake's fault, in order.
-    faults: Vec<String>,
-}
-
-impl ClientEntry {
-    /// Writes `bytes` whole; false when the client cannot take them.
-    pub(crate) fn write(&mut self, bytes: &[u8]) -> bool {
-        if !self.connected || self.closed {
-            return false;
-        }
-        match (&*self.stream).write_all(bytes) {
-            Ok(()) => {
-                self.written += bytes.len();
-                true
-            }
-            Err(e) => {
-                self.faults.extend(write_fault(self.id, &e));
-                false
-            }
-        }
-    }
-
-    /// Takes pushed bytes: connected, not closed, not held, not parked.
-    fn takes_pushes(&self) -> bool {
-        self.connected && !self.closed && !self.held && self.parked.is_none()
-    }
-
-    /// Writes `bytes` up to the first of `splits` and parks the rest, or
-    /// writes it all and does what `then` says.
-    fn write_until_split(&mut self, mut bytes: Vec<u8>, mut splits: Vec<(usize, String)>, then: Then) {
-        if splits.is_empty() {
-            if then != Then::CloseWithoutReply {
-                self.write(&bytes);
-            }
-            if then != Then::KeepOpen {
-                self.close();
-            }
-            return;
-        }
-        let (at, label) = splits.remove(0);
-        let rest = bytes.split_off(at);
-        self.write(&bytes);
-        let splits = splits.into_iter().map(|(o, l)| (o - at, l)).collect();
-        self.parked = Some(Parked { label, rest, splits, then });
-    }
-
-    pub(crate) fn close(&mut self) {
-        self.closed = true;
-        let _ = self.stream.shutdown(Shutdown::Both);
-    }
-}
-
 /// Everything the fake knows, behind one lock. Every change is followed by
 /// a `notify_all` on the fake's condition variable.
 pub struct State {
     pub(crate) clients: Vec<ClientEntry>,
-    requests: Vec<Request>,
+    pub(crate) requests: Vec<Request>,
     handler: Option<Handler>,
-    after: AfterReply,
+    pub(crate) after: AfterReply,
     delimiter: Option<Vec<u8>>,
     hold_fragment: Option<Vec<u8>>,
-    disconnects: usize,
-    script: Option<Compiled>,
+    pub(crate) disconnects: usize,
+    pub(crate) script: Option<Compiled>,
     /// Failures inside the fake that are not a client's doing.
-    faults: Vec<String>,
-    write_timeout: Duration,
+    pub(crate) faults: Vec<String>,
+    pub(crate) write_timeout: Duration,
 }
 
 impl Default for State {
@@ -246,7 +155,7 @@ impl State {
     }
 
     /// Takes `bytes` from client `id`, then frames and answers what is whole.
-    fn receive(&mut self, id: ClientId, bytes: &[u8]) {
+    pub(crate) fn receive(&mut self, id: ClientId, bytes: &[u8]) {
         let Some(client) = self.client_mut(id) else { return };
         client.received += bytes.len();
         if client.closed {
@@ -303,84 +212,6 @@ impl State {
     }
 }
 
-impl State {
-    /// Answers `request` from the script; a request no rule matches gets 404
-    /// and is flagged.
-    fn answer_from_script(&mut self, id: ClientId, mut request: Request) {
-        let action = self.script.as_mut().unwrap().answer(&request);
-        if action.is_none() {
-            request.unmatched = true;
-        }
-        self.requests.push(request);
-        let client = self.client_mut(id).unwrap();
-        match action {
-            Some(Action::Reply(Encoded { bytes, splits, then })) => client.write_until_split(bytes, splits, then),
-            Some(Action::Hold) => client.held = true,
-            Some(Action::Stream(Encoded { bytes, .. })) => {
-                client.watch = true;
-                client.write(&bytes);
-            }
-            None => {
-                client.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
-                client.close();
-            }
-        }
-    }
-
-    /// Writes the next part of every reply parked on `label`.
-    fn resume(&mut self, label: &str) -> usize {
-        let mut resumed = 0;
-        for c in self.clients.iter_mut().filter(|c| c.connected && c.parked.as_ref().is_some_and(|p| p.label == label))
-        {
-            let Parked { rest, splits, then, .. } = c.parked.take().unwrap();
-            c.write_until_split(rest, splits, then);
-            resumed += 1;
-        }
-        resumed
-    }
-
-    /// Writes `line` as one chunk to every watch stream that takes pushes.
-    fn push_watch_line(&mut self, line: &[u8]) -> usize {
-        let chunk = watch_chunk(line);
-        self.clients
-            .iter_mut()
-            .filter(|c| c.watch && c.takes_pushes())
-            .map(|c| c.write(&chunk))
-            .filter(|&ok| ok)
-            .count()
-    }
-
-    /// Writes `bytes` to every client that takes pushes; returns how many
-    /// took them.
-    fn push(&mut self, bytes: &[u8]) -> usize {
-        self.clients.iter_mut().filter(|c| c.takes_pushes()).map(|c| c.write(bytes)).filter(|&ok| ok).count()
-    }
-
-    /// Writes `reply` to every held client and releases it.
-    fn complete_held(&mut self, reply: &[u8]) -> usize {
-        let after = self.after;
-        let mut reached = 0;
-        for c in self.clients.iter_mut().filter(|c| c.held) {
-            c.held = false;
-            if c.write(reply) {
-                reached += 1;
-            }
-            if after == AfterReply::CloseAfterReply {
-                c.close();
-            }
-        }
-        reached
-    }
-}
-
-/// The fault a failed write is, if the fake is to blame: a write that timed
-/// out because the client did not drain it. A peer that went away (a broken
-/// pipe, a reset) is the client's doing, not a fault.
-fn write_fault(id: ClientId, e: &std::io::Error) -> Option<String> {
-    matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
-        .then(|| format!("a write to client {id} timed out ({e}): the client did not drain it"))
-}
-
 /// The first position of `needle` in `hay`.
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || hay.len() < needle.len() {
@@ -392,8 +223,8 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
 pub(crate) struct Shared {
     pub(crate) state: Mutex<State>,
     pub(crate) changed: Condvar,
-    closing: AtomicBool,
-    readers: Mutex<Vec<JoinHandle<()>>>,
+    pub(crate) closing: AtomicBool,
+    pub(crate) readers: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl Shared {
@@ -616,101 +447,6 @@ impl Fake {
     }
 }
 
-/// Binds `path` and returns the listener and the socket's inode.
-fn bind(path: &Path) -> Result<(UnixListener, u64), String> {
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(parent)
-        .map_err(|e| format!("cannot create the directory for {}: {e}", path.display()))?;
-    // Binding never replaces what is there: that could be another server's
-    // live socket. A dangling symlink counts as taken too.
-    if fs::symlink_metadata(path).is_ok() {
-        return Err(format!("{} already exists", path.display()));
-    }
-    let listener = UnixListener::bind(path).map_err(|e| format!("cannot listen on {}: {e}", path.display()))?;
-    let set_mode = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-    let inode = fs::symlink_metadata(path).map(|m| m.ino());
-    match (set_mode, inode) {
-        (Ok(()), Ok(inode)) => Ok((listener, inode)),
-        (Err(e), _) | (_, Err(e)) => {
-            let _ = fs::remove_file(path);
-            Err(format!("cannot make {} private: {e}", path.display()))
-        }
-    }
-}
-
-fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
-    loop {
-        let stream = match listener.accept() {
-            Ok((stream, _)) => stream,
-            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(e) => {
-                if !shared.closing.load(Ordering::SeqCst) {
-                    shared.lock().faults.push(format!("accept() failed, so the fake stopped accepting: {e}"));
-                    shared.changed.notify_all();
-                }
-                return;
-            }
-        };
-        if shared.closing.load(Ordering::SeqCst) {
-            return;
-        }
-        let stream = Arc::new(stream);
-        let id = {
-            let mut state = shared.lock();
-            // A stuck peer turns into a failed write, not a hung fake.
-            let _ = stream.set_write_timeout(Some(state.write_timeout));
-            let id = state.clients.len() + 1;
-            state.clients.push(ClientEntry {
-                id,
-                stream: stream.clone(),
-                connected: true,
-                closed: false,
-                received: 0,
-                written: 0,
-                held: false,
-                parked: None,
-                watch: false,
-                pending: Vec::new(),
-                faults: Vec::new(),
-            });
-            id
-        };
-        shared.changed.notify_all();
-        let reader_shared = shared.clone();
-        let handle = std::thread::spawn(move || read_loop(id, stream, reader_shared));
-        shared.readers.lock().unwrap_or_else(|e| e.into_inner()).push(handle);
-    }
-}
-
-fn read_loop(id: ClientId, stream: Arc<UnixStream>, shared: Arc<Shared>) {
-    let mut buf = vec![0u8; 64 * 1024];
-    loop {
-        match (&*stream).read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                shared.lock().receive(id, &buf[..n]);
-                shared.changed.notify_all();
-            }
-            Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        }
-    }
-    {
-        let mut state = shared.lock();
-        if let Some(c) = state.clients.iter_mut().find(|c| c.id == id) {
-            c.connected = false;
-            c.held = false;
-            c.parked = None;
-            c.pending.clear();
-        }
-        state.disconnects += 1;
-    }
-    shared.changed.notify_all();
-}
-
 impl Drop for Fake {
     /// Stops accepting, disconnects every client and removes the socket it
     /// bound, if the path still holds that socket.
@@ -756,23 +492,5 @@ fn wait_for<T>(
             return Err(format!("the fake never reached: {what}"));
         }
         state = shared.changed.wait_timeout(state, deadline - now).unwrap_or_else(|e| e.into_inner()).0;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::{Error, ErrorKind};
-
-    use super::write_fault;
-
-    #[test]
-    fn a_timed_out_write_is_the_fakes_fault_and_a_peer_gone_is_not() {
-        for kind in [ErrorKind::WouldBlock, ErrorKind::TimedOut] {
-            let fault = write_fault(3, &Error::from(kind));
-            assert!(fault.as_deref().is_some_and(|f| f.starts_with("a write to client 3 timed out")), "{fault:?}");
-        }
-        for kind in [ErrorKind::BrokenPipe, ErrorKind::ConnectionReset, ErrorKind::NotConnected] {
-            assert_eq!(write_fault(3, &Error::from(kind)), None, "{kind:?}");
-        }
     }
 }

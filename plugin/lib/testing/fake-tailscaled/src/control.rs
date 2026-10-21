@@ -11,9 +11,10 @@ use std::io::{BufRead, Write};
 use serde_json::{json, Value};
 
 use crate::bytes::{to_value, Bytes};
+use crate::client::ClientReport;
 use crate::request::Request;
 use crate::script::Script;
-use crate::server::{ClientReport, Fake};
+use crate::server::Fake;
 
 /// A request as the protocol reports it.
 pub fn request_json(r: &Request) -> Value {

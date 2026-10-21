@@ -84,38 +84,43 @@ pub fn run_one(imp: &Implementation, implementations: &[Known<'_>], path: &Path,
     };
     if scenario.needs.iter().all(|n| imp.capabilities.contains(n)) {
         report.started = true;
-        let socket = root.path().join("run/tailscaled.sock");
-        let args = [
-            "--child=scenario".to_string(),
-            format!("--scenario={}", path.display()),
-            format!("--qml={}", imp.qml_dir.display()),
-        ];
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        let mut env = vec![("TS_SOCKET", socket.to_str().unwrap_or(""))];
-        env.extend_from_slice(extra);
-        match child::isolated(&args, &root, &env).output() {
-            Err(e) => report.outcome = Outcome::Error(format!("cannot start the child: {e}")),
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-                report.log = stdout.clone() + &String::from_utf8_lossy(&out.stderr);
-                let line = stdout.lines().rev().find_map(|l| l.strip_prefix(RESULT_PREFIX));
-                match line.map(serde_json::from_str::<Value>) {
-                    Some(Ok(v)) => {
-                        report.outcome = outcome_from_json(&v);
-                        report.env = serde_json::from_value(v["env"].clone()).ok();
-                    }
-                    Some(Err(e)) => report.outcome = Outcome::Error(format!("a malformed result line: {e}")),
-                    None => {
-                        report.outcome =
-                            Outcome::Error(format!("no result line (the child exited with {})", out.status))
-                    }
-                }
-            }
-        }
+        (report.outcome, report.log, report.env) = run_child_of(imp, path, &root, extra);
     }
     report.verdict = compare(&imp.name, &report.outcome, declaration);
     drop(root);
     report
+}
+
+/// Runs the scenario at `path` in an isolated child under `root`, with
+/// TS_SOCKET in it and `extra` variables; returns its outcome, its log and
+/// the environment it reported.
+fn run_child_of(
+    imp: &Implementation,
+    path: &Path,
+    root: &PrivateRoot,
+    extra: &[(&str, &str)],
+) -> (Outcome, String, Option<BTreeMap<String, String>>) {
+    let socket = root.path().join("run/tailscaled.sock");
+    let args = [
+        "--child=scenario".to_string(),
+        format!("--scenario={}", path.display()),
+        format!("--qml={}", imp.qml_dir.display()),
+    ];
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut env = vec![("TS_SOCKET", socket.to_str().unwrap_or(""))];
+    env.extend_from_slice(extra);
+    let out = match child::isolated(&args, root, &env).output() {
+        Ok(out) => out,
+        Err(e) => return (Outcome::Error(format!("cannot start the child: {e}")), String::new(), None),
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let log = stdout.clone() + &String::from_utf8_lossy(&out.stderr);
+    let line = stdout.lines().rev().find_map(|l| l.strip_prefix(RESULT_PREFIX));
+    match line.map(serde_json::from_str::<Value>) {
+        Some(Ok(v)) => (outcome_from_json(&v), log, serde_json::from_value(v["env"].clone()).ok()),
+        Some(Err(e)) => (Outcome::Error(format!("a malformed result line: {e}")), log, None),
+        None => (Outcome::Error(format!("no result line (the child exited with {})", out.status)), log, None),
+    }
 }
 
 /// Runs every scenario in `dir` (or those whose ids `filter` lists, comma
@@ -367,7 +372,18 @@ impl Run<'_> {
                 Ok(())
             }
             Step::Call(c) => self.contract.call(&c.name, &c.args).map(drop),
-            Step::Wait(Wait::Contract(values)) => {
+            Step::Wait(w) => self.wait_step(w),
+            Step::Fake(op) => self.fake_op(op),
+            Step::Barrier(b) => Err(format!("the {b:?} barrier needs a capability this implementation lacks")),
+            Step::AdvanceMs(_) => Err("advance_ms needs the clock, which this implementation lacks".into()),
+            Step::Expect(e) => self.expect(e),
+        }
+    }
+
+    /// Runs one wait step until it holds; one never reached is an error.
+    fn wait_step(&self, w: &Wait) -> Result<(), String> {
+        match w {
+            Wait::Contract(values) => {
                 let mut wanted = Vec::new();
                 for (member, v) in values {
                     wanted.push((member.clone(), v.clone(), self.resolve(v)?));
@@ -387,10 +403,10 @@ impl Run<'_> {
                 });
                 reached.map_err(|e| format!("{e} (last read {})", json!(last)))
             }
-            Step::Wait(Wait::Signal(s)) => self.wait(&format!("{} fired {} times", s.name, s.at_least), || {
+            Wait::Signal(s) => self.wait(&format!("{} fired {} times", s.name, s.at_least), || {
                 Ok(self.contract.signal_count(&s.name)? >= s.at_least)
             }),
-            Step::Wait(Wait::Fake(f)) => {
+            Wait::Fake(f) => {
                 if let Some(n) = f.connected {
                     self.wait(&format!("the fake has {n} connected clients"), || Ok(self.fake.connected_count() == n))
                 } else if let Some(m) = &f.recorded {
@@ -401,10 +417,6 @@ impl Run<'_> {
                     self.wait(&format!("the fake holds {n} requests"), || Ok(self.fake.held_count() == n))
                 }
             }
-            Step::Fake(op) => self.fake_op(op),
-            Step::Barrier(b) => Err(format!("the {b:?} barrier needs a capability this implementation lacks")),
-            Step::AdvanceMs(_) => Err("advance_ms needs the clock, which this implementation lacks".into()),
-            Step::Expect(e) => self.expect(e),
         }
     }
 
