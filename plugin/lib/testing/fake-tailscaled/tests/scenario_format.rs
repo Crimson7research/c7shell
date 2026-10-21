@@ -423,3 +423,91 @@ fn it_rejects_an_array_holding_a_value_it_cannot_compare() {
     v["steps"][2]["wait"]["contract"] = json!({ "issues": [{ "regex": "x" }] });
     assert_names(&rejected(v), "steps[2].wait.contract.issues");
 }
+
+/// `full()` with `steps` appended.
+fn with_steps(steps: Value) -> Value {
+    let mut v = full();
+    v["steps"].as_array_mut().unwrap().extend(steps.as_array().unwrap().iter().cloned());
+    v
+}
+
+/// `full()` with one model expectation `query` appended, as `steps[22]`.
+fn with_model_expect(query: Value) -> Value {
+    with_steps(json!([{ "expect": { "id": "model", "model": query } }]))
+}
+
+#[test]
+fn it_accepts_every_model_query_in_an_expect_and_a_wait() {
+    let v = with_steps(json!([
+        { "wait": { "model": { "name": "peers", "count": 3 } } },
+        { "wait": { "model": { "name": "peers", "row": 0, "values": { "hostName": "gamma" } } } },
+        { "expect": { "id": "rows", "model": { "name": "peers", "count": 3 } } },
+        { "expect": { "id": "child-rows", "model": { "name": "peers", "row": 0, "count": 0 } } },
+        { "expect": { "id": "gamma", "model": { "name": "peers", "row": 0,
+                                               "values": { "hostName": "gamma", "group": 1, "online": true } } } },
+        { "expect": { "id": "off-end", "model": { "name": "peers", "row": 99, "values": { "#0": { "undefined": true } } } } },
+        { "expect": { "id": "children", "model": { "name": "exitNodes", "row": 0, "has_children": false } } },
+        { "expect": { "id": "root-children", "model": { "name": "exitNodes", "has_children": true } } }
+    ]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 30);
+}
+
+#[test]
+fn it_rejects_a_model_query_with_no_or_two_kinds() {
+    let e = rejected(with_model_expect(json!({ "name": "peers" })));
+    assert_names(&e, "steps[22].expect `model`: model");
+    assert_names(&e, "exactly one of count, values and has_children");
+    let e = rejected(with_model_expect(json!({ "name": "peers", "count": 1, "has_children": false })));
+    assert_names(&e, "exactly one of count, values and has_children");
+    let e = rejected(with_steps(json!([{ "wait": { "model": { "name": "peers" } } }])));
+    assert_names(&e, "steps[22].wait.model");
+}
+
+#[test]
+fn it_rejects_model_values_without_a_row_or_with_none() {
+    let e = rejected(with_model_expect(json!({ "name": "peers", "values": { "hostName": "x" } })));
+    assert_names(&e, "values needs a row");
+    let e = rejected(with_model_expect(json!({ "name": "peers", "row": 0, "values": {} })));
+    assert_names(&e, "values");
+    assert_names(&e, "empty");
+}
+
+#[test]
+fn it_rejects_a_role_it_cannot_name() {
+    for bad in ["", "#", "#x", "#-1", "#1.5"] {
+        let e = rejected(with_model_expect(json!({ "name": "peers", "row": 0, "values": { bad: 1 } })));
+        assert_names(&e, "role");
+        assert_names(&e, &format!("`{bad}`"));
+    }
+}
+
+#[test]
+fn it_rejects_a_model_value_it_cannot_compare_or_no_name() {
+    let e = rejected(with_model_expect(json!({ "name": "peers", "row": 0, "values": { "hostName": { "regex": "x" } } })));
+    assert_names(&e, "values.hostName");
+    let e = rejected(with_model_expect(json!({ "name": "", "count": 0 })));
+    assert_names(&e, "name");
+    let e = rejected(with_model_expect(json!({ "name": "peers", "row": -1, "count": 0 })));
+    assert_names(&e, "row");
+}
+
+#[test]
+fn it_accepts_undefined_only_as_true() {
+    let dir = TestDir::new();
+    load(&dir, "full", &with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": true } } })))
+        .unwrap();
+    let mut v = full();
+    v["steps"][17]["expect"]["contract"] = json!({ "writeError": { "undefined": true } });
+    load(&dir, "full", &v).unwrap();
+    let e = rejected(with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": false } } })));
+    assert_names(&e, "undefined");
+}
+
+#[test]
+fn it_rejects_an_expect_with_a_model_and_another_kind() {
+    let e = rejected(with_steps(json!([{ "expect": { "id": "two", "model": { "name": "peers", "count": 0 },
+                                                       "signal": { "name": "stateChanged", "count": 0 } } }])));
+    assert_names(&e, "exactly one of contract, signal, request, requests and model");
+}

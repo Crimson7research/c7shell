@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "model-rows",
+  "requirements": ["R-GROUP-05"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a model's row count, a row's roles by name and by number, an out-of-range row, a row's children, a wait on a row count, and a failed model expectation's actual value"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "rows", "model": { "name": "peers", "count": 3 } } },
+    { "expect": { "id": "exit-rows", "model": { "name": "exitNodes", "count": 1 } } },
+    { "expect": { "id": "first", "model": { "name": "peers", "row": 0, "values": { "hostName": "alpha", "online": true } } } },
+    { "expect": { "id": "last", "model": { "name": "peers", "row": 2, "values": { "nodeId": "n3" } } } },
+    { "expect": { "id": "by-number", "model": { "name": "exitNodes", "row": 0, "values": { "#0": "bravo" } } } },
+    { "expect": { "id": "no-role", "model": { "name": "peers", "row": 0, "values": { "#40": { "undefined": true } } } } },
+    { "expect": { "id": "off-end", "model": { "name": "peers", "row": 99, "values": { "#0": { "undefined": true } } } } },
+    { "expect": { "id": "no-children", "model": { "name": "peers", "row": 0, "has_children": false } } },
+    { "expect": { "id": "no-child-rows", "model": { "name": "peers", "row": 0, "count": 0 } } },
+    { "expect": { "id": "root-children", "model": { "name": "peers", "has_children": true } } },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "wait": { "model": { "name": "peers", "count": 4 } } },
+    { "wait": { "model": { "name": "peers", "row": 3, "values": { "hostName": "delta" } } } },
+    { "expect": { "id": "stale-count", "model": { "name": "peers", "count": 3 } } },
+    { "expect": { "id": "wrong-row", "model": { "name": "peers", "row": 3, "values": { "hostName": "dave", "online": false } } } },
+    { "expect": { "id": "wrong-role", "model": { "name": "peers", "row": 3, "values": { "nodeId": "n5" } } } },
+    { "expect": { "id": "wrong-children", "model": { "name": "peers", "row": 3, "has_children": true } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "stale-count", "actual": 4 },
+    { "id": "wrong-row", "actual": { "hostName": "delta", "online": true } },
+    { "id": "wrong-role", "actual": "n4" },
+    { "id": "wrong-children", "actual": false }
+  ], "reason": "self-test" } }
+}

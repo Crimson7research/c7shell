@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "model-wait-never",
+  "requirements": ["R-GROUP-05"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a wait on a row count never reached is an error with the count last read"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "model": { "name": "peers", "count": 9 } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

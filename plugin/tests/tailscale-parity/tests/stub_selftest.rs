@@ -235,6 +235,34 @@ fn the_array_values(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: shorter"], read);
 }
 
+/// 12. A model's rows: its count, a row's roles by name and by number, a
+///     row off the end, its children and a wait on the count; a failed
+///     model expectation reports what it read, and a role, row or member
+///     that cannot be read is an error naming it.
+fn the_model_reads(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-rows.json");
+    let wants = ["fail as declared: stale-count, wrong-children, wrong-role, wrong-row"];
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("stale-count") == Some(json!(4))
+            && actual("wrong-row") == Some(json!({ "hostName": "delta", "online": true }))
+            && actual("wrong-role") == Some(json!("n4"))
+    };
+    verdict(failures, &r, true, &wants, read);
+    for (file, what) in [
+        ("model-unknown-role", "bogus is not a role of peers"),
+        ("model-named-off-end", "peers has no row 99 to read hostName from"),
+        ("model-not-a-model", "writeError is not a model"),
+        ("model-wait-never", "wait never reached: peers has 9 rows (last read 3)"),
+    ] {
+        let r = run_stub(&format!("scenarios/{file}.json"));
+        verdict(failures, &r, false, &[what], error(what));
+    }
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -248,6 +276,7 @@ fn parent() -> i32 {
     the_repeat_count(&mut failures);
     the_wait_cap(&mut failures);
     the_array_values(&mut failures);
+    the_model_reads(&mut failures);
     finish("stub_selftest", &failures)
 }
 
