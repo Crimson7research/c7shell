@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "Backend half: from Running with 20 peers and 2 exit nodes (status-idle.json), a notification brings {\"BackendState\":\"NeedsLogin\",\"Peer\":null} as the next /status; once state NeedsLogin is seen, peers has 20 rows, exitNodes has 2, and no rowsRemoved fired on either model since the notification. #286 never counts a null Peer (StatusParser.cpp:126-131), so it keeps them too and the scenario is tagged parity"
+    "Backend half: from Running with 20 peers and 2 exit nodes (status-idle.json), a notification brings {\"BackendState\":\"NeedsLogin\",\"Peer\":null} as the next /status; once state NeedsLogin is seen, peers has 20 rows, exitNodes has 2, and no rowsRemoved, modelReset or rowsInserted fired on either model since the notification (a reset and refill from a cache is not keeping the rows, and rebuilds the delegates). #286 never counts a null Peer (StatusParser.cpp:126-131), so it keeps them too and the scenario is tagged parity"
   ],
   "deferred": [
     "the Running return with peersKnown, and the view half: phase3-only, both read or stage peersKnown, a contract addition"
@@ -35,7 +35,11 @@
     {"expect": {"id": "peers-kept", "model": {"name": "peers", "count": 20}}},
     {"expect": {"id": "exit-nodes-kept", "model": {"name": "exitNodes", "count": 2}}},
     {"expect": {"id": "no-peer-removed", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-logout"}}},
-    {"expect": {"id": "no-exit-node-removed", "signal": {"name": "exitNodes.rowsRemoved", "count": 0, "since": "before-logout"}}}
+    {"expect": {"id": "no-exit-node-removed", "signal": {"name": "exitNodes.rowsRemoved", "count": 0, "since": "before-logout"}}},
+    {"expect": {"id": "no-peer-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-logout"}}},
+    {"expect": {"id": "no-exit-node-reset", "signal": {"name": "exitNodes.modelReset", "count": 0, "since": "before-logout"}}},
+    {"expect": {"id": "no-peer-inserted", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-logout"}}},
+    {"expect": {"id": "no-exit-node-inserted", "signal": {"name": "exitNodes.rowsInserted", "count": 0, "since": "before-logout"}}}
   ],
   "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
 }
