@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "parse-11-suggestion-array-clears",
+  "requirements": ["R-PARSE-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A malformed reply clears it: from a published nEwJFIats021CNTRL, the fake answers /suggest-exit-node 200 with the body `[]` (JSON, not an object) and pushes {\"Prefs\":{}}; recommendedExitNodeId reads empty, reached by a positive wait on that value. #286 already clears it (a failure at LocalApiTailscaleBackend.cpp:449-451, a malformed body at :686-689), so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the change counts (recommendedExitNodeIdChanged exactly once), \"no retry\", the arrival-order runs and the readError and retry clauses of the malformed runs: phase3-only, they are exact counts and negatives after the idle or read barrier, and the retry hook",
+    "the Running half, nEwJFIats021CNTRL matched in exitNodes: the corpus case parse-11-suggestion-id"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/suggest-exit-node.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": "[]" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" }, "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "" } } },
+    { "expect": { "id": "asked-again", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "count": 2 } } },
+    { "expect": { "id": "cleared", "contract": { "recommendedExitNodeId": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
