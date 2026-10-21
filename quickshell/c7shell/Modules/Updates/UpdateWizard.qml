@@ -100,7 +100,9 @@ Scope {
               width: parent.width
               wrapMode: Text.Wrap
               text: root.entry === "failure"
-                  ? `${UpdatesService.result?.done ?? 0} installed · nothing left half-applied`
+                  ? (UpdatesService.result?.failed === "pacman"
+                     ? `${UpdatesService.result?.done ?? 0} installed · nothing left half-applied`
+                     : `${UpdatesService.result?.done ?? 0} installed`)
                   : root.step === 1
                   ? `${UpdatesService.total} packages · ${UpdatesService.humanSize(UpdatesService.size)} · ${UpdatesService.total - UpdatesService.decisions.length} auto-approved`
                   : root.step === 2

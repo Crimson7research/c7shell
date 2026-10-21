@@ -163,6 +163,21 @@ Window {
     UpdatesService.openInTerminal()
     UpdatesService.openLog()
 
+    // -- a run that ended without a result ----------------------------------
+    // c7up exiting before its `done` event with nothing on stderr used to
+    // leave the failure view an empty red box (#144). The exit code is the one
+    // fact left, so the error carries it.
+    const silent = UpdatesService.fallbackResult(1, "  \n", 0, 3)
+    root.check(silent.ok === false, "a run with no result read as a success")
+    root.check(!silent.aborted, "exit 1 read as an abort")
+    root.check(silent.error === "c7up run exited with status 1 before it reported a result",
+      `a silent exit's error is "${silent.error}"`)
+    const loud = UpdatesService.fallbackResult(1, "c7up: boom\n", 2, 3)
+    root.check(loud.error === "c7up: boom", `stderr was not the error: "${loud.error}"`)
+    root.check(loud.done === 2 && loud.total === 3, "the counts were not carried")
+    root.check(UpdatesService.fallbackResult(130, "", 0, 0).aborted, "exit 130 was not an abort")
+    root.check(UpdatesService.fallbackResult(2, "", 0, 0).aborted, "exit 2 was not an abort")
+
     console.log("UPDATES-TEST-PASS")
     Qt.exit(0)
     } catch (e) {

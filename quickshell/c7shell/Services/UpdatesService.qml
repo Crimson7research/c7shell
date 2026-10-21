@@ -158,6 +158,20 @@ Singleton {
     runProc.signal(2)
   }
 
+  // The result of a run that exited without its `done` event. An empty stderr
+  // still has to say something: the failure view is otherwise an empty box
+  // (#144), and the exit code is the only fact left to show.
+  function fallbackResult(code, stderr, done, total) {
+    const err = (stderr ?? "").trim()
+    return {
+      ok: false,
+      aborted: code === 130 || code === 2,
+      error: err !== "" ? err : `c7up run exited with status ${code} before it reported a result`,
+      done: done,
+      total: total
+    }
+  }
+
   function reloadPacnews() { pacnewProc.running = true }
   function reloadOrphans() { orphanProc.running = true }
 
@@ -276,17 +290,10 @@ Singleton {
     onExited: code => {
       root.running = false
       root.awaitingAuth = false
-      if (root.result === null) {
-        // Aborted, or c7up died before it could say anything. Either way the
-        // transaction was rolled back; the view says that rather than guessing.
-        root.result = {
-          ok: false,
-          aborted: code === 130 || code === 2,
-          error: runErr.text.trim(),
-          done: root.doneCount,
-          total: root.runTotal
-        }
-      }
+      // Aborted, or c7up died before it could say anything. Which phases
+      // finished is unknown, and the view says that rather than guessing.
+      if (root.result === null)
+        root.result = root.fallbackResult(code, runErr.text, root.doneCount, root.runTotal)
       root.finished(root.result.ok === true)
       // A failure is the one place the wizard opens itself: it proposes
       // actions rather than asking a question, and there is nowhere else to
