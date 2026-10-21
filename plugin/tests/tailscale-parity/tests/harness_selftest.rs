@@ -71,6 +71,8 @@ fn runner_verdicts(failures: &mut Vec<String>) {
     verdict(failures, &r, false, &["unexpected pass"], |o| *o == Outcome::Pass);
     let r = run_stub("scenarios/wrong-actual.json");
     verdict(failures, &r, false, &["\"set true\"", "\"set maybe\""], |o| matches!(o, Outcome::Fail(_)));
+    let logged = "expect `error-text` failed: wanted {\"writeError\":\"set false\"}, actual \"set true\"";
+    check(failures, r.log.contains(logged), &format!("the child logs what a failed expectation wanted: {logged}"));
     let r = run_stub("scenarios/wait-never.json");
     verdict(failures, &r, false, &["wait never reached"], error("wait never reached: state"));
     let r = run_stub("scenarios/precondition.json");
