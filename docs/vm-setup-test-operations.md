@@ -121,5 +121,6 @@ Each of these cost a run. Check this list before you debug from scratch.
 | `assert: no bar drawn` on a visible bar | A pixel heuristic. The check now uses `hyprctl layers`. |
 | `screendump` answers `"no surface"` | A GL display device. Keep `virtio-vga -display none`. |
 | archinstall config errors | `archinstall.json` follows archinstall 4.5's parser (`lib/args.py`, `lib/models/device.py` on the laptop). Creds use `!root-password` and `!password`; `root_enc_password` expects a hash. |
+| `install` fails in about 23 s with `failed retrieving file ... 404` on every mirror | The cached base image's package database is stale. The install phase now runs `pacman -Syu` in the VM first (#297). |
 | `setup-host.sh` fails on a mirror on a fresh host | A stale package database. The script runs `pacman -Syu`. |
 | The ISO URL returns 404 | The pinned ISO left `geo.mirror.pkgbuild.com`. Bump `tests/vm/iso.version` to a listed version, or add an `archive.archlinux.org` fallback. |

@@ -31,8 +31,8 @@ tests/vm/run.sh --branch main
 
 The first run builds the base image (up to 30 minutes). Later runs reuse it
 until `iso.version` or `archinstall.json` changes, or you pass
-`--rebuild-base`. Each run starts with `pacman -Syu`, so a base image whose
-package database has fallen behind the mirrors still installs.
+`--rebuild-base`. The install phase first runs `pacman -Syu` in the VM, so a
+base image whose package database has fallen behind the mirrors still installs.
 
 Results go to `~/.cache/c7shell-vmtest/results/<timestamp>-<branch>/`:
 `summary.txt` ends in `PASS`, `FAIL: <phase>`, or `FAIL: interrupted` when the run
