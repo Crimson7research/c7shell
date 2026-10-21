@@ -464,6 +464,11 @@ impl Fake {
         self.shared.lock().held_count()
     }
 
+    /// The fragment a [`Fake::hold_next`] armed that no request has used yet.
+    pub fn armed_hold(&self) -> Option<Vec<u8>> {
+        self.shared.lock().hold_fragment.clone()
+    }
+
     /// Closes client `id` alone, as tailscaled going away with that one
     /// request in flight would; the fake keeps listening and serving the
     /// others. False when that client is unknown or no longer connected.

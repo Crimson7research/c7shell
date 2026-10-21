@@ -256,13 +256,14 @@ fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
     });
     let unmatched: Vec<String> =
         fake.requests().iter().filter(|r| r.unmatched).map(|r| format!("{} {}", r.method(), r.target())).collect();
-    let outcome = match result {
-        Err(e) => Outcome::Error(e),
-        Ok(()) if !unmatched.is_empty() => {
+    let unused = fake.armed_hold().map(|f| format!("a hold was armed for {} and never used", json!(Bytes(f))));
+    let outcome = match (result, unused) {
+        (Err(e), _) | (Ok(()), Some(e)) => Outcome::Error(e),
+        (Ok(()), None) if !unmatched.is_empty() => {
             Outcome::Error(format!("the fake answered unmatched requests with 404: {}", unmatched.join(", ")))
         }
-        Ok(()) if run.failing.is_empty() => Outcome::Pass,
-        Ok(()) => Outcome::Fail(run.failing.clone()),
+        (Ok(()), None) if run.failing.is_empty() => Outcome::Pass,
+        (Ok(()), None) => Outcome::Fail(run.failing.clone()),
     };
     drop(run.loaded.take());
     outcome
@@ -377,14 +378,19 @@ impl Run<'_> {
         }
     }
 
+    /// Runs one fake op. A push, resume or completion that reaches no
+    /// client is an error: the count it returns is the barrier (R-FAKE-02).
     fn fake_op(&self, op: &FakeOp) -> Result<(), String> {
+        let reached = |op: &str, n: usize| if n == 0 { Err(format!("{op} reached no client")) } else { Ok(()) };
         match op {
-            FakeOp::PushLine(b) => drop(self.fake.push_line(&b.0)),
-            FakeOp::PushChunk(b) => drop(self.fake.push_chunk(&b.0)),
-            FakeOp::PushWatchLine(b) => drop(self.fake.push_watch_line(&b.0)),
+            FakeOp::PushLine(b) => reached("push_line", self.fake.push_line(&b.0))?,
+            FakeOp::PushChunk(b) => reached("push_chunk", self.fake.push_chunk(&b.0))?,
+            FakeOp::PushWatchLine(b) => reached("push_watch_line", self.fake.push_watch_line(&b.0))?,
             FakeOp::HoldNext(b) => self.fake.hold_next(&b.0),
-            FakeOp::CompleteHeld(reply) => drop(self.fake.complete_held(&reply.encode(false)?.bytes)),
-            FakeOp::Resume(label) => drop(self.fake.resume(label)),
+            FakeOp::CompleteHeld(reply) => {
+                reached("complete_held", self.fake.complete_held(&reply.encode(false)?.bytes))?
+            }
+            FakeOp::Resume(label) => reached("resume", self.fake.resume(label))?,
             FakeOp::CloseClient(sel) => {
                 let id = match sel {
                     ClientSelector::Holding(b) => self.fake.client_holding(&b.0),
