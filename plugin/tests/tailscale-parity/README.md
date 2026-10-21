@@ -159,6 +159,37 @@ Beside every `*Changed` signal, the driver counts each model member's
 Each model member is read once, at load, and its signals are connected
 on that object: #286's `peers` and `exitNodes` are `CONSTANT`.
 
+### Bodies from capture files (#307)
+
+A reply body, a stream head's body or a `complete_held` body may be
+`{"file": path}`: the file's bytes, unchanged, read when the scenario is
+loaded. The path is relative to the fixture root, the parent of the
+scenario's directory, so a committed scenario names
+`tests/fixtures/tailscale/captures/status-idle.json` as:
+
+```json
+{ "match": { "method": "GET", "target": "/localapi/v0/status" },
+  "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } }
+```
+
+An absolute path, one with `..`, and a missing file are format errors
+naming the rule or step. The self-tests' root is `selftest/`, so
+`selftest/scenarios-cpp/served-change.json` reads
+`selftest/captures/two-peers.json`.
+
+### A served change
+
+A change is a second `/status` reply. Give the first a `"times": 1` rule
+and the second an `always` rule after it, then push a watch line that
+starts a new pass. On #286, any notification with a non-null field other
+than `Version`, `SessionID` and `Engine` does
+(`LocalApiTailscaleBackend.cpp:57-70`, `worthRefreshing` at 298-309, called
+from `onEvent` at 311-325), so
+`{"State":6}` is enough. Wait for the first snapshot's value (a row count,
+say) before the push, and for the second's after it: the opening pass asks
+for `/status` once, and nothing else asks again until the push.
+`selftest/scenarios-cpp/served-change.json` is the worked example.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in

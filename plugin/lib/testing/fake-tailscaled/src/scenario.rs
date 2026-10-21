@@ -16,6 +16,7 @@ use crate::bytes::Bytes;
 use crate::reply::{watch_chunk, ReplySpec};
 use crate::script::{within_write_limit, Match, Script};
 
+mod files;
 mod model;
 
 pub use model::{role, ModelQuery, Role};
@@ -273,10 +274,19 @@ impl Scenario {
     }
 
     /// Parses `path` without validating it: for a runner's child, whose
-    /// parent has already loaded it with [`Scenario::load_for`].
+    /// parent has already loaded it with [`Scenario::load_for`]. A body
+    /// `{"file": path}` is read from under the fixture root, the parent of
+    /// the scenario's directory.
     pub fn read(path: &Path) -> Result<Scenario, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+        let at = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| at(e.to_string()))?;
+        let mut value: Value = serde_json::from_str(&text).map_err(|e| at(e.to_string()))?;
+        let root = path.parent().and_then(Path::parent).ok_or_else(|| at("no fixture root above it".into()))?;
+        if !files::resolve_bodies(&mut value, root).map_err(at)? {
+            // Parsed from the text, its errors keep their line and column.
+            return serde_json::from_str(&text).map_err(|e| at(e.to_string()));
+        }
+        serde_json::from_value(value).map_err(|e| at(e.to_string()))
     }
 
     /// The capabilities its steps need.
