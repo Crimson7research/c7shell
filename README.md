@@ -401,10 +401,13 @@ and 4 when it copied only some parts.
 To switch to another setup, `c7shell-setup --uninstall` takes c7shell's config
 out of the way. It reads the same manifest. Each shipped file you have not
 edited is removed, with any `<file>.new` beside it. The run0 `sudo` line setup
-added to `~/.bashrc` or `~/.zshrc` is removed too. Edited files, files you
-added, and `.bak-<stamp>` backups stay, and it lists the edited ones. It leaves
-the run0 lines in your arch-update and paru configs, because it cannot tell
-them from your own choice. Add `--dry-run` to see the list first.
+added to `~/.bashrc` or `~/.zshrc` is removed too, through a symlink if the
+file is one. Edited files, files you added, empty directories you made, and
+`.bak-<stamp>` backups stay. Files reached through a symlinked directory, such
+as a dotfiles repo linked in as `~/.config/hypr`, stay too: they live outside
+`~/.config`. It lists what it kept, and the run0 lines it found in your
+arch-update and paru configs, which it leaves because it cannot tell them from
+your own choice. Add `--dry-run` to see the list first.
 
 ## What is where
 

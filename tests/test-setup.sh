@@ -228,43 +228,76 @@ rc=0; out=$(XDG_CONFIG_HOME=$real/conf C7SHELL_STATE=$real/state "$setup" 2>&1) 
 # without losing anything the user wrote. Unedited shipped files go; edited
 # ones, files c7shell never shipped, and the .bak copies stay.
 un=$tmp/uninstall
-mkdir -p "$un/home" "$un/dotfiles"; : > "$un/dotfiles/bashrc"
+mkdir -p "$un/home" "$un/dotfiles" "$un/zdot"
+# .bashrc is a dotfile manager's symlink, with a Latin-1 byte grep would call
+# binary, and a sudo line of the user's own that only the marker tells apart.
+printf '# caf\xe9\nalias please="sudo !!"\n' > "$un/dotfiles/bashrc"
 ln -s ../dotfiles/bashrc "$un/home/.bashrc"
-u() { HOME=$un/home XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$un/state \
+printf 'setopt autocd\n' > "$un/zdot/.zshrc"
+cp "$un/dotfiles/bashrc" "$tmp/bashrc.orig"; cp "$un/zdot/.zshrc" "$tmp/zshrc.orig"
+u() { HOME=$un/home ZDOTDIR=$un/zdot XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$un/state \
         C7SHELL_SUDO_SNIPPET=$tmp/sn.sh "$setup" "$@"; }
 u >/dev/null 2>&1
-mkdir -p "$un/conf/hypr.bak-1"
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall fixture: setup added no sudo line to .bashrc'
+grep -qF 'c7shell: sudo asks' "$un/zdot/.zshrc" || fail 'uninstall fixture: setup added no sudo line to .zshrc'
+mkdir -p "$un/conf/hypr.bak-1" "$un/conf/hypr/wallpapers"
 echo edited > "$un/conf/quickshell/c7shell/shell.qml"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
-grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall fixture: setup added no sudo line'
-echo 'alias ll="ls -l"' >> "$un/home/.bashrc"
+# The portal part now lives in a dotfiles repo, reached through a symlink.
+mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
+ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
+
+# setup writes paru.conf only where paru is installed; this test must not
+# depend on the machine it runs on.
+rm -f "$un/conf/paru/paru.conf"
+
+if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'; fi
 
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
 [[ -f $un/conf/hypr/hyprland.lua && -f $un/state/manifest ]] || fail "uninstall --dry-run removed files:\n$out"
 grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall --dry-run edited .bashrc'
+grep -q '^would remove' <<<"$out" || fail "uninstall --dry-run did not say would:\n$out"
 
 out=$(u --uninstall 2>&1) || fail "uninstall failed:\n$out"
-for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf xdg-desktop-portal; do
+for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf; do
   [[ ! -e $un/conf/$gone ]] || fail "uninstall left $gone:\n$out"
 done
 [[ -f $un/conf/quickshell/c7shell/shell.qml ]] || fail 'uninstall deleted an edited file'
 grep -qF "$un/conf/quickshell/c7shell/shell.qml" <<<"$out" || fail "uninstall did not name the edited file it kept:\n$out"
 [[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
+[[ -d $un/conf/hypr/wallpapers ]] || fail 'uninstall deleted an empty directory the user made'
 [[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
+grep -qF "$un/conf/hypr.bak-1" <<<"$out" || fail "uninstall did not list the backup it left:\n$out"
+[[ -f $un/dotfiles/portal/hyprland-portals.conf ]] || fail 'uninstall deleted through a symlink into a dotfiles tree'
+grep -qF "$un/conf/xdg-desktop-portal/hyprland-portals.conf" <<<"$out" \
+  || fail "uninstall did not report the file it left behind a symlink:\n$out"
 [[ -f $un/conf/arch-update/arch-update.conf ]] || fail 'uninstall deleted the user-owned arch-update config'
-grep -q 'PrivilegeElevationCommand' <<<"$out" || fail "uninstall did not mention the arch-update line it left:\n$out"
-grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" && fail "uninstall left the sudo line:\n$(cat "$un/home/.bashrc")"
-grep -qxF 'alias ll="ls -l"' "$un/home/.bashrc" || fail "uninstall damaged .bashrc:\n$(cat "$un/home/.bashrc")"
+grep -q 'PrivilegeElevationCommand=run0' <<<"$out" || fail "uninstall did not mention the arch-update line it left:\n$out"
+grep -q 'Sudo = run0' <<<"$out" && fail "uninstall listed a paru line that is not there:\n$out"
+# The rc files come back byte for byte, through the symlink.
+cmp -s "$un/dotfiles/bashrc" "$tmp/bashrc.orig" || fail "uninstall did not restore .bashrc:\n$(cat -A "$un/dotfiles/bashrc")"
+cmp -s "$un/zdot/.zshrc" "$tmp/zshrc.orig" || fail "uninstall did not restore .zshrc:\n$(cat -A "$un/zdot/.zshrc")"
 [[ -L $un/home/.bashrc ]] || fail 'uninstall replaced a symlinked .bashrc with a plain file'
 [[ ! -e $un/state/manifest ]] || fail 'uninstall left the manifest, so a reinstall would trust stale hashes'
+
+# Directories the removals emptied go, up to the config dir itself.
+rm "$un/conf/quickshell/c7shell/shell.qml"
+mkdir -p "$un/state"; printf 'quickshell/c7shell/x.qml\t%s\n' "$(printf 'x\n' | sha256sum | cut -d' ' -f1)" > "$un/state/manifest"
+echo x > "$un/conf/quickshell/c7shell/x.qml"
+u --uninstall >/dev/null 2>&1 || fail 'uninstall of the last file failed'
+[[ ! -e $un/conf/quickshell ]] || fail "uninstall left the directories it emptied:\n$(find "$un/conf/quickshell")"
+[[ -d $un/conf ]] || fail 'uninstall removed the config dir itself'
+
+# A ../ row in a manifest never reaches outside the config dir.
+echo keep > "$un/outside"
+printf '../outside\t%s\n' "$(sha256sum < "$un/outside" | cut -d' ' -f1)" > "$un/state/manifest"
+u --uninstall >/dev/null 2>&1 || true
+[[ -f $un/outside ]] || fail 'uninstall followed a ../ row out of the config dir'
 
 # Nothing installed is a sentence, not a failure.
 out=$(u --uninstall 2>&1) || fail "a second uninstall failed:\n$out"
 grep -qi 'nothing to remove' <<<"$out" || fail "a second uninstall did not say there was nothing to remove:\n$out"
-# And the config is free for setup again: what is left is only what was kept.
-rc=0; u >/dev/null 2>&1 || rc=$?
-((rc == 4)) || fail "reinstall after uninstall exited $rc, not 4 (the kept edit still blocks its part)"
 
 # --- and none of the above escaped into a real home -----------------------
 # The isolation above is the whole reason this file cannot damage the machine
