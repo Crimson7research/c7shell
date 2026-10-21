@@ -223,6 +223,221 @@ mkdir -p "$real/conf/hypr"; printf 'monitor = ,preferred,auto,1\n' > "$real/conf
 rc=0; out=$(XDG_CONFIG_HOME=$real/conf C7SHELL_STATE=$real/state "$setup" 2>&1) || rc=$?
 ((rc == 4)) || fail "a hand-written hyprland.conf was replaced (exit $rc):\n$out"
 
+# --- --uninstall removes what setup installed, and only that (#19) ----------
+# Switching to another setup means getting c7shell's files out of the way
+# without losing anything the user wrote. Unedited shipped files go; edited
+# ones, files c7shell never shipped, and the .bak copies stay.
+un=$tmp/uninstall
+mkdir -p "$un/home" "$un/dotfiles" "$un/zdot"
+# .bashrc is a dotfile manager's symlink, with a Latin-1 byte grep would call
+# binary, and a sudo line of the user's own that only the marker tells apart.
+printf '# caf\xe9\nalias please="sudo !!"\n' > "$un/dotfiles/bashrc"
+ln -s ../dotfiles/bashrc "$un/home/.bashrc"
+printf 'setopt autocd\n' > "$un/zdot/.zshrc"
+cp "$un/dotfiles/bashrc" "$tmp/bashrc.orig"; cp "$un/zdot/.zshrc" "$tmp/zshrc.orig"
+# gsettings is the host's dconf; a stub answers for it, as c7shell set it.
+mkdir -p "$un/bin"; printf '#!/bin/sh\necho "'"'"'prefer-dark'"'"'"\n' > "$un/bin/gsettings"; chmod +x "$un/bin/gsettings"
+export PATH="$un/bin:$PATH"
+u() { HOME=$un/home ZDOTDIR=$un/zdot XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$un/state \
+        C7SHELL_SUDO_SNIPPET=$tmp/sn.sh "$setup" "$@"; }
+u >/dev/null 2>&1
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall fixture: setup added no sudo line to .bashrc'
+grep -qF 'c7shell: sudo asks' "$un/zdot/.zshrc" || fail 'uninstall fixture: setup added no sudo line to .zshrc'
+mkdir -p "$un/conf/hypr.bak-1" "$un/conf/hypr/wallpapers"
+echo edited > "$un/conf/quickshell/c7shell/shell.qml"
+# Beside an edited file, a .new is what the user was told to merge.
+echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
+mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
+printf '[bin]\nSudo = run0\n' > "$un/conf/paru/paru.conf.keep"
+echo v2 > "$un/conf/hypr/hyprland.lua.new"
+echo mine > "$un/conf/hypr/monitors.lua"
+# What the shell itself writes, and what an upgrade backs up per file: in no
+# manifest, but they keep the part's directory alive, so they must be named.
+echo '{}' > "$un/conf/hypr/displays-state.json"
+echo old > "$un/conf/hypr/hyprland.lua.bak-20260101000000"
+mkdir -p "$un/conf/gtk-3.0" "$un/conf/gtk-4.0"; printf '[Settings]\ngtk-application-prefer-dark-theme=1\n' > "$un/conf/gtk-3.0/settings.ini"
+# A settings.ini without the export's key is somebody else's, not a leftover.
+printf '[Settings]\ngtk-font-name=Sans 10\n' > "$un/conf/gtk-4.0/settings.ini"
+# The portal part now lives in a dotfiles repo, reached through a symlink.
+mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
+ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
+
+# setup writes paru.conf only where paru is installed; this test must not
+# depend on the machine it runs on.
+rm -f "$un/conf/paru/paru.conf"; mv "$un/conf/paru/paru.conf.keep" "$un/conf/paru/paru.conf"
+
+printf '[Mouse]\ncursorTheme=Bibata\n' > "$un/conf/kcminputrc"
+cp "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig"; cp "$un/conf/paru/paru.conf" "$tmp/pc.orig"
+
+if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'; fi
+
+out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
+[[ -f $un/conf/hypr/hyprland.lua && -f $un/conf/hypr/hyprland.lua.new && -f $un/state/manifest ]] \
+  || fail "uninstall --dry-run removed files:\n$out"
+grep -qF 'c7shell: sudo asks' "$un/home/.bashrc" || fail 'uninstall --dry-run edited .bashrc'
+grep -q '^would remove' <<<"$out" || fail "uninstall --dry-run did not say would:\n$out"
+grep -qF "hypr/hyprlock-palette.conf" <<<"$out" || fail "uninstall --dry-run did not preview the lock palette:\n$out"
+# What the dry run would remove is not also what it says stays.
+also=$(sed -n '/^Also still in the c7shell parts/,/^$/p' <<<"$out")
+for f in hypr/hyprland.lua hypr/hyprlock-palette.conf; do
+  grep -qxF "  $un/conf/$f" <<<"$also" && fail "uninstall --dry-run listed $f as both removed and left:\n$out"
+done
+
+out=$(u --uninstall 2>&1) || fail "uninstall failed:\n$out"
+for gone in hypr/hyprland.lua hypr/hyprland.lua.new hypr/xdph.conf; do
+  [[ ! -e $un/conf/$gone ]] || fail "uninstall left $gone:\n$out"
+done
+[[ -f $un/conf/quickshell/c7shell/shell.qml ]] || fail 'uninstall deleted an edited file'
+grep -A1 'Kept, because you edited them' <<<"$out" | grep -qxF "  $un/conf/quickshell/c7shell/shell.qml" \
+  || fail "uninstall did not name the edited file it kept:\n$out"
+also=$(sed -n '/^Also still in the c7shell parts/,/^$/p' <<<"$out")
+for f in hypr/monitors.lua hypr/displays-state.json hypr/hyprland.lua.bak-20260101000000; do
+  grep -qxF "  $un/conf/$f" <<<"$also" || fail "uninstall did not list $f as still in a part:\n$out"
+done
+grep -qF 'shell.qml' <<<"$also" && fail "a file already listed as kept was listed twice:\n$out"
+grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$out" \
+  || fail "uninstall did not list a file the theme export writes:\n$out"
+grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
+grep -qF "$un/conf/kcminputrc   (the theme export writes to it)" <<<"$out" || fail "uninstall did not list kcminputrc:\n$out"
+grep -qF "color-scheme setting, now 'prefer-dark'" <<<"$out" || fail "uninstall did not list the gsettings key:\n$out"
+# Listed is all: the unmarked run0 lines are the user's to remove.
+cmp -s "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig" || fail 'uninstall changed arch-update.conf'
+cmp -s "$un/conf/paru/paru.conf" "$tmp/pc.orig" || fail 'uninstall changed paru.conf'
+[[ -f $un/conf/hypr/monitors.lua ]] || fail 'uninstall deleted a file c7shell never shipped'
+[[ -d $un/conf/hypr/wallpapers ]] || fail 'uninstall deleted an empty directory the user made'
+[[ -d $un/conf/hypr.bak-1 ]] || fail 'uninstall touched a backup'
+grep -qF "$un/conf/hypr.bak-1" <<<"$out" || fail "uninstall did not list the backup it left:\n$out"
+[[ -f $un/dotfiles/portal/hyprland-portals.conf ]] || fail 'uninstall deleted through a symlink into a dotfiles tree'
+grep -qF "$un/conf/xdg-desktop-portal/hyprland-portals.conf" <<<"$out" \
+  || fail "uninstall did not report the file it left behind a symlink:\n$out"
+[[ -f $un/conf/arch-update/arch-update.conf ]] || fail 'uninstall deleted the user-owned arch-update config'
+grep -q 'PrivilegeElevationCommand=run0' <<<"$out" || fail "uninstall did not mention the arch-update line it left:\n$out"
+for left in 'Sudo = run0' "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts" \
+            "C7Shell colours in $un/conf/kdeglobals"; do
+  grep -qF "$left" <<<"$out" || fail "uninstall did not list what it left: $left\n$out"
+done
+# The lock palette is c7shell's own, generated: left behind, it alone would
+# keep ~/.config/hypr alive and the next setup would skip the hypr part.
+[[ ! -e $un/conf/hypr/hyprlock-palette.conf ]] || fail 'uninstall left the generated lock palette'
+[[ -f $un/conf/quickshell/c7shell/shell.qml.new ]] || fail 'uninstall deleted the .new beside an edited file'
+grep -A1 'parked for you to merge' <<<"$out" | grep -qF "$un/conf/quickshell/c7shell/shell.qml.new" \
+  || fail "uninstall did not list the kept .new as a version to merge:\n$out"
+# The rc files come back byte for byte, through the symlink.
+cmp -s "$un/dotfiles/bashrc" "$tmp/bashrc.orig" || fail "uninstall did not restore .bashrc:\n$(cat -A "$un/dotfiles/bashrc")"
+cmp -s "$un/zdot/.zshrc" "$tmp/zshrc.orig" || fail "uninstall did not restore .zshrc:\n$(cat -A "$un/zdot/.zshrc")"
+[[ -L $un/home/.bashrc ]] || fail 'uninstall replaced a symlinked .bashrc with a plain file'
+# The rows of files that stay survive, so a later upgrade still knows them
+# as edits; the rows of removed files go.
+grep -q '^quickshell/c7shell/shell.qml'$'\t' "$un/state/manifest" || fail "uninstall dropped the row of a kept file"
+grep -q '^xdg-desktop-portal/' "$un/state/manifest" || fail "uninstall dropped the rows behind a symlink"
+grep -q '^hypr/hyprland.lua'$'\t' "$un/state/manifest" && fail "uninstall kept the row of a removed file"
+
+# Directories the removals emptied go, up to the config dir itself.
+rm -r "$un/conf/quickshell/c7shell/shell.qml" "$un/conf/quickshell/c7shell/shell.qml.new" "$un/conf/quickshell/c7shell.bak-1"
+mkdir -p "$un/state"; printf 'quickshell/c7shell/x.qml\t%s\n' "$(printf 'x\n' | sha256sum | cut -d' ' -f1)" > "$un/state/manifest"
+echo x > "$un/conf/quickshell/c7shell/x.qml"
+u --uninstall >/dev/null 2>&1 || fail 'uninstall of the last file failed'
+[[ ! -e $un/conf/quickshell ]] || fail "uninstall left the directories it emptied:\n$(find "$un/conf/quickshell")"
+[[ ! -e $un/state/manifest ]] || fail 'uninstall kept a manifest with every row removed'
+[[ -d $un/conf ]] || fail 'uninstall removed the config dir itself'
+
+# An empty config dir is still the config dir: pruning stops below it.
+lone=$tmp/lone; mkdir -p "$lone/conf/hypr" "$lone/state"; echo x > "$lone/conf/hypr/x.lua"
+printf 'hypr/x.lua\t%s\n' "$(sha256sum < "$lone/conf/hypr/x.lua" | cut -d' ' -f1)" > "$lone/state/manifest"
+HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 \
+  || fail 'uninstall of a lone file failed'
+[[ -d $lone/conf && ! -e $lone/conf/hypr ]] || fail 'uninstall pruned past, or short of, the config dir'
+
+# The lock palette alone does not keep hypr/ alive, and through a symlinked
+# hypr/ it is the user's file and stays.
+mkdir -p "$lone/conf/hypr"; echo p > "$lone/conf/hypr/hyprlock-palette.conf"; printf 'hypr/gone\t0\n' > "$lone/state/manifest"
+HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || true
+[[ ! -e $lone/conf/hypr ]] || fail 'uninstall left hypr/ behind with only the lock palette gone from it'
+mkdir -p "$lone/dots/hypr"; echo p > "$lone/dots/hypr/hyprlock-palette.conf"; ln -s ../dots/hypr "$lone/conf/hypr"
+HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || true
+[[ -f $lone/dots/hypr/hyprlock-palette.conf ]] || fail 'uninstall deleted a lock palette through a symlinked hypr/'
+rm "$lone/conf/hypr"
+
+# A manifest it cannot rewrite fails the run.
+mkdir -p "$lone/conf/hypr"; echo x > "$lone/conf/hypr/k.lua"
+printf 'hypr/k.lua\t0000\n' > "$lone/state/manifest"; chmod 555 "$lone/state"
+rc=0; HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || rc=$?
+chmod 755 "$lone/state"; rm -r "$lone/conf/hypr"
+((rc == 1)) || fail "a manifest uninstall could not rewrite did not exit 1 (got $rc)"
+
+# An unreadable manifest stops the run: read as empty, it would be deleted.
+mkdir -p "$lone/conf/hypr"; echo x > "$lone/conf/hypr/u.lua"
+printf 'hypr/u.lua\t%s\n' "$(sha256sum < "$lone/conf/hypr/u.lua" | cut -d' ' -f1)" > "$lone/state/manifest"
+chmod 000 "$lone/state/manifest"
+rc=0; HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 || rc=$?
+chmod 644 "$lone/state/manifest"
+((rc == 1)) || fail "an unreadable manifest did not exit 1 (got $rc)"
+[[ -s $lone/state/manifest && -f $lone/conf/hypr/u.lua ]] || fail 'uninstall acted on a manifest it could not read'
+rm -r "$lone/conf/hypr"
+
+# A row whose file is gone but whose .new is there keeps the .new.
+mkdir -p "$lone/conf/hypr"; echo merged > "$lone/conf/hypr/y.lua.new"
+printf 'hypr/y.lua\t0000\n' > "$lone/state/manifest"
+out=$(HOME=$un/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall 2>&1)
+[[ -f $lone/conf/hypr/y.lua.new ]] || fail "uninstall deleted a lone .new:\n$out"
+[[ $out != *"$lone/conf/hypr/y.lua"$'\n'* ]] || fail "uninstall listed a missing file as kept:\n$out"
+
+# An rc file without a final newline comes back without one; a read-only one
+# is left whole, and the run says so with exit 1.
+ro=$tmp/ro; mkdir -p "$ro/home"
+printf 'a\n\n%s\nz' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$ro/home/.bashrc"
+chmod 640 "$ro/home/.bashrc"
+printf 'hypr/none\t0\n' > "$lone/state/manifest"
+HOME=$ro/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall >/dev/null 2>&1 \
+  || fail 'uninstall failed on an rc file without a final newline'
+[[ $(od -An -c "$ro/home/.bashrc" | tr -s ' ') == ' a \n z' ]] \
+  || fail "uninstall did not restore an rc file without a final newline:\n$(od -c "$ro/home/.bashrc")"
+[[ $(stat -c %a "$ro/home/.bashrc") == 640 ]] || fail "uninstall changed an rc file's mode to $(stat -c %a "$ro/home/.bashrc")"
+printf 'a\n%s\n' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$ro/home/.bashrc"
+chmod 444 "$ro/home/.bashrc"; printf 'hypr/none\t0\n' > "$lone/state/manifest"
+rc=0; out=$(HOME=$ro/home XDG_CONFIG_HOME=$lone/conf C7SHELL_STATE=$lone/state "$setup" --uninstall 2>&1) || rc=$?
+((rc == 1)) || fail "a read-only rc file did not exit 1 (got $rc):\n$out"
+grep -qF 'c7shell: sudo asks' "$ro/home/.bashrc" || fail 'uninstall changed a read-only rc file'
+grep -qF "$ro/home/.bashrc" <<<"$out" || fail "uninstall did not name the rc file it could not edit:\n$out"
+chmod 644 "$ro/home/.bashrc"
+
+# A ../ row in a manifest never reaches outside the config dir.
+echo keep > "$un/outside"
+printf '../outside\t%s\n' "$(sha256sum < "$un/outside" | cut -d' ' -f1)" > "$un/state/manifest"
+u --uninstall >/dev/null 2>&1 || true
+[[ -f $un/outside ]] || fail 'uninstall followed a ../ row out of the config dir'
+out=$(u --uninstall 2>&1) || true
+grep -qF "a ../ in the manifest" <<<"$out" || fail "a ../ row was not labelled as one:\n$out"
+
+grep -q '^\.\./outside' "$un/state/manifest" || fail 'uninstall dropped the row it refused to follow'
+
+# No manifest -- an install older than it, a wiped ~/.local/state -- removes no
+# config file, but still takes out the sudo line and lists what is left.
+nm=$tmp/nomanifest; mkdir -p "$nm/home"
+printf 'a\n\n%s\n' "[ -r x ] && . x   # c7shell: sudo asks through polkit (run0)" > "$nm/home/.bashrc"
+out=$(HOME=$nm/home XDG_CONFIG_HOME=$un/conf C7SHELL_STATE=$tmp/never "$setup" --uninstall 2>&1) \
+  || fail "uninstall with no install recorded failed:\n$out"
+grep -q 'no install recorded' <<<"$out" || fail "uninstall with no install recorded did not say so:\n$out"
+grep -qF 'c7shell: sudo asks' "$nm/home/.bashrc" && fail 'uninstall with no manifest left the sudo line'
+
+# A manifest names no config dir, so a run against another one -- or with a
+# part moved aside -- must keep the rows it found nothing for.
+other=$tmp/otherconf; mkdir -p "$other/state"
+printf 'hypr/hyprland.lua\t%s\n' "$(echo v1 | sha256sum | cut -d' ' -f1)" > "$other/state/manifest"
+HOME=$nm/home XDG_CONFIG_HOME=$other/elsewhere C7SHELL_STATE=$other/state "$setup" --uninstall >/dev/null 2>&1 \
+  || fail 'uninstall against an empty config dir failed'
+grep -q '^hypr/hyprland.lua' "$other/state/manifest" || fail 'uninstall erased the rows of files it never saw'
+
+# A file it cannot remove keeps its row and fails the run.
+ro2=$tmp/rodir; mkdir -p "$ro2/conf/hypr" "$ro2/state"; echo v1 > "$ro2/conf/hypr/hyprland.lua"
+printf 'hypr/hyprland.lua\t%s\n' "$(echo v1 | sha256sum | cut -d' ' -f1)" > "$ro2/state/manifest"
+chmod 555 "$ro2/conf/hypr"
+rc=0; out=$(HOME=$nm/home XDG_CONFIG_HOME=$ro2/conf C7SHELL_STATE=$ro2/state "$setup" --uninstall 2>&1) || rc=$?
+chmod 755 "$ro2/conf/hypr"
+((rc == 1)) || fail "a file uninstall could not remove did not exit 1 (got $rc):\n$out"
+grep -q '^hypr/hyprland.lua' "$ro2/state/manifest" || fail 'uninstall dropped the row of a file it could not remove'
+grep -q 'removed 0 ' <<<"$out" || fail "uninstall counted a file it could not remove:\n$out"
+
 # --- and none of the above escaped into a real home -----------------------
 # The isolation above is the whole reason this file cannot damage the machine
 # it runs on; assert it rather than trusting it.

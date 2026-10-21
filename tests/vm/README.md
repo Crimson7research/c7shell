@@ -36,6 +36,8 @@ until one of its inputs changes, or you pass `--rebuild-base`. The inputs are
 file; `lib/base.sh` hashes them into `base.inputs` beside the image. If you
 delete `id_ed25519` or `c7test.password` from the cache, pass
 `--rebuild-base`: the base holds the old ones, and they are not in the key.
+The install phase first runs `pacman -Syu` in the VM, so a base image whose
+package database has fallen behind the mirrors still installs.
 
 Results go to `~/.cache/c7shell-vmtest/results/<timestamp>-<branch>/`:
 `summary.txt` ends in `PASS`, `FAIL: <phase>`, or `FAIL: interrupted` when the run

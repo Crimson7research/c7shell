@@ -149,6 +149,18 @@ host_step() { exit 2; }
 set +e; ( phase host 5 host_step ) >/dev/null 2>&1; s=$?; set -e
 [[ $s == 2 ]] || fail "phase: a step's exit 2 must stay 2, got $s"
 
+# A dead QEMU leaves no QMP socket, but its serial log is still on disk and
+# is the only thing that says why the phase failed (#272).
+mkdir -p "$tmp/deadrun"; echo 'kernel panic' > "$tmp/deadrun/serial.log"
+( run=$tmp/deadrun; save_evidence dead )
+grep -qx 'kernel panic' "$results/dead-serial-tail.log" 2>/dev/null \
+  || fail 'save_evidence: must keep the serial tail when QEMU is down'
+mkdir -p "$tmp/noserial"
+( run=$tmp/noserial; save_evidence noserial )
+[[ ! -e $results/noserial-serial-tail.log ]] || fail 'save_evidence: no serial log, no empty serial tail'
+( run=''; save_evidence norun ) || fail 'save_evidence: no run dir yet must not fail'
+[[ ! -e $results/norun-serial-tail.log ]] || fail 'save_evidence: no run dir, no serial tail'
+
 # finish must report PASS even when stopping the VM fails.
 mkdir -p "$tmp/frun"; : > "$results/summary.txt"
 vm_stop() { return 1; }
@@ -181,6 +193,16 @@ _rebooted aaa || fail '_rebooted: a new boot id is a reboot'
 script=$(remote_install_script "a';touch /x;'" 'u r')
 grep -qF "git clone --branch a\\'\\;touch\\ /x\\;\\' u\\ r c7shell" <<<"$script" \
   || fail "remote_install_script: branch not quoted:\n$script"
+
+# The base image's package database ages between rebuilds, and the mirrors
+# keep only current packages, so install.sh's pacman -S hits 404s unless the
+# system is refreshed first (#297). A full -Syu, never -Sy: a partial upgrade
+# is unsupported on Arch.
+script=$(remote_install_script main u)
+syu=$(awk '$0 == "sudo pacman -Syu --noconfirm" { print NR; exit }' <<<"$script")
+inst=$(awk '/\.\/install\.sh/ { print NR; exit }' <<<"$script")
+[[ $syu && $inst && $syu -lt $inst ]] \
+  || fail "remote_install_script: no pacman -Syu before install.sh:\n$script"
 
 # A QEMU that greets but never answers the command is a failure, and an
 # event that mentions "error" is not.

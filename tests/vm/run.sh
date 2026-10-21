@@ -47,11 +47,16 @@ parse_args() {
 
 slug() { printf '%s' "${1//[^A-Za-z0-9._-]/-}"; }
 
-# Evidence for a failed phase: the screen and the end of the serial log.
+# Evidence for a failed phase: the screen and the end of the serial log. The
+# screen needs a live QEMU; the serial log outlives it, and is what explains
+# a VM that died (#272).
 save_evidence() {
-  [[ -S ${run:-}/qmp.sock ]] || return 0
-  mkdir -p "$results/screens"
-  qmp_screendump "$run/qmp.sock" "$results/screens/$1-fail.png" >/dev/null 2>&1 || true
+  [[ -n ${run:-} ]] || return 0
+  if [[ -S $run/qmp.sock ]]; then
+    mkdir -p "$results/screens"
+    qmp_screendump "$run/qmp.sock" "$results/screens/$1-fail.png" >/dev/null 2>&1 || true
+  fi
+  [[ -f $run/serial.log ]] || return 0
   tail -n 200 "$run/serial.log" > "$results/$1-serial-tail.log" 2>/dev/null || true
 }
 
@@ -104,6 +109,7 @@ remote_install_script() {
   printf -v b %q "$1"; printf -v u %q "$2"
   cat <<REMOTE
 set -euo pipefail
+sudo pacman -Syu --noconfirm
 git clone --branch $b $u c7shell
 cd c7shell
 C7SHELL_BRANCH=$b C7SHELL_SKIP_OPTIONAL=1 ./install.sh --yes --noconfirm
