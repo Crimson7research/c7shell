@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "id": "parse-04-hours-only-offset",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "2027-04-11T11:06:08+02 (an offset of hours alone) yields an invalid keyExpiry"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "2027-04-11T11:06:08+02"
+      }
+    }
+  },
+  "expect": {
+    "contract": {
+      "keyExpiry": {
+        "date": null
+      }
+    }
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "contract.keyExpiry",
+          "actual": {
+            "date": "2027-04-11T09:06:08.000Z"
+          }
+        }
+      ],
+      "reason": "#286 reads KeyExpiry with QDateTime::fromString(..., Qt::ISODate) (plugin/lib/tailscale/StatusParser.cpp:118), which accepts an offset of hours alone (+HH); R-PARSE-04's grammar allows only Z or +HH:MM/-HH:MM (decision 11), so the value is unparsable"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
