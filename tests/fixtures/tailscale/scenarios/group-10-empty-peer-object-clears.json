@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "A later status with \"Peer\":{} leaves 0 rows in both models: from status-idle.json's 20 peers and 2 exit nodes, a status without a Peer key (its tailnet example.net, seen first) and then one with \"Peer\":{}, each served as a change; peers and exitNodes read 0 rows once peers does. #286 already clears both from an empty Peer object (LocalApiTailscaleBackend.cpp:655-671), so the scenario is tagged parity"
+    "A later status with \"Peer\":{} leaves 0 rows in both models: from status-idle.json's 20 peers and 2 exit nodes, a status without a Peer key (its tailnet example.net, seen first) and then one with \"Peer\":{}, each served as a change; peers and exitNodes read 0 rows once the Peer:{} status's tailnet example.info is seen (R-UI-06 fills both models before any property signal, so neither count races). #286 already clears both from an empty Peer object (LocalApiTailscaleBackend.cpp:655-671), so the scenario is tagged parity"
   ],
   "deferred": [
     "20 rows remain after the status without Peer, and the second run's rows and peersKnown: phase3-only, an unchanged row count is a negative after the idle barrier, and peersKnown is a contract addition"
@@ -19,7 +19,7 @@
     { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
       "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.net"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}}} } },
     { "match": { "method": "GET", "target": "/localapi/v0/status" },
-      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.net"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {}}} } },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.info"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {}}} } },
     { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
       "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
     { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
@@ -34,7 +34,7 @@
     {"fake": {"push_watch_line": "{\"State\":6}"}},
     {"wait": {"contract": {"tailnet": "example.net"}}},
     {"fake": {"push_watch_line": "{\"State\":6}"}},
-    {"wait": {"model": {"name": "peers", "count": 0}}},
+    {"wait": {"contract": {"tailnet": "example.info"}}},
     {"expect": {"id": "peers-cleared", "model": {"name": "peers", "count": 0}}},
     {"expect": {"id": "exit-nodes-cleared", "model": {"name": "exitNodes", "count": 0}}}
   ],
