@@ -321,3 +321,21 @@ fn every_committed_scenario_validates() {
         }
     }
 }
+
+#[test]
+fn it_rejects_a_push_or_completion_over_the_write_limit() {
+    let big = "x".repeat(fake_tailscaled::MAX_WRITE + 1);
+    for op in [
+        json!({ "push_line": big }),
+        json!({ "push_chunk": big }),
+        json!({ "push_watch_line": big }),
+        json!({ "complete_held": { "body": big } }),
+    ] {
+        let name = op.as_object().unwrap().keys().next().unwrap().clone();
+        let mut v = full();
+        v["steps"][7] = json!({ "fake": op });
+        let e = rejected(v);
+        assert_names(&e, &format!("steps[7].fake.{name}"));
+        assert_names(&e, "write limit");
+    }
+}

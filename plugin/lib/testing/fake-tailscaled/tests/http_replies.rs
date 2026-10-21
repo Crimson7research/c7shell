@@ -336,3 +336,21 @@ fn bytes_round_trip_through_json() {
     }
     assert!(serde_json::from_value::<Body>(json!({ "nope": 1 })).is_err());
 }
+
+/// A reply the fake writes under its lock must fit an unread Unix socket
+/// buffer, or a client on the thread waiting for that lock never drains it.
+#[test]
+fn a_reply_over_the_write_limit_is_refused() {
+    let rule = |body: String| json!({ "rules": [{ "match": { "method": "GET", "target": "/r" }, "reply": { "body": body } }] });
+    let script: Script = serde_json::from_value(rule("x".repeat(fake_tailscaled::MAX_WRITE + 1))).unwrap();
+    let e = script.validate().unwrap_err();
+    assert!(e.starts_with("rules[0]: ") && e.contains("over the fake's 131072-byte write limit"), "{e}");
+    // R-HTTP-09's 65 536-byte bodies fit.
+    let fits: Script = serde_json::from_value(rule("x".repeat(65_536))).unwrap();
+    fits.validate().unwrap();
+    // So must a stream head.
+    let head = json!({ "rules": [{ "match": { "method": "GET", "target": "/w" },
+        "stream": { "headers": [["X-Pad", "x".repeat(fake_tailscaled::MAX_WRITE)]] } }] });
+    let e = serde_json::from_value::<Script>(head).unwrap().validate().unwrap_err();
+    assert!(e.contains("write limit"), "{e}");
+}
