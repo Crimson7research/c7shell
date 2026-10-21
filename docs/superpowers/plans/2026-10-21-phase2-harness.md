@@ -598,7 +598,8 @@ is `{"id":N,"cmd":"...",...}` and gets one stdout line
 `{"id":N,"ok":true,"result":...}` or `{"id":N,"ok":false,"error":"..."}`.
 The commands are `requests`, `clients`, `connected`, `accepted`,
 `set-script`, `push-line`, `push-chunk`, `push-to`, `push-watch-line`,
-`hold-next`, `complete-held`, `held-count`, `resume` and `close-client`. Out
+`hold-next`, `complete-held`, `held-count`, `resume`, `close-client`,
+`faults` (the fake's own failures) and `set-write-timeout` (`ms`, at least 1). Out
 of process, a client waits by polling `requests` or `clients`, a bounded
 poll. The binary has no wait command. End of stdin: drop the fake, exit 0.
 

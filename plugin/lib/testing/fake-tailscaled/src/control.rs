@@ -98,6 +98,15 @@ fn run(fake: &Fake, cmd: &Value) -> Result<Value, String> {
         "complete-held" => json!(fake.complete_held(&bytes(cmd, "bytes")?)),
         "resume" => json!(fake.resume(&arg::<String>(cmd, "label")?)),
         "close-client" => json!(fake.close_client(arg(cmd, "client")?)),
+        "faults" => json!(fake.faults()),
+        "set-write-timeout" => {
+            let ms: u64 = arg(cmd, "ms")?;
+            if ms == 0 {
+                return Err("argument `ms`: a write bound is at least 1 ms".into());
+            }
+            fake.set_write_timeout(std::time::Duration::from_millis(ms));
+            Value::Null
+        }
         other => return Err(format!("unknown command `{other}`")),
     })
 }
