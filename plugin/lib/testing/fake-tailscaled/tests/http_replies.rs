@@ -382,6 +382,7 @@ fn a_stream_rule_must_be_plainly_chunked() {
         let e = serde_json::from_value::<Script>(rules).unwrap().validate().unwrap_err();
         assert!(e.starts_with("rules[0]: stream: framing"), "{framing}: {e}");
     }
-    let rules = json!({ "rules": [{ "match": { "method": "GET", "target": "/w" }, "stream": { "framing": "chunked" } }] });
+    let rules =
+        json!({ "rules": [{ "match": { "method": "GET", "target": "/w" }, "stream": { "framing": "chunked" } }] });
     serde_json::from_value::<Script>(rules).unwrap().validate().unwrap();
 }

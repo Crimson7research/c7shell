@@ -5,7 +5,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::reply::{Encoded, ReplySpec};
+use crate::reply::{Chunked, Encoded, Framing, ReplySpec};
 use crate::request::Request;
 use crate::server::MAX_WRITE;
 
@@ -94,6 +94,13 @@ impl Rule {
             }
             (None, Some(true), None) => Ok(Action::Hold),
             (None, None, Some(stream)) => {
+                // push_watch_line writes each line as one plain chunk.
+                if stream.framing != Framing::Chunked(Chunked::default()) {
+                    return Err(format!(
+                        "stream: framing must be \"chunked\", with no sizes, extension, trailers or final, since watch lines are written as plain chunks; got {:?}",
+                        stream.framing
+                    ));
+                }
                 let encoded = stream.encode(true)?;
                 if !encoded.splits.is_empty() {
                     return Err("stream: a stream head cannot be split".into());
