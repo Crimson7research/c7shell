@@ -11,6 +11,7 @@
 //! each is tested by the `r_fake_0N_*` tests under `tests/`.
 
 mod bytes;
+pub mod control;
 mod reply;
 mod request;
 mod script;

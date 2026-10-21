@@ -149,7 +149,13 @@ fn it_refuses_a_taken_path_and_exits_2() {
 #[test]
 fn it_exits_2_without_a_socket_argument() {
     for args in [vec![], vec!["--socket"], vec!["--nope", "x"]] {
-        let status = Command::new(BIN).args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap();
+        let status = Command::new(BIN)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
         assert_eq!(status.code(), Some(2), "{args:?}");
     }
 }
@@ -196,11 +202,11 @@ fn every_command_once() {
     watch.read_exactly(head.len());
     assert_eq!(bin.ok(json!({ "cmd": "connected" })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-watch-line", "bytes": "{}" })), json!(1));
-    assert_eq!(&watch.read_exactly(head.len() + 7)[head.len()..], b"3\r\n{}\n\r\n");
+    assert_eq!(&watch.read_exactly(head.len() + 8)[head.len()..], b"3\r\n{}\n\r\n");
     assert_eq!(bin.ok(json!({ "cmd": "push-line", "bytes": "l" })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-chunk", "bytes": { "hex": "ff" } })), json!(1));
     assert_eq!(bin.ok(json!({ "cmd": "push-to", "client": 1, "bytes": "t" })), json!(true));
-    assert_eq!(&watch.read_exactly(head.len() + 7 + 4)[head.len() + 7..], b"l\n\xfft");
+    assert_eq!(&watch.read_exactly(head.len() + 8 + 4)[head.len() + 8..], b"l\n\xfft");
 
     // A held request, completed.
     let mut held = Client::connect(&path);
@@ -227,7 +233,10 @@ fn every_command_once() {
     assert!(split.read_until_closed().ends_with(b"\r\n\r\nsplit"));
 
     let clients = bin.poll(json!({ "cmd": "clients" }), |r| r[3]["connected"] == json!(false));
-    assert_eq!(clients[0], json!({ "id": 1, "connected": true, "received": 80, "written": 58, "held": false, "parked": false, "stream": true }));
+    assert_eq!(
+        clients[0],
+        json!({ "id": 1, "connected": true, "received": 80, "written": 59, "held": false, "parked": false, "stream": true })
+    );
     assert_eq!(bin.ok(json!({ "cmd": "accepted" })), json!(4));
     let requests = bin.ok(json!({ "cmd": "requests" }));
     assert_eq!(requests.as_array().unwrap().len(), 4);
@@ -253,7 +262,8 @@ fn bad_commands_are_answered_and_the_binary_carries_on() {
     assert!(answer["error"].as_str().unwrap().contains("fly"), "{answer}");
     let answer = bin.send(json!({ "cmd": "push-line" }));
     assert_eq!(answer["ok"], json!(false), "a missing argument was accepted: {answer}");
-    let answer = bin.send(json!({ "cmd": "set-script", "script": { "rules": [{ "match": { "method": "GET" }, "hold": true }] } }));
+    let answer = bin
+        .send(json!({ "cmd": "set-script", "script": { "rules": [{ "match": { "method": "GET" }, "hold": true }] } }));
     assert_eq!(answer["ok"], json!(false), "an invalid script was accepted: {answer}");
     assert_eq!(bin.ok(json!({ "cmd": "connected" })), json!(0));
     assert!(bin.finish().success());
@@ -293,7 +303,10 @@ fn traffic(path: &std::path::Path) {
 #[test]
 fn binary_and_library_record_the_same_bytes() {
     let mut script = rules();
-    script["rules"].as_array_mut().unwrap().push(json!({ "match": { "method": "PATCH", "path": "/r" }, "reply": { "body": "p" } }));
+    script["rules"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "match": { "method": "PATCH", "path": "/r" }, "reply": { "body": "p" } }));
 
     let dir = TestDir::new();
     let fake = Fake::start(dir.socket());
@@ -311,7 +324,10 @@ fn binary_and_library_record_the_same_bytes() {
 
     assert_eq!(in_process.len(), 4);
     assert_eq!(json!(in_process), through_binary);
-    assert_eq!(through_binary[2]["raw"], json!({ "hex": hex(b"PATCH /r HTTP/1.1\r\nContent-Length: 4\r\n\r\n{\xff}}") }));
+    assert_eq!(
+        through_binary[2]["raw"],
+        json!({ "hex": hex(b"PATCH /r HTTP/1.1\r\nContent-Length: 4\r\n\r\n{\xff}}") })
+    );
     assert_eq!(through_binary[3]["unmatched"], json!(true));
     assert!(bin.finish().success());
 }

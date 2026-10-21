@@ -14,3 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+
+[[bin]]
+name = "fake-tailscaled"
+path = "src/bin/fake-tailscaled.rs"
