@@ -268,6 +268,17 @@ fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
     outcome
 }
 
+/// What an expectation asks for, for the log.
+fn wanted(e: &Expect) -> Value {
+    match (&e.contract, &e.signal, &e.request, &e.requests) {
+        (Some(values), ..) => json!(values),
+        (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count }),
+        (_, _, Some(r), _) => json!(r.raw),
+        (_, _, _, Some(r)) => json!({ "requests": r.count }),
+        _ => Value::Null,
+    }
+}
+
 struct Run<'a> {
     app: &'a QGuiApplication,
     fake: &'a Fake,
@@ -424,6 +435,8 @@ impl Run<'_> {
         if e.precondition {
             return Err(format!("precondition `{}` failed: actual {actual}", e.id));
         }
+        // The log the parent prints on a mismatch shows both values.
+        println!("expect `{}` failed: wanted {}, actual {actual}", e.id, wanted(e));
         self.failing.push(Failing { id: e.id.clone(), actual });
         Ok(())
     }
