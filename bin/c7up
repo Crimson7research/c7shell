@@ -465,17 +465,34 @@ do_run() {
     done
   }
 
+  # The first log line a phase writes. The log is per day, so it also holds
+  # the earlier phases of this run and every earlier run.
+  log_end() { echo $(( $(wc -l < "$log") + 1 )); }
+
+  # phase_failed <source> <program> <status> <first line> -- what the wizard
+  # shows for a failed phase: the error lines from that phase's own output,
+  # then how the program exited. paru builds every package before it installs
+  # any, so its error is often far above a tail that reads like success, and
+  # that tail was all the wizard used to show (#116).
+  phase_failed() {
+    local status="c7up: $2 exited with status $3" out errs
+    printf '%s\n' "$status" >> "$log"
+    out=$(tail -n "+$4" "$log")
+    errs=$(grep -E '^(error|fatal|==> ERROR|ERROR)' <<<"$out" | tail -10)
+    failed=$1
+    if [[ -n $errs ]]; then fail_text=$errs$'\n'$status; else fail_text=$(tail -20 <<<"$out"); fi
+    emit "$(printf '{"ev":"phase","source":%s,"state":"failed"}' "$(j "$1")")"
+  }
+
   # -- repo ------------------------------------------------------------------
   if ((pac_n > 0)); then
     emit '{"ev":"phase","source":"pacman","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     if root_run sync ${ignore[@]+"${ignore[@]}"} 2>&1 | stream pacman 0; then
       emit "$(printf '{"ev":"phase","source":"pacman","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_packages"
     else
-      failed=pacman
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"pacman","state":"failed"}'
+      phase_failed pacman pacman "${PIPESTATUS[0]}" "$from"
     fi
   fi
 
@@ -484,7 +501,7 @@ do_run() {
   # half-applied system is exactly the partial upgrade the flow exists to avoid.
   if [[ -z $failed ]] && ((aur_n > 0)) && [[ -n $aur_helper ]]; then
     emit '{"ev":"phase","source":"aur","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     local -a aurargs=(--color never "${devel_flag[@]}" -Sua --noconfirm
                       --sudo "$libdir/c7up-sudo")
     # paru and yay spell "do not open a menu" differently; pikaur opens none.
@@ -497,23 +514,19 @@ do_run() {
       emit "$(printf '{"ev":"phase","source":"aur","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_aur"
     else
-      failed=aur
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"aur","state":"failed"}'
+      phase_failed aur "$aur_helper" "${PIPESTATUS[0]}" "$from"
     fi
   fi
 
   # -- flatpak ---------------------------------------------------------------
   if [[ -z $failed ]] && ((fp_n > 0)) && [[ -n $flatpak_ok ]]; then
     emit '{"ev":"phase","source":"flatpak","state":"running"}'
-    local t0=$SECONDS
+    local t0=$SECONDS from; from=$(log_end)
     if flatpak update -y </dev/null 2>&1 | stream flatpak "$((pac_n + aur_n))"; then
       emit "$(printf '{"ev":"phase","source":"flatpak","state":"done","secs":%s}' "$((SECONDS - t0))")"
       : > "$statedir/last_updates_check_flatpak"
     else
-      failed=flatpak
-      fail_text=$(tail -20 "$log")
-      emit '{"ev":"phase","source":"flatpak","state":"failed"}'
+      phase_failed flatpak flatpak "${PIPESTATUS[0]}" "$from"
     fi
   fi
 

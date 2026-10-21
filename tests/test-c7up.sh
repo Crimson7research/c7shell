@@ -764,4 +764,54 @@ out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
 [[ $(wc -l < "$tmp/pkexec.log") == 1 ]] \
   || fail "the AUR half raised an authorisation of its own:\n$(cat "$tmp/pkexec.log")"
 
+# --------------------------------------------------------------------------
+# 14. A failed AUR run names its error, not its last 20 lines (#116).
+#     paru builds every package before it installs any, so the line that says
+#     what failed is often far above a tail of build and hook output that reads
+#     like success -- which is all the wizard used to show.
+# --------------------------------------------------------------------------
+stub paru 'case "$*" in
+  *-Sua*)
+    echo "==> ERROR: A failure occurred in build()."
+    echo "error: packages failed to build: broken-pkg-1-1"
+    for i in $(seq 30); do echo "upgrading visual-studio-code-bin... $i"; done
+    echo "(3/3) Updating the desktop file MIME type cache..."
+    exit 1 ;;
+esac
+exit 0'
+printf 'mesa 1 -> 2\n' > "$state/last_updates_check_packages"
+printf 'broken-pkg 1 -> 2\n' > "$state/last_updates_check_aur"
+
+out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
+      XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
+      XDG_CONFIG_HOME="$tmp/config" TMPDIR="$tmp" C7UP_LIBDIR="$tmp/lib" \
+      bash "$c7up" run 2>/dev/null) && fail "a failed AUR run exited zero"
+err=$(ev done <<<"$out" | jq_py "d['error']")
+[[ $(ev done <<<"$out" | field failed) == aur ]] || fail "the failed AUR run named another source:\n$out"
+[[ $err == *"packages failed to build: broken-pkg-1-1"* ]] \
+  || fail "the AUR helper's error line was not in the error text:\n$err"
+[[ $err == *"==> ERROR: A failure occurred in build()."* ]] \
+  || fail "makepkg's error line was not in the error text:\n$err"
+[[ $err == *"paru exited with status 1"* ]] \
+  || fail "the error text did not say how the AUR helper exited:\n$err"
+# Earlier phases and earlier runs share the day's log; neither is this error.
+[[ $err != *"upgrading mesa"* ]] || fail "the repo phase's output leaked into the AUR error:\n$err"
+grep -q 'paru exited with status 1' "$(ev done <<<"$out" | field log)" \
+  || fail "the log did not record how the AUR helper exited"
+
+# A failure with no recognisable error line still says something: the end of
+# that phase's own output, and the exit status.
+stub paru 'case "$*" in *-Sua*) echo "segfault somewhere"; exit 139 ;; esac; exit 0'
+printf 'mesa 1 -> 2\n' > "$state/last_updates_check_packages"
+printf 'broken-pkg 1 -> 2\n' > "$state/last_updates_check_aur"
+out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
+      XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
+      XDG_CONFIG_HOME="$tmp/config" TMPDIR="$tmp" C7UP_LIBDIR="$tmp/lib" \
+      bash "$c7up" run 2>/dev/null) && fail "a crashed AUR helper exited zero"
+err=$(ev done <<<"$out" | jq_py "d['error']")
+[[ $err == *"segfault somewhere"* && $err == *"paru exited with status 139"* ]] \
+  || fail "an AUR failure without an error line lost its output or status:\n$err"
+[[ $err != *"packages failed to build"* ]] \
+  || fail "the previous run's error leaked into this one:\n$err"
+
 echo 'test-c7up.sh: all checks passed'
