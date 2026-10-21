@@ -123,7 +123,9 @@ fn it_makes_a_scenario_of_the_case() {
     );
     assert!(matches!(s.steps[0], Step::Start(_)));
     match &s.steps[1] {
-        Step::Wait(Wait::Contract(v)) => assert_eq!(json!(v), json!({ "wantRunning": true })),
+        Step::Wait(Wait::Contract(v)) => {
+            assert_eq!(json!(v), json!({ "wantRunning": true, "state": { "enum": "Running" } }))
+        }
         other => panic!("the snapshot wait is {other:?}"),
     }
     match &s.steps[2] {
@@ -227,6 +229,28 @@ fn it_rejects_a_status_that_publishes_no_snapshot() {
         v["status"] = status;
         assert_names(&rejected(v), "status");
     }
+}
+
+#[test]
+fn it_waits_for_the_state_the_status_names() {
+    let mut v = minimal();
+    v["status"] = json!({ "json": { "BackendState": "NeedsLogin" } });
+    let case = load(&v).unwrap();
+    match &case.scenario().steps[1] {
+        Step::Wait(Wait::Contract(w)) => {
+            assert_eq!(json!(w), json!({ "wantRunning": true, "state": { "enum": "NeedsLogin" } }))
+        }
+        other => panic!("the snapshot wait is {other:?}"),
+    }
+}
+
+#[test]
+fn it_rejects_a_backend_state_the_contract_has_no_value_for() {
+    let mut v = minimal();
+    v["status"] = json!({ "json": { "BackendState": "Bogus" } });
+    let error = rejected(v);
+    assert_names(&error, "status");
+    assert_names(&error, "Bogus");
 }
 
 #[test]
