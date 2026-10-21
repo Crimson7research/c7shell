@@ -2,7 +2,7 @@
   "format": 1,
   "id": "request-parts",
   "requirements": ["R-HTTP-02"],
-  "tag": "parity",
+  "tag": "fix",
   "evidence": "harness-on-cpp",
   "clauses": [
     "runner self-test: a request_parts expectation holds on a PATCH whose start, headers and JSON body match, and fails with the bytes sent on another body or a header it lacks, and with null on a request never sent"

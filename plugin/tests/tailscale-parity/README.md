@@ -160,6 +160,27 @@ Beside every `*Changed` signal, the driver counts each model member's
 Each model member is read once, at load, and its signals are connected
 on that object: #286's `peers` and `exitNodes` are `CONSTANT`.
 
+### Request parts (#307)
+
+A `request_parts` expect checks every recorded request that matches by
+its parts, so it pins neither header order nor JSON key order, which a
+`request` expect's exact bytes would:
+
+```json
+{ "expect": { "id": "patch-bytes", "request_parts": {
+  "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+  "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+  "headers": [["Host", "local-tailscaled.sock"], ["Content-Length", "36"]],
+  "body_json": { "RouteAll": true, "RouteAllSet": true } } } }
+```
+
+Each request starts with `starts_with`, ends its head with CRLFCRLF and
+carries each header once (the name compared without case, the value
+exactly). With `body_json` its body parses as JSON equal to it and its
+`Content-Length` is the body's own byte length. At least one request
+must match. A failure's actual value is the first differing request's
+bytes, and the log says which part differed; no request reads null.
+
 ### Bodies from capture files (#307)
 
 A reply body, a stream head's body or a `complete_held` body may be

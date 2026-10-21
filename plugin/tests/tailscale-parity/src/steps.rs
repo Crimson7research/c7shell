@@ -19,6 +19,9 @@ fn wanted(e: &Expect) -> Value {
     if let Some(q) = &e.model {
         return json!(q.describe());
     }
+    if let Some(r) = &e.request_parts {
+        return json!({ "starts_with": r.starts_with, "headers": r.headers, "body_json": r.body_json });
+    }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
         (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count }),
@@ -163,6 +166,25 @@ impl Run<'_> {
         Ok(())
     }
 
+    /// Whether every recorded request `m` matches passes `check`, with at
+    /// least one: the first that fails is the actual value, as its bytes,
+    /// and none at all reads null.
+    fn every_request(
+        &self,
+        m: &Match,
+        check: impl Fn(&fake_tailscaled::Request) -> Result<(), String>,
+    ) -> (bool, Value) {
+        let found = self.matching(m);
+        match found.iter().map(|q| (q, check(q))).find(|(_, c)| c.is_err()) {
+            Some((differs, why)) => {
+                println!("request {} {}: {}", differs.method(), differs.target(), why.unwrap_err());
+                (false, json!(Bytes(differs.raw.clone())))
+            }
+            None if found.is_empty() => (false, Value::Null),
+            None => (true, json!(Bytes(found[0].raw.clone()))),
+        }
+    }
+
     fn expect(&mut self, e: &Expect) -> Result<(), String> {
         let (ok, actual) = if let Some(values) = &e.contract {
             let mut ok = true;
@@ -177,12 +199,9 @@ impl Run<'_> {
             let n = self.contract.signal_count(&s.name)?;
             (n == s.count, json!(n))
         } else if let Some(r) = &e.request {
-            let found = self.matching(&r.matcher);
-            match found.iter().find(|q| q.raw != r.raw.0) {
-                Some(differs) => (false, json!(Bytes(differs.raw.clone()))),
-                None if found.is_empty() => (false, Value::Null),
-                None => (true, json!(Bytes(found[0].raw.clone()))),
-            }
+            self.every_request(&r.matcher, |q| if q.raw == r.raw.0 { Ok(()) } else { Err("other bytes".into()) })
+        } else if let Some(r) = &e.request_parts {
+            self.every_request(&r.matcher, |q| r.check(q))
         } else if let Some(r) = &e.requests {
             let n = self.matching(&r.matcher).len();
             (n == r.count, json!(n))
