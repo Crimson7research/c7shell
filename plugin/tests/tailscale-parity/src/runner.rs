@@ -121,6 +121,22 @@ fn run_child_of(
     }
 }
 
+/// What [`run_all`] ran: `count` scenarios, each matching its declaration
+/// on `implementation` in every one of `repeat` runs.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Summary {
+    pub count: usize,
+    pub implementation: String,
+    pub repeat: u32,
+}
+
+impl std::fmt::Display for Summary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Summary { count, implementation, repeat } = self;
+        write!(f, "{count} scenarios matched their declarations on {implementation} in {repeat} runs")
+    }
+}
+
 /// Runs every scenario in `dir` (or those whose ids `filter` lists, comma
 /// separated) `repeat` times, stopping at the first mismatch.
 pub fn run_all(
@@ -129,7 +145,7 @@ pub fn run_all(
     dir: &Path,
     repeat: u32,
     filter: Option<&str>,
-) -> Result<String, String> {
+) -> Result<Summary, String> {
     let wanted: Option<Vec<&str>> = filter.map(|f| f.split(',').map(str::trim).filter(|s| !s.is_empty()).collect());
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect())
@@ -168,7 +184,7 @@ pub fn run_all(
             println!("run {run} of {repeat}: every scenario matched its declaration");
         }
     }
-    Ok(format!("{} scenarios matched their declarations on {} in {repeat} runs", paths.len(), imp.name))
+    Ok(Summary { count: paths.len(), implementation: imp.name.clone(), repeat })
 }
 
 /// The repeat count `C7_REPEAT` gives: 1 when unset, else a whole number

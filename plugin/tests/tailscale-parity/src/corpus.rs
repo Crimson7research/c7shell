@@ -47,10 +47,7 @@ pub fn run_corpus(
     filter: Option<&str>,
 ) -> Result<String, String> {
     let made = generate(dir, implementations)?;
-    runner::run_all(imp, implementations, &made.dir, repeat, filter)?;
-    let n = match filter {
-        Some(f) => f.split(',').filter(|s| !s.trim().is_empty()).count(),
-        None => made.count,
-    };
-    Ok(format!("{n} corpus cases matched their declarations on {} in {repeat} runs", imp.name))
+    let runner::Summary { count, implementation, repeat } =
+        runner::run_all(imp, implementations, &made.dir, repeat, filter)?;
+    Ok(format!("{count} corpus cases matched their declarations on {implementation} in {repeat} runs"))
 }
