@@ -495,6 +495,45 @@ fn it_rejects_a_model_value_it_cannot_compare_or_no_name() {
     assert_names(&e, "row");
 }
 
+/// Each error branch of `ModelQuery::validate` and `role()`, by its whole
+/// message, so a branch that stops firing or says something else fails here.
+#[test]
+fn it_names_each_model_query_error_in_full() {
+    let cases = [
+        (
+            json!({ "name": "peers", "row": -1, "count": 0 }),
+            "row: -1 is negative; an invalid index reads the root, not a row",
+        ),
+        (json!({ "name": "exitNodes", "distinct_from": "" }), "distinct_from: empty; name the other member"),
+        (json!({ "name": "", "count": 0 }), "name: empty; name the model member"),
+        (json!({ "name": "peers", "row": 0, "values": {} }), "values: empty; name at least one role"),
+        (
+            json!({ "name": "peers", "row": 0, "values": { "#": 1 } }),
+            "values.role `#`: # must be followed by a whole number",
+        ),
+        (
+            json!({ "name": "peers", "row": 0, "values": { "#abc": 1 } }),
+            "values.role `#abc`: # must be followed by a whole number",
+        ),
+        (
+            json!({ "name": "peers", "row": 0, "values": { "#4294967296": 1 } }),
+            "values.role `#4294967296`: the number is too large",
+        ),
+        (
+            json!({ "name": "peers", "row": 0, "values": { "": 1 } }),
+            "values.role ``: empty; give a role name or #<number>",
+        ),
+    ];
+    for (query, message) in cases {
+        let e = rejected(with_model_expect(query.clone()));
+        assert!(e.ends_with(message), "{query}: wanted an error ending `{message}`, got: {e}");
+    }
+    // The largest role number still names a role.
+    let dir = TestDir::new();
+    load(&dir, "full", &with_model_expect(json!({ "name": "peers", "row": 0, "values": { "#4294967295": 1 } })))
+        .unwrap();
+}
+
 #[test]
 fn it_accepts_undefined_only_as_true() {
     let dir = TestDir::new();
