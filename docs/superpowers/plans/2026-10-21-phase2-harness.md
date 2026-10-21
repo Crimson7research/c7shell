@@ -1110,4 +1110,48 @@ also in the commit that made it.
     `harness_selftest`: 50/50. `cargo llvm-cov -p fake-tailscaled`: 94.61%
     lines (1225 lines, 66 missed), 94.15% regions. `cargo fmt --check` and
     `cargo clippy --workspace --all-targets -- -D warnings` are clean.
-
+15. **Review round 1 (code-reviewer, test-analyzer, silent-failure-hunter).**
+    - R-HTTP-01 waited only on `connected: 1` before reading the request
+      log, which a watch request the fake had not yet read could satisfy:
+      3 of 12 parallel jobs of 40 runs failed (`watch-request` actual
+      null). The scenario now waits on `recorded` for each of the four
+      requests first. 12 parallel jobs of 40 runs pass.
+    - The runner's failing paths are pinned: a request expectation on other
+      bytes (actual: the bytes sent), on a request never sent (actual
+      null), a requests and a signal expectation on a wrong count, a client
+      barrier never reached. Each mutant the review named is killed.
+      `client_holding` is pinned with two held requests.
+    - A push, resume or completion that reaches no client ends the step in
+      an error, and so does a hold armed and never used
+      (`Fake::armed_hold`).
+    - `C7_REPEAT` / `--repeat` below 1 or not a number exits 2; a
+      `C7_SCENARIOS` id naming no scenario is an error naming it.
+    - The driver reports an exception while it starts through
+      `Probe.failed`, so a C7 without `Tailscale` fails at once with
+      `ReferenceError: Tailscale is not defined`.
+    - A write that times out and an `accept()` that fails are the fake's
+      faults (`Fake::faults`); the runner reports them ahead of anything
+      else. A broken pipe or reset is not a fault.
+    - Not moved out of the lock: the fake's writes still block. Instead
+      `MAX_WRITE` (128 KiB) bounds every scripted reply, stream head, push
+      and completion at load time, below an unread Unix socket's one-write
+      capacity (about 228 KiB with the default 208 KiB `wmem_default`).
+      Many small pushes fill it sooner (about 27 KiB in 100-byte writes);
+      a scenario must pump between long runs of pushes. A per-client
+      writer queue is the fix if a later scenario needs more.
+    - `MAX_ITERATIONS` is 1 000 000 (about 10 s), down from 50 000 000
+      (about 9 min); measured waits take under 300.
+    - `server.rs` is split into `client.rs`, `scripted.rs` and
+      `listener.rs` (496 lines left); `run_one` and `Run::step` are under
+      50 lines.
+    - `/plugin/target/` is ignored and skipped by both layout guards;
+      check 5 builds the workspace with `--all-targets`.
+    - `tests/test-tailscale-parity.sh` runs `harness_selftest` and 50
+      scenario runs when the reference build is cached, and skips
+      otherwise. `run.sh` itself stays a manual gate.
+    - Results: `tests/test-fake-tailscaled.sh` (50 runs) passes;
+      `harness_selftest` 50/50; `tests/test-tailscale-parity.sh` 50/50;
+      12 parallel jobs x 40 runs of both scenarios pass; fake coverage
+      94.48% lines; `cargo clippy -- -D warnings` and `cargo fmt --check`
+      clean; `tests/test-c7-plugin.sh` and `tests/test-native-boundary.sh`
+      pass.
