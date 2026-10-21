@@ -88,7 +88,15 @@ fn the_request_failures(failures: &mut Vec<String>, imp: &Implementation) {
     verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
 }
 
-/// 4. A body read from a capture file, a C++ model read by role name and
+/// 4. A request_parts expectation holds on a PATCH whose start, headers
+///    and JSON body match, and fails with the bytes sent otherwise.
+fn the_request_parts(failures: &mut Vec<String>, imp: &Implementation) {
+    let r = runner::run_one(imp, CPP_ONLY, &selftest("scenarios-cpp/request-parts.json"), &[]);
+    let wants = ["fail as declared: lacks-header, never-sent, other-body"];
+    verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
+}
+
+/// 5. A body read from a capture file, a C++ model read by role name and
 ///    number with its own signals counted, and a served change: a second
 ///    `/status` reply after a watch notification asks for it.
 fn a_served_change(failures: &mut Vec<String>, imp: &Implementation) {
@@ -96,7 +104,7 @@ fn a_served_change(failures: &mut Vec<String>, imp: &Implementation) {
     verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
 }
 
-/// 5. Corpus cases made into scenarios: one that #286 meets, and one whose
+/// 6. Corpus cases made into scenarios: one that #286 meets, and one whose
 ///    member, row count and row fail with the values #286 publishes. An
 ///    empty corpus is an error, not a pass.
 fn the_corpus(failures: &mut Vec<String>, imp: &Implementation) {
@@ -126,6 +134,7 @@ fn parent() -> i32 {
             the_module(&mut failures, &imp);
             an_unmatched_request(&mut failures, &imp);
             the_request_failures(&mut failures, &imp);
+            the_request_parts(&mut failures, &imp);
             a_served_change(&mut failures, &imp);
             the_corpus(&mut failures, &imp);
         }

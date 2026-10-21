@@ -515,7 +515,7 @@ fn it_accepts_undefined_only_as_true() {
 fn it_rejects_an_expect_with_a_model_and_another_kind() {
     let e = rejected(with_steps(json!([{ "expect": { "id": "two", "model": { "name": "peers", "count": 0 },
                                                        "signal": { "name": "stateChanged", "count": 0 } } }])));
-    assert_names(&e, "exactly one of contract, signal, request, requests and model");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
 }
 
 /// Writes `value` as `<root>/scenarios/<stem>.json`, so `{"file": ...}`
@@ -570,4 +570,41 @@ fn it_rejects_a_body_file_that_is_missing_or_outside_the_fixture_root() {
     let mut v = full();
     v["fake"]["rules"][1]["reply"]["body"] = json!({ "file": 7 });
     assert_names(&load_under(&root, "full", &v).unwrap_err(), "fake.rules[1].reply.body.file");
+}
+
+/// `full()` with one request_parts expectation `parts` appended, as
+/// `steps[22]`.
+fn with_request_parts(parts: Value) -> Value {
+    with_steps(json!([{ "expect": { "id": "parts", "request_parts": parts } }]))
+}
+
+#[test]
+fn it_accepts_request_parts_with_headers_and_a_json_body_or_without() {
+    let dir = TestDir::new();
+    let full_parts = json!({
+        "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+        "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+        "headers": [["Host", "local-tailscaled.sock"], ["Content-Length", "36"]],
+        "body_json": { "RouteAll": true, "RouteAllSet": true }
+    });
+    load(&dir, "full", &with_request_parts(full_parts)).unwrap();
+    let bare = json!({ "match": { "method": "GET", "path": "/localapi/v0/status" }, "starts_with": "GET " });
+    load(&dir, "full", &with_request_parts(bare)).unwrap();
+}
+
+#[test]
+fn it_rejects_request_parts_with_a_bad_match_an_empty_header_name_or_another_kind() {
+    let e = rejected(with_request_parts(
+        json!({ "match": { "method": "PATCH", "target": "/a", "path": "/a" }, "starts_with": "PATCH " }),
+    ));
+    assert_names(&e, "steps[22].expect `parts`: request_parts.match");
+    let e = rejected(with_request_parts(
+        json!({ "match": { "method": "PATCH", "target": "/a" }, "starts_with": "PATCH ", "headers": [["", "x"]] }),
+    ));
+    assert_names(&e, "request_parts.headers[0]");
+    let e = rejected(with_request_parts(json!({ "match": { "method": "PATCH", "target": "/a" } })));
+    assert_names(&e, "starts_with");
+    let e = rejected(with_steps(json!([{ "expect": { "id": "two", "requests": { "match": { "method": "GET", "target": "/a" }, "count": 1 },
+        "request_parts": { "match": { "method": "GET", "target": "/a" }, "starts_with": "GET " } } }])));
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
 }
