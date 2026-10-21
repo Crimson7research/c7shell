@@ -128,7 +128,8 @@ pub struct Call {
 pub enum Wait {
     /// Until each member reads its value.
     Contract(BTreeMap<String, Value>),
-    /// Until the signal has fired at least this often since start.
+    /// Until the signal has fired at least this often since start, or
+    /// since the mark its `since` names.
     Signal(SignalWait),
     /// Until the fake reports this.
     Fake(FakeWait),
@@ -141,6 +142,8 @@ pub enum Wait {
 pub struct SignalWait {
     pub name: String,
     pub at_least: u64,
+    /// Count from this earlier `mark` step, not from load.
+    pub since: Option<String>,
 }
 
 /// Exactly one of `connected` (the client barrier), `recorded` (with
@@ -407,6 +410,9 @@ impl Scenario {
                     }
                     _ => {}
                 },
+                Step::Wait(Wait::Signal(SignalWait { since: Some(label), .. })) if !marks.contains(label.as_str()) => {
+                    return Err(format!("steps[{i}].wait: since: no earlier mark `{label}`"))
+                }
                 _ => {}
             }
         }

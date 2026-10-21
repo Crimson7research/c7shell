@@ -116,9 +116,12 @@ impl Run<'_> {
                 });
                 reached.map_err(|e| format!("{e} (last read {})", json!(last)))
             }
-            Wait::Signal(s) => self.wait(&format!("{} fired {} times", s.name, s.at_least), || {
-                Ok(self.contract.signal_count(&s.name)? >= s.at_least)
-            }),
+            Wait::Signal(s) => {
+                let since = s.since.as_ref().map(|m| format!(" since {m}")).unwrap_or_default();
+                self.wait(&format!("{} fired {} times{since}", s.name, s.at_least), || {
+                    Ok(self.signal_count_since(&s.name, s.since.as_deref())? >= s.at_least)
+                })
+            }
             Wait::Model(q) => {
                 let mut last = Value::Null;
                 let reached = self.wait(&q.describe(), || {

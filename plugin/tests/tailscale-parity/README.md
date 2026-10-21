@@ -202,8 +202,17 @@ since that step instead of since load:
 
 This is how R-GROUP-06 to 08 count "from just before" a change: how
 many signals the first fill emits is the implementation's choice. A
-label is named once, and `since` names an earlier mark, or the scenario
-is a format error.
+`signal` wait takes `since` too, and then waits for `at_least` firings
+after the mark, whatever fired before it:
+
+```json
+{ "mark": "before-push" },
+{ "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+{ "wait": { "signal": { "name": "recommendedExitNodeIdChanged", "at_least": 1, "since": "before-push" } } }
+```
+
+A label is named once, and each `since` names an earlier mark, or the
+scenario is a format error.
 
 ### Bodies from capture files (#307)
 
