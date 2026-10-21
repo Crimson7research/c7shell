@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "id": "group-10-running-peer-null-clears",
+  "requirements": ["R-GROUP-10"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The second run: from Running with 20 peers and 2 exit nodes (status-idle.json), the fake serves a Running status with \"Peer\":null as the next /status and pushes {\"Prefs\":{}}; once that status's tailnet example.net is seen, peers and exitNodes each have 0 rows and state reads Running. The status is not status-idle.json byte for byte: it is the small Running status group-10-empty-peer-object-clears serves, with its own tailnet name so the run waits for that snapshot positively (as group-12's kept rows wait for NeedsLogin) instead of reading a count after an idle barrier"
+  ],
+  "deferred": [
+    "the second run's peersKnown: phase3-only, a contract addition"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.net"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": null}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"contract": {"state": {"enum": "Running"}}}},
+    {"wait": {"model": {"name": "peers", "count": 20}}},
+    {"wait": {"model": {"name": "exitNodes", "count": 2}}},
+    {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"fake": {"push_watch_line": "{\"Prefs\":{}}"}},
+    {"wait": {"contract": {"tailnet": "example.net"}}},
+    {"expect": {"id": "peers-cleared", "model": {"name": "peers", "count": 0}}},
+    {"expect": {"id": "exit-nodes-cleared", "model": {"name": "exitNodes", "count": 0}}},
+    {"expect": {"id": "still-running", "contract": {"state": {"enum": "Running"}}}}
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [ { "id": "peers-cleared", "actual": 20 }, { "id": "exit-nodes-cleared", "actual": 2 } ],
+      "reason": "#286 reads a Peer section only from an object (plugin/lib/tailscale/StatusParser.cpp:126-131), so \"Peer\":null under Running is no Peer section, and the backend replaces rows only when there is one (plugin/src/backends/tailscale/LocalApiTailscaleBackend.cpp:655-671): the 20 peers and 2 exit nodes stay" },
+    "rust": { "result": "pass" }
+  }
+}

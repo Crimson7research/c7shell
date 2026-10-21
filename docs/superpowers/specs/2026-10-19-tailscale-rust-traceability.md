@@ -676,7 +676,7 @@ checks every row against evidence.json and the test files.
 | R-GROUP-07 | `harness-on-cpp` | `group-06-offline-row-moves`, `group-07-only-changed-rows-announce` | — | PR #307 |
 | R-GROUP-08 | `harness-on-cpp` | `group-08-duplicate-empty-ids` | — | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-09 | `harness-on-cpp` | `group-09-a-separate-model` | `status-exitnode`, `status-idle` | PR #307 |
-| R-GROUP-10 | `harness-on-cpp` | `group-10-empty-peer-object-clears` | — | PR #307; deferred clauses: phase3-only |
+| R-GROUP-10 | `harness-on-cpp` | `group-10-empty-peer-object-clears`, `group-10-running-peer-null-clears` | — | PR #307; fail on cpp-286: `group-10-running-peer-null-clears`; deferred clauses: phase3-only |
 | R-GROUP-11 | `phase3-only` | — | — | Rust tests in Phase 3 |
 | R-GROUP-12 | `harness-on-cpp` | `group-12-needs-login-keeps-rows` | — | PR #307; deferred clauses: phase3-only |
 
