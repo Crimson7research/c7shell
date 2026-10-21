@@ -294,6 +294,18 @@ fn the_distinct_models(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: one-model"], read);
 }
 
+/// 16. A signal wait `since` a mark counts from there, so it waits past
+///     what fired before the mark, and one that nothing after the mark
+///     reaches is never reached.
+fn the_signal_wait_marks(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/signal-wait-since.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: wrong-since"], read);
+    let what = "wait never reached: peers.rowsInserted fired 1 times since after-one";
+    let r = run_stub("scenarios/signal-wait-since-never.json");
+    verdict(failures, &r, false, &[what], error(what));
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -311,6 +323,7 @@ fn parent() -> i32 {
     the_model_signals(&mut failures);
     the_signal_marks(&mut failures);
     the_distinct_models(&mut failures);
+    the_signal_wait_marks(&mut failures);
     finish("stub_selftest", &failures)
 }
 

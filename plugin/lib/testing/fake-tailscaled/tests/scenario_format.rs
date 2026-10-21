@@ -644,3 +644,22 @@ fn it_rejects_distinct_from_with_a_row_or_no_name() {
     assert_names(&e, "distinct_from");
     assert_names(&e, "empty");
 }
+
+#[test]
+fn it_accepts_a_signal_wait_since_an_earlier_mark() {
+    let v = with_steps(json!([
+        { "mark": "before-push" },
+        { "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "before-push" } } }
+    ]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 24);
+}
+
+#[test]
+fn it_rejects_a_signal_wait_since_no_earlier_mark() {
+    let wait = json!({ "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "later" } } });
+    let e = rejected(with_steps(json!([wait, { "mark": "later" }])));
+    assert_names(&e, "steps[22].wait");
+    assert_names(&e, "no earlier mark `later`");
+}
