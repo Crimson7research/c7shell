@@ -121,6 +121,11 @@ fn the_corpus(failures: &mut Vec<String>, imp: &Implementation) {
     let all = corpus::run_corpus(imp, CPP_ONLY, &selftest("corpus-cpp"), 1, None);
     let want = "2 corpus cases matched their declarations on cpp-286 in 1 runs";
     check(failures, all.as_deref() == Ok(want), &format!("the corpus run: {all:?}"));
+    // The count is of the cases run, not of the ids the filter spells: a
+    // repeated id runs its case once.
+    let twice = corpus::run_corpus(imp, CPP_ONLY, &selftest("corpus-cpp"), 1, Some("corpus-pass,corpus-pass"));
+    let want = "1 corpus cases matched their declarations on cpp-286 in 1 runs";
+    check(failures, twice.as_deref() == Ok(want), &format!("a filter naming one case twice: {twice:?}"));
     let empty = PrivateRoot::new();
     let none = corpus::run_corpus(imp, CPP_ONLY, empty.path(), 1, None);
     check(failures, none.as_ref().is_err_and(|e| e.contains("no corpus cases")), &format!("an empty corpus: {none:?}"));
