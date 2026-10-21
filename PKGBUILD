@@ -139,8 +139,8 @@ optdepends=(
   'fprintd: fingerprint unlock on the lock screen and the password prompt'
 )
 # lua: tests/test-monitors.lua loads conf/monitors.lua against a stubbed hl.
-# cmake and ninja build the C7 plugin against qt6-base and qt6-declarative,
-# the second of which depends= already pulls in.
+# cmake and ninja build the greetd greeter against qt6-base and
+# qt6-declarative, the second of which depends= already pulls in.
 makedepends=('git' 'lua' 'cmake' 'ninja' 'qt6-base')
 # makepkg builds the branch cloned here, NOT the working tree you run it from:
 # a local commit or a pulled feature branch has no effect until it is pushed and
@@ -158,14 +158,10 @@ pkgver() {
 
 build() {
   cd "$srcdir/$pkgname"
-  # The C7 QML module the shell imports. None: makepkg's CFLAGS decide the
-  # optimisation, not a CMake build type.
-  cmake -S plugin -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
-  cmake --build build
-
   # The greetd greeter. greetd speaks only an authentication protocol -- no
   # user list, no session list, no power actions and no theme config -- so the
-  # greeter is a binary that supplies those and drives the conversation.
+  # greeter is a binary that supplies those and drives the conversation. None:
+  # makepkg's CFLAGS decide the optimisation, not a CMake build type.
   cmake -S greetd-greeter -B build-greeter -G Ninja \
     -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
   cmake --build build-greeter
@@ -173,9 +169,6 @@ build() {
 
 check() {
   cd "$srcdir/$pkgname"
-  # The plugin's own suite, first: a failing library or module test stops the
-  # package before anything else runs.
-  ctest --test-dir build --output-on-failure --no-tests=error
   # Every one of these stubs the machine it tests (pacman, lspci, systemctl,
   # $HOME), so they are safe to run mid-build and mean the package cannot be
   # built out of a tree whose scripts are broken. The two exceptions still are:
@@ -340,8 +333,4 @@ package() {
   # MIT is not one of the licences pacman ships in /usr/share/licenses/common,
   # so the text has to travel with the package.
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-
-  # The C7 QML module, to /usr/lib/qt6/qml/C7, where Qt finds every system
-  # module: the shell's `import C7` needs nothing on QML_IMPORT_PATH.
-  DESTDIR="$pkgdir" cmake --install build
 }

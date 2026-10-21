@@ -200,11 +200,9 @@ ListView {
   Rust type a QObject QML binds to directly. That glue is build output: it
   is never committed and never edited. A C library (polkit, PipeWire,
   libddcutil) is reached through Rust bindings, not C++.
-- **No new C++.** The C++ on `main` (`plugin/lib/core/`, `plugin/lib/testing/`,
-  `plugin/src/build.h`, `plugin/tests/`) is ported to Rust under epic #287.
-  Until then it must not grow: never add a `.cpp`, `.h` or `.hpp` file. When
-  the port lands, `tests/test-native-boundary.sh` fails on any hand-written
-  C++.
+- **No C++.** `plugin/` holds no `.cpp`, `.h` or `.hpp` file, and
+  `tests/test-c7-plugin.sh` fails on one. The C++ test kit and `Build`
+  singleton that once lived here were removed, not ported.
 - **Two layers.** A library in `plugin/lib/<name>/` is a plain Rust crate,
   with no Qt, that talks to one external thing: Hyprland's sockets,
   NetworkManager, PipeWire. It depends on no cxx-qt, QML or Quickshell crate,
@@ -240,8 +238,9 @@ ListView {
 - **Test first.** Every PR adds the failing test before the code that passes
   it, and the commit order shows that.
 - **Tests run against fakes of the outside world, never of our own code.**
-  `plugin/lib/testing/` starts a private `dbus-daemon`, a fake Unix socket
-  server or a fake process per test. QML-side tests run from Rust test
+  `plugin/lib/testing/` holds the per-test fakes, today `fake-tailscaled`. A
+  private `dbus-daemon`, a fake Unix socket server and a fake process join it
+  as Rust crates when a contract first needs them. QML-side tests run from Rust test
   binaries, headless (`QT_QPA_PLATFORM=offscreen`). Tests use the library's public API only,
   never sleep, never read the wall clock and never touch the host's buses,
   sockets or `$XDG_RUNTIME_DIR`. A refactor that keeps the behaviour keeps the
@@ -275,7 +274,7 @@ ListView {
 ```
 plugin/                     Rust QML module "C7" (one Cargo workspace)
   lib/<name>/               one plain Rust crate per external thing, + tests/
-  lib/testing/              per-test fakes: private D-Bus, sockets, processes
+  lib/testing/              per-test fakes, one crate each (fake-tailscaled)
   src/contracts/            one abstract contract per integration
   src/backends/<area>/      the backends that implement them
   src/                      other C7 types (files, generated configs, logic)

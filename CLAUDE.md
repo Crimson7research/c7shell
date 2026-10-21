@@ -30,8 +30,8 @@ to C7 state.
 
 - Rust, with Qt 6 through cxx-qt, and a Cargo-only build. No hand-written
   C++: the C++ glue cxx-qt generates is build output, never committed or
-  edited. The C++ still on `main` is ported under epic #287 and must not
-  grow: never add a `.cpp`, `.h` or `.hpp` file.
+  edited. Never add a `.cpp`, `.h` or `.hpp` file under `plugin/`;
+  `tests/test-c7-plugin.sh` fails on one.
 - Quickshell (LGPL-3.0-only) may be read for ideas and is never copied,
   translated or paraphrased; c7shell is MIT.
 - Test first, against per-test fakes from `plugin/lib/testing/`; no sleeps, no

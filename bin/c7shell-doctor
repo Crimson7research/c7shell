@@ -237,8 +237,6 @@ need_qml Quickshell.Services.Notifications quickshell 'the notification daemon'
 need_qml Quickshell.Services.Mpris        quickshell 'the media pill, its tray popover and the track-change OSD'
 need_qml QtQuick.Effects qt6-declarative 'shadows and blur across the shell'
 need_qml QtQuick.Shapes  qt6-declarative 'the ring and arc indicators'
-# The shell's own C++ plugin (plugin/), installed by this package.
-need_qml C7 c7shell 'the C7 plugin the shell binds its system state to'
 
 section 'session helpers'
 need_cmd hypridle  hypridle  'idle timeouts, autostarted'
