@@ -191,6 +191,56 @@ say) before the push, and for the second's after it: the opening pass asks
 for `/status` once, and nothing else asks again until the push.
 `selftest/scenarios-cpp/served-change.json` is the worked example.
 
+## The parser corpus (#307)
+
+`tests/fixtures/tailscale/corpus/` holds one case per `/status` input: a
+capture from `tests/fixtures/tailscale/captures/` or a status written for
+the case, and what the contract must publish from it. A case names
+implementation-neutral output only, contract members and the `peers` and
+`exitNodes` rows, so Phase 3's own tests read the same files. The format
+is documented in `plugin/lib/testing/fake-tailscaled/src/corpus.rs`:
+
+```json
+{
+  "format": 1, "id": "parse-03-ipv6-listed-first", "requirements": ["R-PARSE-03"],
+  "tag": "parity", "clauses": ["Listing the IPv6 address first changes neither"],
+  "status": { "file": "captures/status-idle.json" },
+  "edits": [ { "op": "replace", "path": "/Self/TailscaleIPs",
+               "value": ["fd7a:115c:a1e0::fd27:82d8", "100.115.228.122"] } ],
+  "expect": { "contract": { "selfIp4": "100.115.228.122", "selfIp6": "fd7a:115c:a1e0::fd27:82d8" } },
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
+```
+
+- `status` is `{"file": path}` (served byte for byte unless `edits`
+  apply) or `{"json": value}`. `edits` are JSON Patch `add`, `replace` and
+  `remove` operations. `prefs` (default `captures/prefs.json`) and
+  `suggest` (default `{}`) answer the pass's other two reads.
+- `expect.peers` and `expect.exitNodes` list every row, in order, each
+  with the roles it checks by name.
+- `tag` is the case's own: `fix` when it expects what #286 does not do,
+  so it declares `fail` there; `parity` when #286 meets it, which a
+  clause of a `fix` requirement can (R-GROUP-03's ASCII orders, say).
+
+`cargo test --test corpus` makes each case a scenario in a private
+directory and runs it as any scenario: the fake answers the opening pass
+from the case, the run waits until `wantRunning` reads true (the prefs
+half is published with the status half, R-WATCH-11) and, when the case
+gives a suggestion, until `recommendedExitNodeIdChanged` has fired, then
+expects `contract.<member>`, `<model>.count` and `<model>[<i>]`, the ids a
+declared failure names. A row is read by role name, so a case can only
+expect rows an implementation has; a shorter model fails at
+`<model>.count` and then is an error at the first missing row.
+`C7_SCENARIOS` and `C7_REPEAT` work as for the scenarios.
+
+Each child runs with `TZ=UTC`: #286 reads a date-time without a zone as
+local time, and the instant it then reads must not depend on the host.
+
+The captures are #286's (`plugin/lib/tailscale/tests/fixtures/` at
+`a38dbca`), whose names, users and addresses were already made up; the
+node keys, numeric node ids and the tailnet's stable id were replaced with
+made-up values too.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in
