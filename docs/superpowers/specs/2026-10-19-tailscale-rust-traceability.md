@@ -672,7 +672,7 @@ checks every row against evidence.json and the test files.
 | R-GROUP-03 | `harness-on-cpp` | — | `group-03-accented-names`, `group-03-full-lowercase`, `group-03-hand-built-order`, `group-03-outside-the-bmp`, `group-03-same-name-by-node-id`, `status-idle` | PR #307; fail on cpp-286: `group-03-full-lowercase`, `group-03-outside-the-bmp` |
 | R-GROUP-04 | `harness-on-cpp` | — | `status-idle` | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-05 | `harness-on-cpp` | `group-05-flat-list` | — | PR #307 |
-| R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves` | — | PR #307; deferred clauses: harness-on-cpp (#309) |
+| R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves`, `group-06-unmoved-row-updates` | — | PR #307; deferred clauses: harness-on-cpp (#309) |
 | R-GROUP-07 | `harness-on-cpp` | `group-06-offline-row-moves`, `group-07-only-changed-rows-announce` | — | PR #307 |
 | R-GROUP-08 | `harness-on-cpp` | `group-08-duplicate-empty-ids` | — | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-09 | `harness-on-cpp` | `group-09-a-separate-model` | `status-exitnode`, `status-idle` | PR #307 |

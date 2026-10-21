@@ -473,7 +473,7 @@
       "runs": "through the backend: a served change keeps the rows keyed by nodeId, and its rowsMoved, rowsInserted and rowsRemoved are counted from QML once the snapshot's value is seen, with no reset",
       "deferred": [
         {
-          "clause": "the QML delegate half: the delegate survives a re-sort, a join and a leave, and a rebuilt model makes a new one",
+          "clause": "the QML delegate half: the delegate survives a re-sort, a join and a leave, a rebuilt model makes a new one, and in the update that moves bravo the delegates of alpha and of the unmoved gamma read their new values while bravo's keeps its old ip4",
           "class": "harness-on-cpp",
           "needs": [],
           "pr": 309
