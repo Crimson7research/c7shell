@@ -765,53 +765,85 @@ out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
   || fail "the AUR half raised an authorisation of its own:\n$(cat "$tmp/pkexec.log")"
 
 # --------------------------------------------------------------------------
-# 14. A failed AUR run names its error, not its last 20 lines (#116).
-#     paru builds every package before it installs any, so the line that says
-#     what failed is often far above a tail of build and hook output that reads
-#     like success -- which is all the wizard used to show.
+# 15. A failed phase names its error, not the last 20 lines of the day's log
+#     (#116). paru builds every package before it installs any, so the line
+#     that says what failed is often far above a tail of build and hook output
+#     that reads like success -- which is all the wizard used to show.
 # --------------------------------------------------------------------------
+run_failing() {
+  printf 'mesa 1 -> 2\n' > "$state/last_updates_check_packages"
+  printf "${1:-}" > "$state/last_updates_check_aur"
+  printf "${2:-}" > "$state/last_updates_check_flatpak"
+  out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
+        XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
+        XDG_CONFIG_HOME="$tmp/config" TMPDIR="$tmp" C7UP_LIBDIR="$tmp/lib" \
+        bash "$c7up" run 2>/dev/null) && fail "a failed run exited zero:\n$out"
+  err=$(ev done <<<"$out" | jq_py "d['error']")
+}
+
 stub paru 'case "$*" in
   *-Sua*)
     echo "==> ERROR: A failure occurred in build()."
+    echo " -> error making: other-pkg-exit status 4"
     echo "error: packages failed to build: broken-pkg-1-1"
     for i in $(seq 30); do echo "upgrading visual-studio-code-bin... $i"; done
     echo "(3/3) Updating the desktop file MIME type cache..."
     exit 1 ;;
 esac
 exit 0'
-printf 'mesa 1 -> 2\n' > "$state/last_updates_check_packages"
-printf 'broken-pkg 1 -> 2\n' > "$state/last_updates_check_aur"
-
-out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
-      XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
-      XDG_CONFIG_HOME="$tmp/config" TMPDIR="$tmp" C7UP_LIBDIR="$tmp/lib" \
-      bash "$c7up" run 2>/dev/null) && fail "a failed AUR run exited zero"
-err=$(ev done <<<"$out" | jq_py "d['error']")
+run_failing 'broken-pkg 1 -> 2\n'
 [[ $(ev done <<<"$out" | field failed) == aur ]] || fail "the failed AUR run named another source:\n$out"
-[[ $err == *"packages failed to build: broken-pkg-1-1"* ]] \
-  || fail "the AUR helper's error line was not in the error text:\n$err"
-[[ $err == *"==> ERROR: A failure occurred in build()."* ]] \
-  || fail "makepkg's error line was not in the error text:\n$err"
-[[ $err == *"paru exited with status 1"* ]] \
-  || fail "the error text did not say how the AUR helper exited:\n$err"
-# Earlier phases and earlier runs share the day's log; neither is this error.
-[[ $err != *"upgrading mesa"* ]] || fail "the repo phase's output leaked into the AUR error:\n$err"
-grep -q 'paru exited with status 1' "$(ev done <<<"$out" | field log)" \
+for want in "packages failed to build: broken-pkg-1-1" "==> ERROR: A failure occurred in build()." \
+            " -> error making: other-pkg-exit status 4" "Updating the desktop file MIME type cache" \
+            "c7up: paru exited with status 1"; do
+  [[ $err == *"$want"* ]] || fail "the AUR error text lost \"$want\":\n$err"
+done
+grep -q 'c7up: paru exited with status 1' "$(ev done <<<"$out" | field log)" \
   || fail "the log did not record how the AUR helper exited"
 
-# A failure with no recognisable error line still says something: the end of
-# that phase's own output, and the exit status.
+# A failure with no error line still says something: the end of that phase's
+# own output and the exit status -- and nothing from the phase before it or
+# the run before it, which share the day's log.
 stub paru 'case "$*" in *-Sua*) echo "segfault somewhere"; exit 139 ;; esac; exit 0'
-printf 'mesa 1 -> 2\n' > "$state/last_updates_check_packages"
-printf 'broken-pkg 1 -> 2\n' > "$state/last_updates_check_aur"
-out=$(env -i PATH="$bin:/usr/bin:/bin" HOME="$tmp" \
-      XDG_STATE_HOME="$tmp/state" XDG_CACHE_HOME="$tmp/cache" \
-      XDG_CONFIG_HOME="$tmp/config" TMPDIR="$tmp" C7UP_LIBDIR="$tmp/lib" \
-      bash "$c7up" run 2>/dev/null) && fail "a crashed AUR helper exited zero"
-err=$(ev done <<<"$out" | jq_py "d['error']")
-[[ $err == *"segfault somewhere"* && $err == *"paru exited with status 139"* ]] \
+run_failing 'broken-pkg 1 -> 2\n'
+[[ $err == *"segfault somewhere"* && $err == *"c7up: paru exited with status 139"* ]] \
   || fail "an AUR failure without an error line lost its output or status:\n$err"
-[[ $err != *"packages failed to build"* ]] \
-  || fail "the previous run's error leaked into this one:\n$err"
+[[ $err != *"upgrading mesa"* ]] || fail "the repo phase's output leaked into the AUR error:\n$err"
+[[ $err != *"packages failed to build"* ]] || fail "the previous run's error leaked into this one:\n$err"
+
+# pacman prints the detail under its error line: the files in conflict, the
+# broken dependency. Those are what the user acts on, so they stay.
+root_stub '
+    echo "error: failed to commit transaction (conflicting files)"
+    echo "mesa: /usr/lib/libGL.so exists in filesystem"
+    echo "Errors occurred, no packages were upgraded."
+    rc=1'
+run_failing
+[[ $(ev done <<<"$out" | field failed) == pacman ]] || fail "the failed repo run named another source:\n$out"
+[[ $err == *"/usr/lib/libGL.so exists in filesystem"* && $err == *"c7up: pacman exited with status 1"* ]] \
+  || fail "the pacman error text lost the conflicting file or the status:\n$err"
+[[ $err != *"packages failed to build"* ]] || fail "an earlier run's error leaked into the pacman error:\n$err"
+
+# A root session that dies is not pacman exiting with root_run's code.
+root_stub 'exit 0'
+run_failing
+[[ $err == *"the root session ended during the update (status 126)"* ]] \
+  || fail "a dead root session was reported as a pacman status:\n$err"
+
+# flatpak capitalises its per-ref error and ends on a generic one.
+root_stub 'echo "(1/1) upgrading mesa... done"'
+stub flatpak 'case "$*" in
+  update*)
+    echo "Error: Failed to update org.example.App: no space left on device"
+    for i in $(seq 20); do echo "Updating ref $i"; done
+    echo "error: There were one or more errors"
+    exit 1 ;;
+esac
+exit 0'
+run_failing '' 'org.example.App 1 -> 2\n'
+[[ $(ev done <<<"$out" | field failed) == flatpak ]] || fail "the failed flatpak run named another source:\n$out"
+[[ $err == *"no space left on device"* && $err == *"c7up: flatpak exited with status 1"* ]] \
+  || fail "the flatpak error text lost its reason or status:\n$err"
+stub flatpak 'exit 0'
 
 echo 'test-c7up.sh: all checks passed'

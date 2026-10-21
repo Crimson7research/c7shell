@@ -321,8 +321,12 @@ Scope {
             }
           }
 
+          // pacman rolls its transaction back. An AUR or flatpak phase runs
+          // after the repo phase finished, and installs one package at a time.
           Text {
-            text: "transaction rolled back — no files written"
+            text: (UpdatesService.result?.failed ?? "pacman") === "pacman"
+              ? "transaction rolled back — no files written"
+              : "updates that finished before this stay installed"
             font { family: Theme.fontMono; pixelSize: 10; weight: 400 }
             color: Theme.text3
           }
