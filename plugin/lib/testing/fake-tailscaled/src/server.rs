@@ -157,6 +157,13 @@ impl State {
         self.clients.iter().filter(|c| c.connected).count()
     }
 
+    /// The held client whose last request contains `fragment`.
+    pub fn client_holding(&self, fragment: &[u8]) -> Option<ClientId> {
+        self.clients.iter().filter(|c| c.connected && c.held).map(|c| c.id).find(|&id| {
+            self.requests.iter().rev().find(|r| r.client == id).is_some_and(|r| find(&r.recorded, fragment).is_some())
+        })
+    }
+
     /// The requests held now.
     pub fn held_count(&self) -> usize {
         self.clients.iter().filter(|c| c.connected && c.held).count()
@@ -365,6 +372,24 @@ impl Fake {
     /// The requests held now.
     pub fn held_count(&self) -> usize {
         self.shared.lock().held_count()
+    }
+
+    /// Closes client `id` alone, as tailscaled going away with that one
+    /// request in flight would; the fake keeps listening and serving the
+    /// others. False when that client is unknown or no longer connected.
+    pub fn close_client(&self, id: ClientId) -> bool {
+        self.locked(|s| match s.client_mut(id) {
+            Some(c) if c.connected && !c.closed => {
+                c.close();
+                true
+            }
+            _ => false,
+        })
+    }
+
+    /// The held client whose last request contains `fragment`.
+    pub fn client_holding(&self, fragment: &[u8]) -> Option<ClientId> {
+        self.shared.lock().client_holding(fragment)
     }
 
     /// Every client accepted, in accept order (R-FAKE-07).
