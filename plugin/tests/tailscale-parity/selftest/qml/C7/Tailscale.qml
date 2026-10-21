@@ -46,6 +46,17 @@ QtObject {
         peers.setProperty(row, "online", on);
     }
 
+    // ListModel has no call that resets or re-lays itself out, so these
+    // emit the model's own signals, as a model's endResetModel() and
+    // layoutChanged() would. They change no rows.
+    function resetPeers() {
+        peers.modelReset();
+    }
+
+    function relayoutPeers() {
+        peers.layoutChanged();
+    }
+
     // Asks the application to exit, as a crash before a result would end it.
     function quit(code) {
         Qt.exit(code);
