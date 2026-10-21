@@ -94,16 +94,25 @@ QtObject {
     }
 
     // An exception here (a C7 without Tailscale, say) is reported through
-    // Probe.failed, so the load ends at once and says why.
+    // Probe.failed, so the load ends at once and says why. So is a Tailscale
+    // that is no backend object: null (a create() that returned nullptr) or
+    // a type name with no instance, which list no members, and through
+    // which a scenario that reads only the fake would pass.
     Component.onCompleted: {
         try {
+            let members = 0;
             for (const k in Tailscale) {
+                members += 1;
                 const s = Tailscale[k];
                 if (k.endsWith("Changed") && s && typeof s.connect === "function") {
                     const name = k;
                     root.counts[name] = 0;
                     s.connect(function () { root.counts[name] += 1; });
                 }
+            }
+            if (Tailscale === null || typeof Tailscale !== "object" || members === 0) {
+                Probe.failed("Tailscale is no backend object: " + String(Tailscale) + " has no members");
+                return;
             }
         } catch (e) {
             Probe.failed(String(e));
