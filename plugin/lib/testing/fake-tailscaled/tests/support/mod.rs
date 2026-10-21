@@ -95,6 +95,25 @@ impl Client {
         got
     }
 
+    /// Whether the fake has not closed this connection yet, at this moment:
+    /// a read that would block means open, end of file means closed. It
+    /// keeps any bytes it reads.
+    pub fn is_open(&mut self) -> bool {
+        self.stream.set_nonblocking(true).unwrap();
+        let mut buf = [0u8; 4096];
+        let open = loop {
+            match self.stream.read(&mut buf) {
+                Ok(0) => break false,
+                Ok(n) => self.got.extend_from_slice(&buf[..n]),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break true,
+                Err(e) if e.kind() == ErrorKind::Interrupted => {}
+                Err(_) => break false,
+            }
+        };
+        self.stream.set_nonblocking(false).unwrap();
+        open
+    }
+
     /// Reads until end of file and returns everything read.
     pub fn read_until_closed(&mut self) -> Vec<u8> {
         let mut buf = [0u8; 4096];

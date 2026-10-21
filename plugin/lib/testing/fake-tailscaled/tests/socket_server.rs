@@ -9,8 +9,8 @@ use std::fs;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 
-use fake_tailscaled::Fake;
-use support::TestDir;
+use fake_tailscaled::{AfterReply, Fake, Request};
+use support::{Client, TestDir};
 
 #[test]
 fn r_fake_06_listens_at_the_given_path_for_this_user_only() {
@@ -130,4 +130,164 @@ fn a_dropped_fake_that_never_listened_leaves_the_path_alone() {
     fs::write(&path, b"x").unwrap();
     drop(Fake::start(&path));
     assert_eq!(fs::read(&path).unwrap(), b"x");
+}
+
+/// A handler that answers every request with `reply`.
+fn reply_with(reply: &'static [u8]) -> fake_tailscaled::Handler {
+    Box::new(move |_: &Request| Some(reply.to_vec()))
+}
+
+/// The recorded bytes of every request, in order.
+fn recorded(fake: &Fake) -> Vec<Vec<u8>> {
+    fake.requests().into_iter().map(|r| r.recorded).collect()
+}
+
+/// Waits until the fake has received `n` bytes from client `id` in all.
+fn wait_received(fake: &Fake, id: usize, n: usize) {
+    fake.wait_until(&format!("{n} bytes received from client {id}"), |s| (s.received(id) == n).then_some(()));
+}
+
+#[test]
+fn r_fake_01_frames_a_request_with_its_declared_body() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"ok"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    let mut client = Client::connect(fake.path());
+    let partial: &[u8] = b"PATCH /p HTTP/1.1\r\nContent-Length: 10\r\n\r\n{\"a\":";
+    client.write(partial);
+    // The fake barrier: every byte of the partial PATCH has been consumed.
+    wait_received(&fake, 1, partial.len());
+    assert!(fake.requests().is_empty(), "a request with half its body was framed as whole");
+    client.write(b"true}");
+    assert_eq!(client.read_exactly(2), b"ok");
+    assert_eq!(recorded(&fake), vec![b"PATCH /p HTTP/1.1\r\nContent-Length: 10\r\n\r\n{\"a\":true}".to_vec()]);
+    // The body was consumed, not left to be read as the next request's head.
+    client.write(b"GET /q HTTP/1.1\r\n\r\n");
+    fake.wait_until("a second request", |s| (s.requests().len() == 2).then_some(()));
+    assert_eq!(recorded(&fake)[1], b"GET /q HTTP/1.1");
+}
+
+#[test]
+fn r_fake_06_replies_and_closes_like_a_request_socket() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(
+        Box::new(|r: &Request| Some([b"ok:".as_slice(), &r.recorded].concat())),
+        AfterReply::CloseAfterReply,
+        None,
+    );
+    let mut client = Client::connect(fake.path());
+    client.write(b"dispatch workspace 2");
+    assert_eq!(client.read_until_closed(), b"ok:dispatch workspace 2");
+    assert_eq!(recorded(&fake), vec![b"dispatch workspace 2".to_vec()]);
+}
+
+#[test]
+fn r_fake_06_can_keep_the_client_open() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"pong"), AfterReply::KeepOpen, None);
+    let mut client = Client::connect(fake.path());
+    for i in 1..=2 {
+        client.write(b"ping");
+        assert_eq!(client.read_exactly(4 * i), b"pong".repeat(i));
+    }
+    assert!(client.is_open());
+    assert_eq!(fake.requests().len(), 2);
+}
+
+#[test]
+fn r_fake_06_splits_framed_requests_whatever_the_reads_look_like() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(
+        Box::new(|r: &Request| Some([b"<".as_slice(), &r.recorded, b">"].concat())),
+        AfterReply::KeepOpen,
+        Some(b"\n"),
+    );
+    // #286's sequence: two requests over two writes, then one without its
+    // delimiter, which is not a request yet.
+    let mut client = Client::connect(fake.path());
+    client.write(b"one\ntw");
+    wait_received(&fake, 1, 6);
+    client.write(b"o\nthree");
+    assert_eq!(client.read_exactly(10), b"<one><two>");
+    wait_received(&fake, 1, 13);
+    assert_eq!(recorded(&fake), vec![b"one".to_vec(), b"two".to_vec()]);
+    client.write(b"\n");
+    assert_eq!(client.read_exactly(17), b"<one><two><three>");
+
+    // Every split of two requests into two reads, the fake barrier between
+    // them so that each write is its own read.
+    let message: &[u8] = b"one\ntwo\n";
+    for at in 1..message.len() {
+        let mut client = Client::connect(fake.path());
+        let id = at + 1;
+        client.write(&message[..at]);
+        wait_received(&fake, id, at);
+        client.write(&message[at..]);
+        assert_eq!(client.read_exactly(10), b"<one><two>", "split at {at}");
+    }
+    // And both in one write.
+    let mut client = Client::connect(fake.path());
+    client.write(message);
+    assert_eq!(client.read_exactly(10), b"<one><two>");
+}
+
+#[test]
+fn r_fake_06_answers_nothing_after_closing() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(Box::new(|r: &Request| Some(r.recorded.clone())), AfterReply::CloseAfterReply, Some(b"\n"));
+    let mut client = Client::connect(fake.path());
+    client.write(b"a\nb\n");
+    assert_eq!(client.read_until_closed(), b"a");
+    assert_eq!(recorded(&fake), vec![b"a".to_vec()]);
+}
+
+#[test]
+fn r_fake_06_records_requests_without_a_handler() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let mut client = Client::connect(fake.path());
+    client.write(b"j/clients");
+    fake.wait_until("a request", |s| (!s.requests().is_empty()).then_some(()));
+    assert_eq!(recorded(&fake)[0], b"j/clients");
+    assert!(client.is_open());
+    assert!(client.got().is_empty(), "nothing is written without a handler");
+}
+
+#[test]
+fn a_handler_that_returns_none_writes_nothing_and_keeps_the_client() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(Box::new(|_: &Request| None), AfterReply::CloseAfterReply, Some(b"\n"));
+    let mut client = Client::connect(fake.path());
+    client.write(b"x\n");
+    fake.wait_until("a request", |s| (s.requests().len() == 1).then_some(()));
+    assert!(client.is_open());
+    assert!(client.got().is_empty());
+}
+
+#[test]
+fn requests_carry_their_client_and_sequence() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"k"), AfterReply::KeepOpen, Some(b"\n"));
+    let mut a = Client::connect(fake.path());
+    a.write(b"1\n");
+    a.read_exactly(1);
+    let mut b = Client::connect(fake.path());
+    b.write(b"2\n");
+    b.read_exactly(1);
+    let got: Vec<(usize, usize)> = fake.requests().iter().map(|r| (r.client, r.seq)).collect();
+    assert_eq!(got, vec![(1, 0), (2, 1)]);
+}
+
+#[test]
+#[should_panic(expected = "the fake never reached: something that never happens")]
+fn a_wait_that_is_never_reached_fails_naming_it() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.wait_until_within("something that never happens", std::time::Duration::ZERO, |_| None::<()>);
 }
