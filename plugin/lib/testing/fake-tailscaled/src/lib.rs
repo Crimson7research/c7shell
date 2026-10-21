@@ -23,4 +23,4 @@ pub use bytes::{decode_hex, encode_hex, Body, Bytes};
 pub use reply::{canonical_reason, Chunked, Encoded, Framing, ReplySpec, Split, Then};
 pub use request::Request;
 pub use script::{Match, Rule, Script, Times};
-pub use server::{AfterReply, ClientId, ClientReport, Fake, Handler, State, FAILURE_BOUND};
+pub use server::{AfterReply, ClientId, ClientReport, Fake, Handler, State, FAILURE_BOUND, MAX_WRITE};

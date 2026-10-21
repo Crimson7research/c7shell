@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::bytes::Bytes;
-use crate::reply::ReplySpec;
-use crate::script::{Match, Script};
+use crate::reply::{watch_chunk, ReplySpec};
+use crate::script::{within_write_limit, Match, Script};
 
 /// What an implementation lets a scenario do beyond the contract and the
 /// fake.
@@ -341,8 +341,18 @@ impl Scenario {
                     }
                 }
                 Step::Fake(FakeOp::CompleteHeld(reply)) => {
-                    reply.encode(false).map_err(|e| at(format!("fake.complete_held.{e}")))?;
+                    let encoded = reply.encode(false).map_err(|e| at(format!("fake.complete_held.{e}")))?;
+                    within_write_limit("the reply", encoded.bytes.len())
+                        .map_err(|e| at(format!("fake.complete_held: {e}")))?;
                 }
+                Step::Fake(FakeOp::PushLine(b)) => {
+                    within_write_limit("the line", b.0.len() + 1).map_err(|e| at(format!("fake.push_line: {e}")))?
+                }
+                Step::Fake(FakeOp::PushChunk(b)) => {
+                    within_write_limit("the chunk", b.0.len()).map_err(|e| at(format!("fake.push_chunk: {e}")))?
+                }
+                Step::Fake(FakeOp::PushWatchLine(b)) => within_write_limit("the chunk", watch_chunk(&b.0).len())
+                    .map_err(|e| at(format!("fake.push_watch_line: {e}")))?,
                 _ => {}
             }
         }

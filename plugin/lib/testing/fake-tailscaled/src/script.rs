@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use crate::reply::{Encoded, ReplySpec};
 use crate::request::Request;
+use crate::server::MAX_WRITE;
 
 /// What a rule matches.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -75,16 +76,29 @@ pub(crate) enum Action {
     Stream(Encoded),
 }
 
+/// Fails when `len` bytes would not fit one write the fake may make.
+pub(crate) fn within_write_limit(what: &str, len: usize) -> Result<(), String> {
+    if len > MAX_WRITE {
+        return Err(format!("{what} is {len} bytes, over the fake's {MAX_WRITE}-byte write limit"));
+    }
+    Ok(())
+}
+
 impl Rule {
     fn action(&self) -> Result<Action, String> {
         match (&self.reply, self.hold, &self.stream) {
-            (Some(reply), None, None) => reply.encode(false).map(Action::Reply),
+            (Some(reply), None, None) => {
+                let encoded = reply.encode(false)?;
+                within_write_limit("the reply", encoded.bytes.len())?;
+                Ok(Action::Reply(encoded))
+            }
             (None, Some(true), None) => Ok(Action::Hold),
             (None, None, Some(stream)) => {
                 let encoded = stream.encode(true)?;
                 if !encoded.splits.is_empty() {
                     return Err("stream: a stream head cannot be split".into());
                 }
+                within_write_limit("the stream head", encoded.bytes.len())?;
                 Ok(Action::Stream(encoded))
             }
             _ => Err("a rule needs exactly one of reply, \"hold\": true and stream".into()),

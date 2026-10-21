@@ -24,6 +24,16 @@ use crate::script::{Action, Compiled, Script};
 /// reaches it; it only turns a hang into a failure. Nothing asserts on time.
 pub const FAILURE_BOUND: Duration = Duration::from_secs(10);
 
+/// The largest reply, stream head, push or completion a scenario may
+/// script. The fake writes with a blocking write, a reply under its lock and
+/// a push on the caller's thread, which in the harness is the Qt thread the
+/// client reads on. A write the client cannot drain meanwhile must fit an
+/// unread Unix socket buffer, which holds about 228 KiB in one write with
+/// Linux's default 208 KiB `wmem_default`. Many small writes fill it much
+/// sooner (about 27 KiB in 100-byte writes), so a scenario pumps the event
+/// loop between long runs of pushes.
+pub const MAX_WRITE: usize = 128 * 1024;
+
 /// A client's id: its position in accept order, counted from 1.
 pub type ClientId = usize;
 
