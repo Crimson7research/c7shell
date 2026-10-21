@@ -709,3 +709,21 @@ fn wait_for<T>(
         state = shared.changed.wait_timeout(state, deadline - now).unwrap_or_else(|e| e.into_inner()).0;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Error, ErrorKind};
+
+    use super::write_fault;
+
+    #[test]
+    fn a_timed_out_write_is_the_fakes_fault_and_a_peer_gone_is_not() {
+        for kind in [ErrorKind::WouldBlock, ErrorKind::TimedOut] {
+            let fault = write_fault(3, &Error::from(kind));
+            assert!(fault.as_deref().is_some_and(|f| f.starts_with("a write to client 3 timed out")), "{fault:?}");
+        }
+        for kind in [ErrorKind::BrokenPipe, ErrorKind::ConnectionReset, ErrorKind::NotConnected] {
+            assert_eq!(write_fault(3, &Error::from(kind)), None, "{kind:?}");
+        }
+    }
+}

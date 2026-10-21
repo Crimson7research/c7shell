@@ -129,6 +129,18 @@ fn runner_verdicts(failures: &mut Vec<String>) {
         typo.as_ref().is_err_and(|e| e.contains("no scenario has the id typo")),
         &format!("a filter id naming no scenario: {typo:?}"),
     );
+    // A fault inside the fake comes before any other error or result.
+    let faults = vec!["a write to client 1 timed out".to_string()];
+    let concluded = [
+        runner::conclude(Err("steps[3]: wait never reached: x".into()), None, &[], &faults, &[]),
+        runner::conclude(Ok(()), None, &[], &faults, &[]),
+    ];
+    for o in &concluded {
+        let ok = matches!(o, Outcome::Error(e) if e.starts_with("the fake failed: a write to client 1 timed out"));
+        check(failures, ok, &format!("a fault in the fake is the error: {o:?}"));
+    }
+    let o = runner::conclude(Ok(()), None, &[], &[], &[]);
+    check(failures, o == Outcome::Pass, &format!("no fault, nothing failing: {o:?}"));
     // C7_REPEAT is a whole number of at least 1; anything else is refused.
     for (value, want) in
         [(None, Some(1)), (Some("3"), Some(3)), (Some(" 2 "), None), (Some("0"), None), (Some("x"), None)]

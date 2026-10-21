@@ -8,6 +8,7 @@ mod support;
 use std::fs;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use fake_tailscaled::{AfterReply, Fake, Request};
 use support::{Client, TestDir};
@@ -439,6 +440,21 @@ fn r_fake_06_says_when_a_line_reached_nobody() {
     let dir = TestDir::new();
     let fake = Fake::start(dir.socket());
     assert_eq!(fake.push_line(b"workspace>>2"), 0);
+}
+
+#[test]
+fn a_write_the_client_never_takes_is_recorded_as_a_fault() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let _client = Client::connect(fake.path());
+    wait_connected(&fake, 1);
+    assert_eq!(fake.faults(), Vec::<String>::new());
+    fake.set_write_timeout(Duration::from_millis(1));
+    // Far more than a Unix socket buffer holds, to a client that never reads.
+    assert_eq!(fake.push_chunk(&vec![b'x'; 16 << 20]), 0);
+    let faults = fake.faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert!(faults[0].starts_with("a write to client 1 timed out"), "{faults:?}");
 }
 
 #[test]
