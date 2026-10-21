@@ -17,6 +17,8 @@ vm=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 . "$vm/lib/screen.sh"
 # shellcheck source=lib/qemu.sh
 . "$vm/lib/qemu.sh"
+# shellcheck source=lib/base.sh
+. "$vm/lib/base.sh"
 
 usage() {
   cat <<USAGE
@@ -77,9 +79,11 @@ step_base() {
   # Two runs must not rebuild the base under each other's overlays.
   exec 9> "$C7VT_CACHE/base.lock"
   flock 9
+  local key
+  key=$(base_inputs_hash "$vm") \
+    || { echo 'run.sh: cannot hash the base image inputs' >&2; exit 2; }
   if ((rebuild)) || [[ ! -f $C7VT_CACHE/base.qcow2 ]] \
-     || ! cmp -s "$vm/iso.version" "$C7VT_CACHE/base.iso.version" \
-     || ! cmp -s "$vm/archinstall.json" "$C7VT_CACHE/base.archinstall.json"; then
+     || [[ $(cat "$C7VT_CACHE/base.inputs" 2>/dev/null) != "$key" ]]; then
     "$vm/build-base.sh"
   fi
 }

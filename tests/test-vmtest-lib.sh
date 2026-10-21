@@ -192,6 +192,38 @@ printf '%s\n' '#!/bin/sh' 'cat >/dev/null' \
 chmod +x "$tmp/socat-ev"
 C7VT_SOCAT=$tmp/socat-ev qmp_quit "$tmp/sock" >/dev/null || fail 'qmp: an event mentioning error must not fail'
 
+# --- base image cache key ---------------------------------------------------
+# Every checked-in file the base is built from, and the host firmware it boots,
+# is part of the key; a change to any of them rebuilds the base (#271).
+(
+  fake=$tmp/vmcopy; cp -r "$vm" "$fake"
+  echo fw1 > "$tmp/ovmf"; C7VT_OVMF=$tmp/ovmf
+  k0=$(base_inputs_hash "$fake")
+  [[ $k0 =~ ^[0-9a-f]{64}$ ]] || fail "base_inputs_hash: not a sha256: $k0"
+  [[ $(base_inputs_hash "$fake") == "$k0" ]] || fail 'base_inputs_hash: must be stable'
+  for f in iso.version archinstall.json cloud-init/user-data.in cloud-init/meta-data build-base.sh; do
+    cp "$fake/$f" "$tmp/orig"; echo '# changed' >> "$fake/$f"
+    [[ $(base_inputs_hash "$fake") != "$k0" ]] || fail "base_inputs_hash: must change with $f"
+    cp "$tmp/orig" "$fake/$f"
+  done
+  echo fw2 > "$tmp/ovmf"
+  [[ $(base_inputs_hash "$fake") != "$k0" ]] || fail 'base_inputs_hash: must change with the firmware'
+  rm "$tmp/ovmf"
+  if base_inputs_hash "$fake" >/dev/null 2>&1; then fail 'base_inputs_hash: a missing firmware must fail'; fi
+  echo fw1 > "$tmp/ovmf"
+
+  # step_base rebuilds only when the stored key differs from the inputs'.
+  C7VT_CACHE=$tmp/bcache; mkdir -p "$C7VT_CACHE"; vm=$fake rebuild=0
+  printf '%s\n' '#!/bin/sh' "touch '$tmp/built'" > "$vm/build-base.sh"
+  touch "$C7VT_CACHE/base.qcow2"; base_inputs_hash "$vm" > "$C7VT_CACHE/base.inputs"
+  rm -f "$tmp/built"; step_base
+  [[ ! -e $tmp/built ]] || fail 'step_base: a matching key must reuse the base'
+  echo stale > "$C7VT_CACHE/base.inputs"; step_base
+  [[ -e $tmp/built ]] || fail 'step_base: a different key must rebuild the base'
+  rm -f "$tmp/built" "$C7VT_CACHE/base.inputs"; step_base
+  [[ -e $tmp/built ]] || fail 'step_base: no stored key must rebuild the base'
+) || exit 1
+
 # --- archinstall.json -------------------------------------------------------
 # The target system's pacman reads /etc/pacman.d/mirrorlist for the whole
 # install phase. The ISO's geo list puts fastly near the top, and one stalled

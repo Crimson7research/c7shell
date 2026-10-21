@@ -30,8 +30,10 @@ tests/vm/run.sh --branch main
 ```
 
 The first run builds the base image (up to 30 minutes). Later runs reuse it
-until `iso.version` or `archinstall.json` changes, or you pass
-`--rebuild-base`.
+until one of its inputs changes, or you pass `--rebuild-base`. The inputs are
+`iso.version`, `archinstall.json`, `cloud-init/*`, `build-base.sh` and the
+OVMF firmware file; `lib/base.sh` hashes them into `base.inputs` beside the
+image.
 
 Results go to `~/.cache/c7shell-vmtest/results/<timestamp>-<branch>/`:
 `summary.txt` ends in `PASS`, `FAIL: <phase>`, or `FAIL: interrupted` when the run

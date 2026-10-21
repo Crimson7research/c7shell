@@ -100,7 +100,7 @@ The installed system doesn't log to serial. A failed phase's `<phase>-serial-tai
 
 ```
 ~/.cache/c7shell-vmtest/
-  archlinux-<ver>-x86_64.iso   base.qcow2   id_ed25519   c7test.password
+  archlinux-<ver>-x86_64.iso   base.qcow2   base.inputs   id_ed25519   c7test.password
   runs/<ts>-<branch>/       VM disk, sockets, pid (kept on failure or --keep)
   results/<ts>-<branch>/    summary.txt, <phase>.log, screens/*.png
 ```
