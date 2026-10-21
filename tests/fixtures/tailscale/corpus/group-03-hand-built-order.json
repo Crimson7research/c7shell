@@ -7,7 +7,8 @@
   ],
   "tag": "parity",
   "clauses": [
-    "hand-built peers in a scrambled input order come out in the defined order: group, online before offline, display name case-insensitively, host name case-insensitively, nodeId; the set includes names equal except for case, an empty name, and peers equal except for nodeId"
+    "hand-built peers in a scrambled input order come out in the defined order: group, online before offline, display name case-insensitively, host name case-insensitively, nodeId; the set includes names equal except for case, an empty name, and peers equal except for nodeId",
+    "the host name key folds case: nH2 (display name same, host alpha) comes before nH1 (display name Same, host Beta), where a case-sensitive host compare ('Beta' < 'alpha'), a case-sensitive display name compare ('Same' < 'same') or skipping to nodeId (nH1 < nH2) each give the reverse"
   ],
   "status": {
     "json": {
@@ -91,6 +92,20 @@
           "HostName": "bravo",
           "UserID": 1,
           "Online": false
+        },
+        "p11": {
+          "ID": "nH1",
+          "HostName": "Beta",
+          "DNSName": "Same.example.ts.net.",
+          "UserID": 1,
+          "Online": true
+        },
+        "p12": {
+          "ID": "nH2",
+          "HostName": "alpha",
+          "DNSName": "same.example.ts.net.",
+          "UserID": 1,
+          "Online": true
         }
       }
     }
@@ -101,6 +116,8 @@
       {"nodeId": "nM1a", "displayName": "alpha", "hostName": "alpha", "group": 0, "online": true},
       {"nodeId": "nM1b", "displayName": "alpha", "hostName": "alpha", "group": 0, "online": true},
       {"nodeId": "nM2", "displayName": "Alpha", "hostName": "bravo", "group": 0, "online": true},
+      {"nodeId": "nH2", "displayName": "same", "hostName": "alpha", "group": 0, "online": true},
+      {"nodeId": "nH1", "displayName": "Same", "hostName": "Beta", "group": 0, "online": true},
       {"nodeId": "nM4", "displayName": "ALPHA", "hostName": "ALPHA", "group": 0, "online": false},
       {"nodeId": "nM5", "displayName": "Bravo", "hostName": "Bravo", "group": 0, "online": false},
       {"nodeId": "nM6", "displayName": "bravo", "hostName": "bravo", "group": 0, "online": false},
