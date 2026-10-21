@@ -36,13 +36,17 @@ fn resolve(reply: Option<&mut Value>, root: &Path) -> Result<bool, String> {
     let Some(file) = body.as_object().filter(|o| o.len() == 1).and_then(|o| o.get("file")) else {
         return Ok(false);
     };
+    *body = to_value(&read_under(root, file)?);
+    Ok(true)
+}
+
+/// The bytes of `file`, a relative path under `root` without `..`.
+pub(crate) fn read_under(root: &Path, file: &Value) -> Result<Vec<u8>, String> {
     let name = file.as_str().ok_or_else(|| format!("{file} is not a path"))?;
     let path = Path::new(name);
     if name.is_empty() || !path.components().all(|c| matches!(c, Component::Normal(_))) {
         return Err(format!("`{name}` must be a relative path under the fixture root, without `..`"));
     }
     let full = root.join(path);
-    let bytes = std::fs::read(&full).map_err(|e| format!("`{name}` ({}): {e}", full.display()))?;
-    *body = to_value(&bytes);
-    Ok(true)
+    std::fs::read(&full).map_err(|e| format!("`{name}` ({}): {e}", full.display()))
 }

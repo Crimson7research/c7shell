@@ -13,6 +13,7 @@
 mod bytes;
 mod client;
 pub mod control;
+pub mod corpus;
 pub mod evidence;
 mod listener;
 mod reply;

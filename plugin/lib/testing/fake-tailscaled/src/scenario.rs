@@ -16,7 +16,7 @@ use crate::bytes::Bytes;
 use crate::reply::{watch_chunk, ReplySpec};
 use crate::script::{within_write_limit, Match, Script};
 
-mod files;
+pub(crate) mod files;
 mod model;
 
 pub use model::{role, ModelQuery, Role};
