@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "id": "group-03-full-lowercase",
+  "requirements": [
+    "R-GROUP-03"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "display names \\u{0130}x then i\\u{0307}y, two online group-0 peers equal in every other sort key: the full Unicode lowercase of U+0130 is i U+0307, so the rewrite compares i, U+0307, x against i, U+0307, y and sorts \\u{0130}x first"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nU1CNTRL",
+          "HostName": "h",
+          "DNSName": "\u0130x.example.ts.net.",
+          "Online": true,
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nU2CNTRL",
+          "HostName": "h",
+          "DNSName": "i\u0307y.example.ts.net.",
+          "Online": true,
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"displayName": "\u0130x", "nodeId": "nU1CNTRL"},
+      {"displayName": "i\u0307y", "nodeId": "nU2CNTRL"}
+    ]
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "peers[0]",
+          "actual": {
+            "displayName": "i\u0307y",
+            "nodeId": "nU2CNTRL"
+          }
+        },
+        {
+          "id": "peers[1]",
+          "actual": {
+            "displayName": "\u0130x",
+            "nodeId": "nU1CNTRL"
+          }
+        }
+      ],
+      "reason": "#286 folds case with Qt's per-unit tables (QString::compare(..., Qt::CaseInsensitive), plugin/lib/tailscale/StatusParser.cpp:80), which map U+0130 to itself, so it compares U+0130 against i and sorts i\\u{0307}y first; decision 10 applies the full Unicode lowercase mapping"
+    },
+    "rust": {"result": "pass"}
+  }
+}

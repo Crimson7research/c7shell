@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "id": "group-01-tagged-test-comes-first",
+  "requirements": [
+    "R-GROUP-01",
+    "R-GROUP-02"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "a peer is Tagged when its owner's LoginName is tagged-devices, and that test comes first, before Mine; tags are not read: a peer with Tags whose owner is another user is in Others, with that owner's DisplayName"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "LoginName": "tagged-devices",
+          "DisplayName": "Tagged Devices"
+        },
+        "2": {
+          "LoginName": "other@example.com",
+          "DisplayName": "Other Person"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nA1CNTRL",
+          "HostName": "a",
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nB1CNTRL",
+          "HostName": "b",
+          "UserID": 2,
+          "Tags": [
+            "tag:server"
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"nodeId": "nA1CNTRL", "group": 1, "ownerName": ""},
+      {"nodeId": "nB1CNTRL", "group": 2, "ownerName": "Other Person"}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

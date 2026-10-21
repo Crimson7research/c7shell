@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "id": "group-03-same-name-by-node-id",
+  "requirements": [
+    "R-GROUP-03"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "two online peers with the same name, nAAA1CNTRL and nBBB1CNTRL (given nBBB1CNTRL first), sort nAAA1CNTRL first"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nBBB1CNTRL",
+          "HostName": "twin",
+          "Online": true,
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nAAA1CNTRL",
+          "HostName": "twin",
+          "Online": true,
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"nodeId": "nAAA1CNTRL"},
+      {"nodeId": "nBBB1CNTRL"}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

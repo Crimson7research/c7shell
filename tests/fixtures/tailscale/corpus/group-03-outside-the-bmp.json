@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "id": "group-03-outside-the-bmp",
+  "requirements": [
+    "R-GROUP-03"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "display names \\u{1F642}a then \\u{FF5A}a, two online group-0 peers equal in every other sort key: the rewrite sorts \\u{FF5A}a first, because scalar U+FF5A is less than U+1F642"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nU1CNTRL",
+          "HostName": "h",
+          "DNSName": "\ud83d\ude42a.example.ts.net.",
+          "Online": true,
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nU2CNTRL",
+          "HostName": "h",
+          "DNSName": "\uff5aa.example.ts.net.",
+          "Online": true,
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"displayName": "\uff5aa", "nodeId": "nU2CNTRL"},
+      {"displayName": "\ud83d\ude42a", "nodeId": "nU1CNTRL"}
+    ]
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "peers[0]",
+          "actual": {
+            "displayName": "\ud83d\ude42a",
+            "nodeId": "nU1CNTRL"
+          }
+        },
+        {
+          "id": "peers[1]",
+          "actual": {
+            "displayName": "\uff5aa",
+            "nodeId": "nU2CNTRL"
+          }
+        }
+      ],
+      "reason": "#286 compares display names with QString::compare(..., Qt::CaseInsensitive) per UTF-16 unit (plugin/lib/tailscale/StatusParser.cpp:80), and U+1F642's first unit 0xD83D is less than 0xFF5A, so \\u{1F642}a sorts first; decision 10 compares scalar values"
+    },
+    "rust": {"result": "pass"}
+  }
+}
