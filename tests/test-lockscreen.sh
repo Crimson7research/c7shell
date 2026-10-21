@@ -425,6 +425,28 @@ PYCHK
   || fail "stale overlays are left in the cache:\n$(find "$lockdir/cache/c7shell" -name 'lock-overlay-*.png')"
 rm -f "$lockdir/conf/hypr/appearance.json"
 
+# Docking and undocking (#259). The overlays of a monitor that is not
+# connected right now stay cached as long as the accent has not changed, so the
+# next lock on that monitor does not pay the slow pure-Python render again.
+runlock >/dev/null || fail "c7shell-lock failed on the default accent:\n$(cat "$lockdir/err")"
+first=$(grep -oE '/[^ ]*\.png' "$gen" | head -1)
+printf '#!/bin/sh\ncat <<JSON\n[{"name":"HDMI-A-1","width":2560,"height":1440,"scale":1.0}]\nJSON\n' \
+  > "$lockdir/bin/hyprctl"
+runlock >/dev/null || fail "a second monitor broke c7shell-lock:\n$(cat "$lockdir/err")"
+[[ -f $first ]] \
+  || fail "locking on another monitor deleted the cached overlay of the one unplugged: $first"
+grep -q 'monitor = DP-1' "$gen" \
+  && fail "the generated config draws on DP-1, which is not connected:\n$(grep 'monitor =' "$gen")"
+stamp=$(stat -c '%i %Y' "$first")
+printf '#!/bin/sh\ncat <<JSON\n[{"name":"DP-1","width":1920,"height":1080,"scale":1.0}]\nJSON\n' \
+  > "$lockdir/bin/hyprctl"
+runlock >/dev/null || fail "returning to the first monitor broke c7shell-lock:\n$(cat "$lockdir/err")"
+[[ $(stat -c '%i %Y' "$first") == "$stamp" ]] \
+  || fail 'returning to the first monitor rendered its overlay again instead of reusing the cache'
+# Two monitors under one accent: two files, nothing else.
+(($(find "$lockdir/cache/c7shell" -name 'lock-overlay-*.png' | wc -l) == 2)) \
+  || fail "the cache does not hold one overlay per monitor seen:\n$(find "$lockdir/cache/c7shell" -name 'lock-overlay-*.png')"
+
 # A HiDPI monitor. hyprlock lays widgets out in buffer pixels, not logical ones
 # (CSessionLockSurface sets size = logical * scale), so a scale-2 panel has a
 # 2560x1600 viewport. Sizing the overlay in logical units drew it at half scale,
