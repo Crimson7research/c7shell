@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "id": "crash",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: the child exits before a result"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "call": {
+        "name": "quit",
+        "args": [
+          3
+        ]
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": ""
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}

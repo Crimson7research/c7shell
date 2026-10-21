@@ -1,0 +1,89 @@
+{
+  "format": 1,
+  "id": "pass",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: every expectation holds"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "call": {
+        "name": "setAcceptRoutes",
+        "args": [
+          true
+        ]
+      }
+    },
+    {
+      "wait": {
+        "contract": {
+          "acceptRoutes": true
+        }
+      }
+    },
+    {
+      "wait": {
+        "signal": {
+          "name": "writeErrorChanged",
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "set true"
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "routes",
+        "contract": {
+          "acceptRoutes": true,
+          "state": {
+            "enum": "NoState"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "signal",
+        "signal": {
+          "name": "writeErrorChanged",
+          "count": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "no-requests",
+        "requests": {
+          "match": {
+            "method": "GET",
+            "path": "/x"
+          },
+          "count": 0
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}

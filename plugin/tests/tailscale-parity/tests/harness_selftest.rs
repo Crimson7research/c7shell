@@ -7,14 +7,91 @@
 
 use std::path::{Path, PathBuf};
 
+use fake_tailscaled::scenario::Capability;
 use serde_json::json;
 use tailscale_parity::child::{self, PrivateRoot};
+use tailscale_parity::runner::{self, Outcome, Report};
 use tailscale_parity::contract::Contract;
 use tailscale_parity::implementation::Implementation;
 use tailscale_parity::{headless_app, load_driver};
 
 fn stub_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("selftest/qml")
+}
+
+fn selftest(file: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("selftest").join(file)
+}
+
+const STUB_IMPLEMENTATIONS: &[(&str, &[Capability])] = &[("stub", &[])];
+
+/// Runs one self-test scenario against the stub, with a small wait cap.
+fn run_stub(file: &str) -> Report {
+    let stub = Implementation { name: "stub".into(), qml_dir: stub_dir(), capabilities: vec![] };
+    runner::run_one(&stub, STUB_IMPLEMENTATIONS, &selftest(file), &[("C7_HARNESS_MAX_ITERATIONS", "20000")])
+}
+
+/// Asserts the runner's verdict on one self-test scenario.
+fn verdict(failures: &mut Vec<String>, r: &Report, matches: bool, wants: &[&str], outcome: impl Fn(&Outcome) -> bool) {
+    let text = match &r.verdict {
+        Ok(t) | Err(t) => t.clone(),
+    };
+    let ok = r.verdict.is_ok() == matches && wants.iter().all(|w| text.contains(w)) && outcome(&r.outcome);
+    if !ok {
+        print!("{}", r.log);
+    }
+    check(failures, ok, &format!("{}: {} ({:?})", r.id, text, r.outcome));
+    check(failures, !r.root.exists(), &format!("{}: its private root {} is removed", r.id, r.root.display()));
+}
+
+/// The runner's verdicts on the stub, pinned.
+fn runner_verdicts(failures: &mut Vec<String>) {
+    let error = |what: &'static str| move |o: &Outcome| matches!(o, Outcome::Error(e) if e.contains(what));
+
+    let pass = run_stub("scenarios/pass.json");
+    verdict(failures, &pass, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
+    // The child's environment: only the keep-list, the private directories,
+    // dead buses, the platform and TS_SOCKET.
+    let env = pass.env.clone().unwrap_or_default();
+    let names: Vec<&String> = env.keys().collect();
+    let allowed = |n: &str| {
+        child::kept(n)
+            || child::PRIVATE.iter().any(|(v, _)| *v == n)
+            || ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "QT_QPA_PLATFORM", "TS_SOCKET"].contains(&n)
+    };
+    check(failures, names.iter().all(|n| allowed(n)), &format!("the child's environment is the allowlist: {names:?}"));
+    let under_root = |k: &str| env.get(k).is_some_and(|v| v.starts_with(pass.root.to_str().unwrap()));
+    for k in ["TS_SOCKET", "HOME", "XDG_RUNTIME_DIR", "TMPDIR", "PATH"] {
+        check(failures, under_root(k), &format!("the child's {k} is under its private root: {:?}", env.get(k)));
+    }
+
+    let r = run_stub("scenarios/declared-fail.json");
+    verdict(failures, &r, true, &["fail as declared: error-text"], |o| matches!(o, Outcome::Fail(_)));
+    let r = run_stub("scenarios/unexpected-pass.json");
+    verdict(failures, &r, false, &["unexpected pass"], |o| *o == Outcome::Pass);
+    let r = run_stub("scenarios/wrong-actual.json");
+    verdict(failures, &r, false, &["\"set true\"", "\"set maybe\""], |o| matches!(o, Outcome::Fail(_)));
+    let r = run_stub("scenarios/wait-never.json");
+    verdict(failures, &r, false, &["wait never reached"], error("wait never reached: state"));
+    let r = run_stub("scenarios/precondition.json");
+    verdict(failures, &r, false, &["precondition"], error("precondition `setup`"));
+    let r = run_stub("scenarios/cannot-run.json");
+    verdict(failures, &r, true, &["cannot-run, as declared"], |o| *o == Outcome::CannotRun);
+    check(failures, !r.started, "cannot-run: no child was started");
+    let r = run_stub("scenarios/needs-pass.json");
+    verdict(failures, &r, false, &["on.stub"], error("on.stub"));
+    let r = run_stub("scenarios/crash.json");
+    verdict(failures, &r, false, &["no result line"], error("no result line"));
+    let r = run_stub("scenarios/unknown-member.json");
+    verdict(failures, &r, false, &["noSuchMember"], error("noSuchMember"));
+
+    // An empty scenario directory is a failure, never a pass.
+    let empty = PrivateRoot::new();
+    let stub = Implementation { name: "stub".into(), qml_dir: stub_dir(), capabilities: vec![] };
+    let none = runner::run_all(&stub, STUB_IMPLEMENTATIONS, empty.path(), 1, None);
+    check(failures, none.as_ref().is_err_and(|e| e.contains("no scenarios found")), &format!("no scenarios: {none:?}"));
+    let filtered = runner::run_all(&stub, STUB_IMPLEMENTATIONS, &selftest("scenarios"), 1, Some("nothing-by-this-id"));
+    check(failures, filtered.as_ref().is_err_and(|e| e.contains("no scenarios found")), "a filter matching nothing finds no scenarios");
 }
 
 /// Reports one check; returns whether it passed.
@@ -124,8 +201,15 @@ fn parent() -> i32 {
             .unwrap();
             print!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
             check(&mut failures, out.status.success(), "#286's C7 loads and Rust reads Tailscale through the driver");
+
+            // 4. A request the script does not match is an error naming it.
+            let r = runner::run_one(&imp, fake_tailscaled::scenario::IMPLEMENTATIONS, &selftest("scenarios-cpp/unmatched.json"), &[]);
+            verdict(&mut failures, &r, false, &["unmatched", "GET /localapi/v0/prefs"], |o| matches!(o, Outcome::Error(e) if e.contains("GET /localapi/v0/prefs")));
         }
     }
+
+    // 5. The runner's verdicts, pinned on the stub.
+    runner_verdicts(&mut failures);
 
     if failures.is_empty() {
         println!("harness_selftest: PASS");
@@ -140,6 +224,7 @@ fn main() {
     let code = match child::child_arg().as_deref() {
         Some("probe") => child_probe(),
         Some("contract") => child_contract(),
+        Some("scenario") => runner::child_main(),
         Some(other) => panic!("unknown child {other}"),
         None => parent(),
     };

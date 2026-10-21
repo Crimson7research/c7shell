@@ -22,3 +22,7 @@ cxx-qt-build.workspace = true
 [[test]]
 name = "harness_selftest"
 harness = false
+
+[[test]]
+name = "scenarios"
+harness = false

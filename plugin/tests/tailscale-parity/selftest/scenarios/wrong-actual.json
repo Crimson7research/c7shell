@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "id": "wrong-actual",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: declared fail, actual differs"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "call": {
+        "name": "setAcceptRoutes",
+        "args": [
+          true
+        ]
+      }
+    },
+    {
+      "wait": {
+        "contract": {
+          "acceptRoutes": true
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "set false"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "error-text",
+          "actual": "set maybe"
+        }
+      ],
+      "reason": "self-test"
+    }
+  }
+}

@@ -14,4 +14,9 @@ QtObject {
         acceptRoutes = on;
         writeError = "set " + on;
     }
+
+    // Asks the application to exit, as a crash before a result would end it.
+    function quit(code) {
+        Qt.exit(code);
+    }
 }

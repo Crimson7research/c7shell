@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "id": "precondition",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: a failed precondition"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "expect": {
+        "id": "setup",
+        "precondition": true,
+        "contract": {
+          "acceptRoutes": true
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "x"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "error-text",
+          "actual": ""
+        }
+      ],
+      "reason": "self-test"
+    }
+  }
+}

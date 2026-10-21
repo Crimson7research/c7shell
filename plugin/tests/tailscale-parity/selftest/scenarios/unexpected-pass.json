@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "id": "unexpected-pass",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: declared fail, but it passes"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "call": {
+        "name": "setAcceptRoutes",
+        "args": [
+          true
+        ]
+      }
+    },
+    {
+      "wait": {
+        "contract": {
+          "acceptRoutes": true
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "set true"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "error-text",
+          "actual": "set true"
+        }
+      ],
+      "reason": "self-test"
+    }
+  }
+}

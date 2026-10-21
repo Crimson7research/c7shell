@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "id": "wait-never",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: a wait never reached, declared fail"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "x"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "error-text",
+          "actual": ""
+        }
+      ],
+      "reason": "self-test"
+    }
+  }
+}
