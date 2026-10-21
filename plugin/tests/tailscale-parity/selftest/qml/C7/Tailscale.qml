@@ -34,6 +34,18 @@ QtObject {
         peers.append({ "hostName": hostName, "nodeId": nodeId, "online": true });
     }
 
+    function removePeer(row) {
+        peers.remove(row);
+    }
+
+    function movePeer(from, to) {
+        peers.move(from, to, 1);
+    }
+
+    function setOnline(row, on) {
+        peers.setProperty(row, "online", on);
+    }
+
     // Asks the application to exit, as a crash before a result would end it.
     function quit(code) {
         Qt.exit(code);

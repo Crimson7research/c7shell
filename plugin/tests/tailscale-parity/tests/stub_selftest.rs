@@ -263,6 +263,14 @@ fn the_model_reads(failures: &mut Vec<String>) {
     }
 }
 
+/// 13. Each model's own signals are counted from load as
+///     `<member>.<signal>`, for every model member.
+fn the_model_signals(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-signals.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: inserted-twice"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -277,6 +285,7 @@ fn parent() -> i32 {
     the_wait_cap(&mut failures);
     the_array_values(&mut failures);
     the_model_reads(&mut failures);
+    the_model_signals(&mut failures);
     finish("stub_selftest", &failures)
 }
 
