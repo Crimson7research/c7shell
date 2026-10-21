@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "corpus-fail",
+  "requirements": ["R-PARSE-02"],
+  "tag": "fix",
+  "clauses": [
+    "runner self-test: a corpus case whose member, row count and row each fail, with the values #286 publishes"
+  ],
+  "status": { "file": "captures/two-peers.json" },
+  "edits": [ { "op": "replace", "path": "/CurrentTailnet/Name", "value": "other.example" },
+             { "op": "remove", "path": "/Peer/nodekey:aaaa" } ],
+  "expect": {
+    "contract": { "tailnet": "example.com", "state": { "enum": "Running" } },
+    "peers": [ { "hostName": "bravo", "nodeId": "nCCC1CNTRL" } ],
+    "exitNodes": []
+  },
+  "on": { "cpp-286": { "result": "fail",
+    "failing": [
+      { "id": "contract.tailnet", "actual": "other.example" },
+      { "id": "exitNodes.count", "actual": 1 },
+      { "id": "peers[0]", "actual": { "hostName": "charlie", "nodeId": "nCCC1CNTRL" } }
+    ],
+    "reason": "runner self-test: the edits change what the expectations name" } }
+}

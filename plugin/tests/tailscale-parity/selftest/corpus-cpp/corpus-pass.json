@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "corpus-pass",
+  "requirements": ["R-PARSE-06"],
+  "tag": "parity",
+  "clauses": [
+    "runner self-test: a corpus case from a capture with an edit, a suggestion, contract members and both models' rows, all as #286 publishes them"
+  ],
+  "status": { "file": "captures/two-peers.json" },
+  "edits": [ { "op": "replace", "path": "/Self/HostName", "value": "edited" } ],
+  "suggest": { "json": { "ID": "nCCC1CNTRL" } },
+  "expect": {
+    "contract": { "state": { "enum": "Running" }, "tailnet": "example.com", "selfName": "self",
+                  "recommendedExitNodeId": "nCCC1CNTRL", "issues": [] },
+    "peers": [
+      { "nodeId": "nAAA1CNTRL", "hostName": "alpha", "online": true, "group": 0, "exitNodeOption": false },
+      { "nodeId": "nCCC1CNTRL", "hostName": "charlie", "exitNodeOption": true }
+    ],
+    "exitNodes": [ { "nodeId": "nCCC1CNTRL" } ]
+  },
+  "on": { "cpp-286": { "result": "pass" } }
+}
