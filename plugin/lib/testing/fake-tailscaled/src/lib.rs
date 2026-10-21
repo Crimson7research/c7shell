@@ -13,4 +13,5 @@
 mod request;
 mod server;
 
-pub use server::{ClientId, Fake, State, FAILURE_BOUND};
+pub use request::Request;
+pub use server::{AfterReply, ClientId, Fake, Handler, State, FAILURE_BOUND};

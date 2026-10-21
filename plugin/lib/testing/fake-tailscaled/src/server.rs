@@ -6,7 +6,7 @@
 //! `plugin/lib/testing/fakesocketserver.{h,cpp}` from those requirements.
 
 use std::fs::{self, DirBuilder};
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use crate::request::{declared_body_size, Request};
 
 /// The bound on every wait in the fake and its tests. A passing test never
 /// reaches it; it only turns a hang into a failure. Nothing asserts on time.
@@ -23,18 +25,137 @@ pub const FAILURE_BOUND: Duration = Duration::from_secs(10);
 /// A client's id: its position in accept order, counted from 1.
 pub type ClientId = usize;
 
+/// Answers one request: the bytes to write back, or None to write nothing.
+/// It runs under the fake's lock, so it must not call back into the fake.
+pub type Handler = Box<dyn Fn(&Request) -> Option<Vec<u8>> + Send + Sync>;
+
+/// What happens to a client after a handler reply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AfterReply {
+    CloseAfterReply,
+    KeepOpen,
+}
+
 /// One accepted client.
 pub(crate) struct ClientEntry {
     pub(crate) id: ClientId,
     pub(crate) stream: Arc<UnixStream>,
     pub(crate) connected: bool,
+    /// The fake has closed it: nothing it sends afterwards is a request.
+    pub(crate) closed: bool,
+    pub(crate) received: usize,
+    pending: Vec<u8>,
+}
+
+impl ClientEntry {
+    /// Writes `bytes` whole; false when the client cannot take them.
+    pub(crate) fn write(&mut self, bytes: &[u8]) -> bool {
+        if !self.connected || self.closed {
+            return false;
+        }
+        (&*self.stream).write_all(bytes).is_ok()
+    }
+
+    pub(crate) fn close(&mut self) {
+        self.closed = true;
+        let _ = self.stream.shutdown(Shutdown::Both);
+    }
 }
 
 /// Everything the fake knows, behind one lock. Every change is followed by
 /// a `notify_all` on the fake's condition variable.
-#[derive(Default)]
 pub struct State {
     pub(crate) clients: Vec<ClientEntry>,
+    requests: Vec<Request>,
+    handler: Option<Handler>,
+    after: AfterReply,
+    delimiter: Option<Vec<u8>>,
+}
+
+impl Default for State {
+    fn default() -> State {
+        State {
+            clients: Vec::new(),
+            requests: Vec::new(),
+            handler: None,
+            after: AfterReply::CloseAfterReply,
+            delimiter: None,
+        }
+    }
+}
+
+impl State {
+    /// Every request recorded, in order.
+    pub fn requests(&self) -> &[Request] {
+        &self.requests
+    }
+
+    /// The bytes received from client `id` so far, framed or not.
+    pub fn received(&self, id: ClientId) -> usize {
+        self.client(id).map_or(0, |c| c.received)
+    }
+
+    pub(crate) fn client(&self, id: ClientId) -> Option<&ClientEntry> {
+        self.clients.iter().find(|c| c.id == id)
+    }
+
+    pub(crate) fn client_mut(&mut self, id: ClientId) -> Option<&mut ClientEntry> {
+        self.clients.iter_mut().find(|c| c.id == id)
+    }
+
+    /// Takes `bytes` from client `id`, then frames and answers what is whole.
+    fn receive(&mut self, id: ClientId, bytes: &[u8]) {
+        let Some(client) = self.client_mut(id) else { return };
+        client.received += bytes.len();
+        if client.closed {
+            return;
+        }
+        let Some(delimiter) = self.delimiter.clone() else {
+            // Without a delimiter a request is whatever one read returned.
+            self.answer(id, Request::new(id, self.requests.len(), bytes, b"", b""));
+            return;
+        };
+        self.client_mut(id).unwrap().pending.extend_from_slice(bytes);
+        loop {
+            let client = self.client_mut(id).unwrap();
+            if client.closed {
+                client.pending.clear();
+                return;
+            }
+            let Some(at) = find(&client.pending, &delimiter) else { return };
+            let body = declared_body_size(&client.pending[..at]);
+            let end = at + delimiter.len() + body;
+            if client.pending.len() < end {
+                return;
+            }
+            let message: Vec<u8> = client.pending.drain(..end).collect();
+            let request =
+                Request::new(id, self.requests.len(), &message[..at], &delimiter, &message[at + delimiter.len()..]);
+            self.answer(id, request);
+        }
+    }
+
+    /// Records `request`, then answers it with the handler.
+    fn answer(&mut self, id: ClientId, request: Request) {
+        let reply = self.handler.as_ref().and_then(|h| h(&request));
+        self.requests.push(request);
+        let after = self.after;
+        let client = self.client_mut(id).unwrap();
+        if let Some(reply) = reply {
+            client.write(&reply);
+            if after == AfterReply::CloseAfterReply {
+                client.close();
+            }
+        }
+    }
+}
+
+/// The first position of `needle` in `hay`.
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return None;
+    }
+    hay.windows(needle.len()).position(|w| w == needle)
 }
 
 pub(crate) struct Shared {
@@ -99,6 +220,38 @@ impl Fake {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Answers every request with `handler`, then closes the client or keeps
+    /// it open. With a `delimiter`, a request is what comes before each
+    /// delimiter, plus the body its `Content-Length` declares, however the
+    /// reads split it. Without one, a request is whatever one read returns.
+    pub fn on_request(&self, handler: Handler, after: AfterReply, delimiter: Option<&[u8]>) {
+        let mut state = self.shared.lock();
+        state.handler = Some(handler);
+        state.after = after;
+        state.delimiter = delimiter.filter(|d| !d.is_empty()).map(<[u8]>::to_vec);
+    }
+
+    /// Every request recorded, in order.
+    pub fn requests(&self) -> Vec<Request> {
+        self.shared.lock().requests.clone()
+    }
+
+    /// Waits until `f` returns Some and returns its value. Panics, naming
+    /// `what`, at FAILURE_BOUND.
+    pub fn wait_until<T>(&self, what: &str, f: impl FnMut(&State) -> Option<T>) -> T {
+        self.wait_until_within(what, FAILURE_BOUND, f)
+    }
+
+    /// [`Fake::wait_until`] with another bound.
+    pub fn wait_until_within<T>(&self, what: &str, bound: Duration, f: impl FnMut(&State) -> Option<T>) -> T {
+        wait_for(&self.shared, what, bound, f).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// Like [`Fake::wait_until`], but returns the failure instead of panicking.
+    pub fn wait_for<T>(&self, what: &str, f: impl FnMut(&State) -> Option<T>) -> Result<T, String> {
+        wait_for(&self.shared, what, FAILURE_BOUND, f)
+    }
 }
 
 /// Binds `path` and returns the listener and the socket's inode.
@@ -142,7 +295,14 @@ fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
         let id = {
             let mut state = shared.lock();
             let id = state.clients.len() + 1;
-            state.clients.push(ClientEntry { id, stream: stream.clone(), connected: true });
+            state.clients.push(ClientEntry {
+                id,
+                stream: stream.clone(),
+                connected: true,
+                closed: false,
+                received: 0,
+                pending: Vec::new(),
+            });
             id
         };
         shared.changed.notify_all();
@@ -157,7 +317,10 @@ fn read_loop(id: ClientId, stream: Arc<UnixStream>, shared: Arc<Shared>) {
     loop {
         match (&*stream).read(&mut buf) {
             Ok(0) => break,
-            Ok(_) => {}
+            Ok(n) => {
+                shared.lock().receive(id, &buf[..n]);
+                shared.changed.notify_all();
+            }
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(_) => break,
         }
@@ -194,5 +357,22 @@ impl Drop for Fake {
                 let _ = fs::remove_file(&self.path);
             }
         }
+    }
+}
+
+/// Waits on the fake's condition variable until `f` returns Some, or fails
+/// naming `what` once `bound` has passed.
+fn wait_for<T>(shared: &Shared, what: &str, bound: Duration, mut f: impl FnMut(&State) -> Option<T>) -> Result<T, String> {
+    let deadline = Instant::now() + bound;
+    let mut state = shared.lock();
+    loop {
+        if let Some(v) = f(&state) {
+            return Ok(v);
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!("the fake never reached: {what}"));
+        }
+        state = shared.changed.wait_timeout(state, deadline - now).unwrap_or_else(|e| e.into_inner()).0;
     }
 }
