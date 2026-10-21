@@ -83,8 +83,8 @@ fn the_implementation(failures: &mut Vec<String>) {
 }
 
 /// 3. A pass, and the child's environment: only the keep-list, the private
-///    directories, dead buses, the platform, the UTC time zone and
-///    TS_SOCKET.
+///    directories, dead buses, the platform, a fixed zone three hours
+///    east of UTC and TS_SOCKET.
 fn a_pass_and_its_environment(failures: &mut Vec<String>) {
     let pass = run_stub("scenarios/pass.json");
     verdict(failures, &pass, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
@@ -98,8 +98,10 @@ fn a_pass_and_its_environment(failures: &mut Vec<String>) {
     };
     check(failures, names.iter().all(|n| allowed(n)), &format!("the child's environment is the allowlist: {names:?}"));
     // A local time read from a zone-less date is the host's unless the
-    // child names its zone.
-    check(failures, env.get("TZ").is_some_and(|v| v == "UTC"), &format!("the child's TZ is UTC: {:?}", env.get("TZ")));
+    // child names its zone. Not UTC: there local time and UTC are the same
+    // instant, which hides a date built as local time from UTC fields.
+    let fixed = env.get("TZ").is_some_and(|v| v == "<+03>-3");
+    check(failures, fixed, &format!("the child's TZ is UTC+3 with no DST: {:?}", env.get("TZ")));
     let under_root = |k: &str| env.get(k).is_some_and(|v| v.starts_with(pass.root.to_str().unwrap()));
     for k in ["TS_SOCKET", "HOME", "XDG_RUNTIME_DIR", "TMPDIR", "PATH"] {
         check(failures, under_root(k), &format!("the child's {k} is under its private root: {:?}", env.get(k)));

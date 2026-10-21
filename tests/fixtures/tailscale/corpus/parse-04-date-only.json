@@ -27,11 +27,11 @@
         {
           "id": "contract.keyExpiry",
           "actual": {
-            "date": "2027-04-11T00:00:00.000Z"
+            "date": "2027-04-10T21:00:00.000Z"
           }
         }
       ],
-      "reason": "#286 reads KeyExpiry with QDateTime::fromString(..., Qt::ISODate) (plugin/lib/tailscale/StatusParser.cpp:118), which reads a date alone as local midnight (UTC in the harness's child, TZ=UTC); decision 11 reads it as unparsable"
+      "reason": "#286 reads KeyExpiry with QDateTime::fromString(..., Qt::ISODate) (plugin/lib/tailscale/StatusParser.cpp:118), which reads a date alone as local midnight (UTC+3 in the harness's child, TZ=<+03>-3); decision 11 reads it as unparsable"
     },
     "rust": {"result": "pass"}
   }
