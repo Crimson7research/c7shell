@@ -786,6 +786,7 @@ stub paru 'case "$*" in
     echo "==> ERROR: A failure occurred in build()."
     echo " -> error making: other-pkg-exit status 4"
     echo "error: packages failed to build: broken-pkg-1-1"
+    echo ":: error: pikaur could not install other-pkg"
     for i in $(seq 30); do echo "upgrading visual-studio-code-bin... $i"; done
     echo "(3/3) Updating the desktop file MIME type cache..."
     exit 1 ;;
@@ -794,7 +795,8 @@ exit 0'
 run_failing 'broken-pkg 1 -> 2\n'
 [[ $(ev done <<<"$out" | field failed) == aur ]] || fail "the failed AUR run named another source:\n$out"
 for want in "packages failed to build: broken-pkg-1-1" "==> ERROR: A failure occurred in build()." \
-            " -> error making: other-pkg-exit status 4" "Updating the desktop file MIME type cache" \
+            " -> error making: other-pkg-exit status 4" ":: error: pikaur could not install other-pkg" \
+            "Updating the desktop file MIME type cache" $'\n...\n' \
             "c7up: paru exited with status 1"; do
   [[ $err == *"$want"* ]] || fail "the AUR error text lost \"$want\":\n$err"
 done
@@ -804,11 +806,18 @@ grep -q 'c7up: paru exited with status 1' "$(ev done <<<"$out" | field log)" \
 # A failure with no error line still says something: the end of that phase's
 # own output and the exit status -- and nothing from the phase before it or
 # the run before it, which share the day's log.
-stub paru 'case "$*" in *-Sua*) echo "segfault somewhere"; exit 139 ;; esac; exit 0'
+# "error" inside a package name is not an error line.
+stub paru 'case "$*" in *-Sua*)
+  echo "(1/40) upgrading libgpg-error"; echo "installing perl-error"
+  for i in $(seq 20); do echo "building $i"; done
+  echo "segfault somewhere"; exit 139 ;; esac; exit 0'
 run_failing 'broken-pkg 1 -> 2\n'
 [[ $err == *"segfault somewhere"* && $err == *"c7up: paru exited with status 139"* ]] \
   || fail "an AUR failure without an error line lost its output or status:\n$err"
 [[ $err != *"upgrading mesa"* ]] || fail "the repo phase's output leaked into the AUR error:\n$err"
+[[ $err != *"libgpg-error"* && $err != *"perl-error"* ]] \
+  || fail "a package named *error* was listed as an error line:\n$err"
+[[ $err != *$'\n...\n'* ]] || fail "the separator appeared with no scrolled-out error above it:\n$err"
 [[ $err != *"packages failed to build"* ]] || fail "the previous run's error leaked into this one:\n$err"
 
 # pacman prints the detail under its error line: the files in conflict, the
@@ -842,6 +851,8 @@ esac
 exit 0'
 run_failing '' 'org.example.App 1 -> 2\n'
 [[ $(ev done <<<"$out" | field failed) == flatpak ]] || fail "the failed flatpak run named another source:\n$out"
+(($(grep -c 'There were one or more errors' <<<"$err") == 1)) \
+  || fail "an error line inside the tail was listed twice:\n$err"
 [[ $err == *"no space left on device"* && $err == *"c7up: flatpak exited with status 1"* ]] \
   || fail "the flatpak error text lost its reason or status:\n$err"
 stub flatpak 'exit 0'

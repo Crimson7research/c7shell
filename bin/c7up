@@ -481,7 +481,8 @@ do_run() {
     local status out errs
     case $1:$3 in
       # root_run's own codes: the session died, not pacman.
-      pacman:125|pacman:126) status="c7up: the root session ended during the update (status $3)" ;;
+      pacman:125) status="c7up: there was no root session to run the update (status 125)" ;;
+      pacman:126) status="c7up: the root session ended during the update (status 126)" ;;
       *) status="c7up: $2 exited with status $3" ;;
     esac
     printf '%s\n' "$status" >> "$log"
@@ -542,8 +543,10 @@ do_run() {
   cat "$statedir"/last_updates_check_{packages,aur,flatpak} > "$statedir/last_updates_check"
 
   if [[ -n $failed ]]; then
-    # pacman rolls its own transaction back; nothing is left half-applied, and
-    # saying so is the difference between "retry" and "reinstall the machine".
+    # A failed pacman phase rolls its own transaction back; an AUR or flatpak
+    # failure leaves what finished before it installed. `failed` says which,
+    # and the wizard words it accordingly -- the difference between "retry"
+    # and "reinstall the machine".
     emit "$(printf '{"ev":"done","ok":false,"failed":%s,"done":%s,"total":%s,"secs":%s,"log":%s,"error":%s,"actions":%s}' \
       "$(j "$failed")" "$(cat "$progress")" "$total" "$(( $(date +%s) - started ))" "$(j "$log")" \
       "$(j "$fail_text")" \
