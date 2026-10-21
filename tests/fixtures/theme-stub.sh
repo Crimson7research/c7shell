@@ -85,6 +85,7 @@ QtObject {
   readonly property int radiusCard: 14
   readonly property int radiusTile: 10
   readonly property int radiusPip: 7
+  readonly property int radiusMenuRow: 8
 
   // The real icons, so an icon this design names but nobody drew is a visible
   // warning here rather than a blank tile on someone's screen.
