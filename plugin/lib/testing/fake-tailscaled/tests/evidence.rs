@@ -243,7 +243,9 @@ fn scenarios_agree_with_the_evidence() {
             );
         }
     }
-    let _ = covered;
+    for r in ev.requirements.iter().filter(|r| r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(306)) {
+        assert!(covered.contains(&r.id), "{}: assigned to #306, but no scenario runs it", r.id);
+    }
 }
 
 #[test]
