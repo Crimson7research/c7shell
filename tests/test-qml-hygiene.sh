@@ -416,13 +416,17 @@ $unreachable"
   fi
 fi
 
-
+# --------------------------------------------------------------------------
 # The launcher's providers each declare their own name (#96). The chip row and
-# the calc index derive from root.providers, so adding a provider is one edit:
-# a second literal list of names, or calc's position as a bare number, drifts.
-launcher=$src/Modules/Launcher/CommandWindow.qml
-if grep -nE 'model: *\[ *"apps"|calcIndex: *[0-9]' "$launcher"; then
-  fail "CommandWindow.qml repeats the provider list instead of deriving it from root.providers"
+# calcIndex derive from root.providers, so adding a provider is one edit. A
+# literal list of names, or a provider's position as a bare number, is a second
+# copy that drifts.
+# --------------------------------------------------------------------------
+hits=$(grep -nE "\[[[:space:]]*[\"'](apps|actions|windows|calc|files)[\"']|(calcIndex|activeIndex)[[:space:]]*(:|=)[[:space:]]*[1-9]" \
+  "$src/Modules/Launcher/CommandWindow.qml" || true)
+if [[ -n $hits ]]; then
+  fail "CommandWindow.qml repeats the provider list instead of deriving it from
+  root.providers and each provider's name:\n$hits"
 fi
 
 echo 'test-qml-hygiene.sh: all checks passed'
