@@ -17,8 +17,10 @@ Scope {
   property int activeIndex: 0
   property int selected: 0
 
+  // The one list of providers. The chip row and calcIndex both derive from it
+  // through each provider's own name, so adding one is a single edit here.
   readonly property var providers: [apps, actions, windows, calc, files]
-  readonly property int calcIndex: 3
+  readonly property int calcIndex: root.providers.findIndex(p => p.name === "calc")
   readonly property var current: root.providers[root.activeIndex]
 
   onActiveIndexChanged: root.refresh()
@@ -213,7 +215,9 @@ Scope {
             spacing: 6
 
             Repeater {
-              model: ["apps", "actions", "windows", "calc", "files"]
+              // Names, not the provider objects: plain strings, built once from
+              // a list that never changes while the window lives.
+              model: root.providers.map(p => p.name)
 
               Rectangle {
                 id: chip
@@ -231,7 +235,7 @@ Scope {
                   anchors.centerIn: parent
                   text: chip.modelData
                   font { family: Theme.fontMono; pixelSize: 11; weight: chip.on ? 600 : 500 }
-                  color: chip.on ? Theme.text : Theme.text2
+                  color: chip.on ? Theme.textOnAccent : Theme.text2
                 }
                 MouseArea {
                   anchors.fill: parent
