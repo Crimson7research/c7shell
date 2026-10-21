@@ -62,9 +62,8 @@ while read -r dir; do
   # nearly every file rather than by shell.qml.
   case $rel in Assets*|scripts*|bin*|docs*|Theme|Common) continue ;; esac
   grep -rqF "import $mod" "$src" && continue
-  # A standalone entry point is loaded by path rather than imported --
-  # Modules/SharePicker/PickerApp.qml is launched by bin/screenshare-picker.sh
-  # for xdph. Those are fine; a module nothing reaches at all is not.
+  # A standalone entry point is loaded by path rather than imported, by a
+  # script or a launcher. Those are fine; a module nothing reaches at all is not.
   entry=0
   while read -r q; do
     grep -rqF "$(basename "$q")" "$src"/bin "$src"/scripts "$here/.." --include='*.sh' \
@@ -270,8 +269,6 @@ done < <(find "$src" -name '*.qml')
 #                                   palette, which is not the shell's
 #   #000000 / #ffffff               not palette entries: the ends of a mixing
 #                                   range and the plain black/white overlays
-#   Modules/SharePicker/            bypasses Theme entirely -- that is #95, and
-#                                   its entry point has to move first
 #   Common/Hex.js, and the
 #   Settings selfcheck that loads it  the colour maths itself: the literals are
 #                                   worked examples and test vectors for
@@ -288,8 +285,7 @@ hits=$(
           -e '^quickshell/c7shell/palette\.json$' \
           -e '^sddm/themes/c7shell/PaletteStore\.qml$' \
           -e '^quickshell/c7shell/Common/Hex\.js$' \
-          -e '^quickshell/c7shell/Modules/Settings/selfcheck\.mjs$' \
-          -e '^quickshell/c7shell/Modules/SharePicker/' || true; } \
+          -e '^quickshell/c7shell/Modules/Settings/selfcheck\.mjs$' || true; } \
     | xargs -0 grep -nIE '#[0-9a-fA-F]{6}\b' 2>/dev/null \
     | grep -viE '#(000000|ffffff)\b' \
     | grep -v 'palette-literal-ok' || true

@@ -437,6 +437,7 @@ file, which it then names; 2 on bad options.
 | `hypr/xdph.conf` | points xdph's screencopy picker at the shell's own picker |
 | `quickshell/c7shell/shell.qml` | shell entry point |
 | `quickshell/c7shell/preview.qml` | preview harness; must sit here to resolve `qs.*`, not shipped |
+| `quickshell/c7shell/sharepicker.qml` | screenshare picker entry point, launched by `bin/screenshare-picker.sh`; must sit here to resolve `qs.*` |
 | `plugin/` | the `C7` QML module in C++; installed to `/usr/lib/qt6/qml/C7` |
 | `tools/qml-imports` | builds the module tree editors resolve `qs.*` against |
 | `tools/qml-preview` | runs one component in a window of its own |

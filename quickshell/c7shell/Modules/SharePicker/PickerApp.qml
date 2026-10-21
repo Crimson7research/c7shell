@@ -1,16 +1,16 @@
-//@ pragma UseQApplication
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Effects
+import qs.Theme
+import qs.Common
 
-// 8a screenshare picker. Runs as its own qs instance (see
-// bin/screenshare-picker.sh); writes "[SELECTION]/..." to $XDPH_OUT and
-// quits. Cancel = quit without writing.
+// 8a screenshare picker. Runs as its own qs instance, rooted at
+// ../../sharepicker.qml (see bin/screenshare-picker.sh); writes
+// "[SELECTION]/..." to $XDPH_OUT and quits. Cancel = quit without writing.
 // ponytail: screens + windows only; region needs a drag overlay — the
 // region:OUT@x,y,w,h protocol is ready whenever it is worth building.
-ShellRoot {
+Scope {
   id: root
 
   property string tab: "screens"
@@ -54,19 +54,19 @@ ShellRoot {
     WlrLayershell.namespace: "c7shell-sharepicker"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-    color: Qt.rgba(4/255, 4/255, 6/255, 0.6)
+    // The mockup's rgba(4,4,6,.6); Theme.bg is a shade off it, as in
+    // CaptureOverlay. Below the 0.7 ignore_alpha of hypr/conf/rules.lua, so the
+    // dim stays sharp: the dialog is the only thing that needs blur here.
+    color: Theme.alpha(Theme.bg, 0.6)
 
     MouseArea { anchors.fill: parent; onClicked: Qt.quit() }   // click-away cancels
 
-    Rectangle {   // the dialog; blur handled by hypr layer rules (alpha ≥ .7)
+    GlassPanel {   // the dialog; blur handled by hypr layer rules (alpha ≥ .7)
       id: dialog
       anchors.centerIn: parent
       width: 560
       height: 420
-      radius: 20
-      color: Qt.rgba(15/255, 15/255, 19/255, 0.80)
-      border.width: 1
-      border.color: Qt.rgba(1, 1, 1, 0.08)
+      radius: Theme.radiusWindow
       MouseArea { anchors.fill: parent }   // swallow clicks inside
 
       Column {
@@ -75,8 +75,8 @@ ShellRoot {
 
         Text {
           text: "share your screen"
-          font { family: "JetBrains Mono"; pixelSize: 13; weight: 600 }
-          color: "#f0eff1"
+          font { family: Theme.fontMono; pixelSize: 13; weight: 600 }
+          color: Theme.text
         }
 
         Row {   // screens / windows segmented tabs
@@ -85,14 +85,14 @@ ShellRoot {
             model: ["screens", "windows"]
             Rectangle {
               required property string modelData
-              width: tabLabel.implicitWidth + 20; height: 24; radius: 9
-              color: root.tab === modelData ? "#e53a44" : Qt.rgba(1, 1, 1, 0.05)
+              width: tabLabel.implicitWidth + 20; height: 24; radius: Theme.radiusChip
+              color: root.tab === modelData ? Theme.accent : Theme.surface05
               Text {
                 id: tabLabel
                 anchors.centerIn: parent
                 text: parent.modelData
-                font { family: "JetBrains Mono"; pixelSize: 10; weight: 600 }
-                color: root.tab === parent.modelData ? "#ffffff" : Qt.rgba(240/255, 239/255, 241/255, 0.55)
+                font { family: Theme.fontMono; pixelSize: 10; weight: 600 }
+                color: root.tab === parent.modelData ? Theme.textOnAccent : Theme.text2
               }
               MouseArea { anchors.fill: parent; onClicked: root.tab = parent.modelData }
             }
@@ -115,10 +115,10 @@ ShellRoot {
               Rectangle {
                 required property var modelData
                 required property int index
-                width: 254; height: 170; radius: 13
-                color: Qt.rgba(1, 1, 1, 0.04)
+                width: 254; height: 170; radius: Theme.radiusPreview
+                color: Theme.surface04
                 border.width: 2
-                border.color: root.selScreen === index ? "#e53a44" : Qt.rgba(1, 1, 1, 0.08)
+                border.color: root.selScreen === index ? Theme.accent : Theme.hairline
 
                 Column {
                   anchors { fill: parent; margins: 8 }
@@ -130,16 +130,16 @@ ShellRoot {
                   }
                   Text {
                     text: `${parent.parent.modelData.name} · ${parent.parent.modelData.width}×${parent.parent.modelData.height}`
-                    font { family: "JetBrains Mono"; pixelSize: 10; weight: 500 }
-                    color: Qt.rgba(240/255, 239/255, 241/255, 0.55)
+                    font { family: Theme.fontMono; pixelSize: 10; weight: 500 }
+                    color: Theme.text2
                   }
                 }
-                Text {   // crimson check on the selected card
+                Text {   // accent check on the selected card
                   visible: root.selScreen === parent.index
                   anchors { top: parent.top; right: parent.right; margins: 8 }
                   text: "✓"
-                  font { family: "JetBrains Mono"; pixelSize: 12; weight: 700 }
-                  color: "#e53a44"
+                  font { family: Theme.fontMono; pixelSize: 12; weight: 700 }
+                  color: Theme.accent
                 }
                 MouseArea { anchors.fill: parent; onClicked: root.selScreen = parent.index }
               }
@@ -155,26 +155,24 @@ ShellRoot {
               model: root.windows
               Rectangle {
                 required property var modelData
-                width: parent.width; height: 40; radius: 10
-                color: root.selWindow === modelData.handle
-                  ? Qt.rgba(229/255, 58/255, 68/255, 0.14) : Qt.rgba(1, 1, 1, 0.04)
+                width: parent.width; height: 40; radius: Theme.radiusTile
+                color: root.selWindow === modelData.handle ? Theme.accentFill : Theme.surface04
                 border.width: 1
-                border.color: root.selWindow === modelData.handle
-                  ? Qt.rgba(229/255, 58/255, 68/255, 0.30) : Qt.rgba(1, 1, 1, 0.07)
+                border.color: root.selWindow === modelData.handle ? Theme.accentBorder : Theme.surface07
                 Column {
                   anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
                   spacing: 2
                   Text {
                     text: parent.parent.modelData.cls
-                    font { family: "JetBrains Mono"; pixelSize: 11; weight: 600 }
-                    color: "#f0eff1"
+                    font { family: Theme.fontMono; pixelSize: 11; weight: 600 }
+                    color: Theme.text
                   }
                   Text {
                     text: parent.parent.modelData.title
                     width: dialog.width - 64
                     elide: Text.ElideRight
-                    font { family: "JetBrains Mono"; pixelSize: 9; weight: 400 }
-                    color: Qt.rgba(240/255, 239/255, 241/255, 0.55)
+                    font { family: Theme.fontMono; pixelSize: 9; weight: 400 }
+                    color: Theme.text2
                   }
                 }
                 MouseArea {
@@ -193,13 +191,13 @@ ShellRoot {
           anchors.right: parent.right
           spacing: 8
           Rectangle {
-            width: cancelLabel.implicitWidth + 24; height: 28; radius: 9
-            color: Qt.rgba(1, 1, 1, 0.05)
+            width: cancelLabel.implicitWidth + 24; height: 28; radius: Theme.radiusChip
+            color: Theme.surface05
             Text {
               id: cancelLabel
               anchors.centerIn: parent; text: "cancel"
-              font { family: "JetBrains Mono"; pixelSize: 10; weight: 600 }
-              color: Qt.rgba(240/255, 239/255, 241/255, 0.55)
+              font { family: Theme.fontMono; pixelSize: 10; weight: 600 }
+              color: Theme.text2
             }
             MouseArea { anchors.fill: parent; onClicked: Qt.quit() }
           }
@@ -207,8 +205,8 @@ ShellRoot {
             readonly property bool ready:
               (root.tab === "screens" && root.selScreen >= 0)
               || (root.tab === "windows" && root.selWindow !== "")
-            width: shareLabel.implicitWidth + 24; height: 28; radius: 9
-            color: "#e53a44"
+            width: shareLabel.implicitWidth + 24; height: 28; radius: Theme.radiusChip
+            color: Theme.accent
             opacity: ready ? 1 : 0.35
             Text {
               id: shareLabel
@@ -216,8 +214,8 @@ ShellRoot {
               text: root.tab === "screens" && root.selScreen >= 0
                 ? `share ${Quickshell.screens[root.selScreen].name} →`
                 : root.selWindow !== "" ? `share ${root.selWindowLabel} →` : "share →"
-              font { family: "JetBrains Mono"; pixelSize: 10; weight: 700 }
-              color: "#ffffff"
+              font { family: Theme.fontMono; pixelSize: 10; weight: 700 }
+              color: Theme.textOnAccent
             }
             MouseArea { anchors.fill: parent; enabled: parent.ready; onClicked: root.confirm() }
           }

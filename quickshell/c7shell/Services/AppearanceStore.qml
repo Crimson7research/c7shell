@@ -16,6 +16,13 @@ Singleton {
   // Settings pages assign straight to this — writes persist themselves.
   readonly property alias values: adapter
 
+  // Set by bin/screenshare-picker.sh. The picker is its own qs instance and
+  // reads Theme, which reads this store; without the flag every screen share
+  // would re-apply the compositor config, rerun the desktop exporter, re-send
+  // the wallpaper and write appearance.json, all from a dialog that only wants
+  // the accent. Read-only, the store still loads and follows the file.
+  readonly property bool readOnly: Quickshell.env("C7SHELL_APPEARANCE_READONLY") === "1"
+
   // -- clamped reads --------------------------------------------------------
   // Everything that leaves this file goes through these, never through the
   // adapter: the JSON is hand-editable, so its contents are untrusted input
@@ -68,11 +75,13 @@ Singleton {
     printErrors: false
 
     onFileChanged: file.reload()
-    onAdapterUpdated: file.writeAdapter()
+    onAdapterUpdated: if (!root.readOnly) file.writeAdapter()
     onLoaded: { apply.restart(); desktopExport.restart() }
     // Write the defaults out so hyprland has something to read on its next
     // config load, instead of both sides silently disagreeing.
-    onLoadFailed: err => { if (err === FileViewError.FileNotFound) file.writeAdapter() }
+    onLoadFailed: err => {
+      if (err === FileViewError.FileNotFound && !root.readOnly) file.writeAdapter()
+    }
 
     JsonAdapter {
       id: adapter
@@ -155,6 +164,7 @@ Singleton {
     id: desktopExport
     interval: 250
     onTriggered: {
+      if (root.readOnly) return
       if (exportProc.running) { desktopExport.restart(); return }
       exportProc.exec(["python3", root.exporter])
     }
@@ -201,6 +211,7 @@ Singleton {
   }
 
   function applyNow() {
+    if (root.readOnly) return
     if (hypr.running) { apply.restart(); return }
     hypr.exec(["hyprctl", "eval", root.luaConfig() + root.luaAnimations()])
   }
@@ -229,7 +240,7 @@ Singleton {
     id: wallpaperApply
     interval: 200
     onTriggered: {
-      if (root.wallpaper === "" || paper.running) return
+      if (root.readOnly || root.wallpaper === "" || paper.running) return
       // Nothing to push when the shell is the one drawing it: the window in
       // Modules/Wallpaper is bound to the same value and has already changed.
       if (root.shellDrawsWallpaper) return

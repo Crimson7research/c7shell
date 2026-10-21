@@ -16,8 +16,25 @@ set -euo pipefail
 picker=$repo/quickshell/c7shell/Modules/SharePicker/PickerApp.qml
 wrapper=$repo/quickshell/c7shell/bin/screenshare-picker.sh
 
+entry=$repo/quickshell/c7shell/sharepicker.qml
+
 [[ -f $picker ]]  || fail 'PickerApp.qml is missing'
 [[ -f $wrapper ]] || fail 'screenshare-picker.sh is missing'
+
+# The entry point sits at the config root so qs.Theme resolves; sharepicker.qml
+# says why (#95).
+[[ -f $entry ]] || fail 'sharepicker.qml, the picker entry point at the config root, is missing'
+grep -qE '^[[:space:]]*PickerApp[[:space:]]*\{' "$entry" \
+  || fail 'sharepicker.qml does not instantiate PickerApp'
+grep -qF 'quickshell/c7shell/sharepicker.qml' "$wrapper" \
+  || fail 'the wrapper does not launch sharepicker.qml, so qs.Theme does not resolve in the picker'
+grep -q 'ShellRoot' "$picker" \
+  && fail 'PickerApp.qml is still a ShellRoot: it is a component, and sharepicker.qml is the root'
+grep -q '^import qs.Theme$' "$picker" || fail 'PickerApp.qml does not import qs.Theme'
+# Theme pulls in AppearanceStore; the flag keeps it from re-applying the desktop
+# on every share (tests/test-appearance-readonly.sh tests the store itself).
+grep -qF 'C7SHELL_APPEARANCE_READONLY=1 qs -p' "$wrapper" \
+  || fail 'the wrapper starts the picker without C7SHELL_APPEARANCE_READONLY=1, so every share re-applies the appearance'
 
 # The selection writer must terminate the line, or xdph eats the last char.
 grep -qF 'printf "%s\\n"' "$picker" \
