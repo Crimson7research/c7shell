@@ -280,6 +280,84 @@ fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
     assert!(missing.is_empty(), "assigned to #307, but no scenario or corpus case runs: {missing:?}");
 }
 
+#[test]
+fn the_reader_finds_table_c_rows() {
+    let text = "## Table B\n\n| Requirement | Class | Scenarios | Corpus cases |\n|---|---|---|---|\n\
+                | R-X-01 | `cpp-suite` | `b` | — |\n\n## Table C: harness\n\n\
+                | Requirement | Class | Scenarios | Corpus cases | Notes |\n|---|---|---|---|---|\n\
+                | R-HTTP-02 | `harness-on-cpp` | `http-02-a`, `http-02-b` | — | see R-HTTP-01 |\n\
+                | R-PARSE-10 | `none` | — | `c` | |\n\n## After\n\n| R-Y-01 | `none` | `d` | — |\n";
+    let rows = evidence::table_c(text);
+    let set = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>();
+    assert_eq!(
+        rows,
+        vec![
+            evidence::HarnessRow {
+                id: "R-HTTP-02".into(),
+                class: "harness-on-cpp".into(),
+                scenarios: set(&["http-02-a", "http-02-b"]),
+                corpus: set(&[]),
+            },
+            evidence::HarnessRow {
+                id: "R-PARSE-10".into(),
+                class: "none".into(),
+                scenarios: set(&[]),
+                corpus: set(&["c"])
+            },
+        ]
+    );
+}
+
+/// The ids of the committed scenarios and corpus cases, by each
+/// requirement they name.
+fn tests_by_requirement() -> (BTreeMap<String, BTreeSet<String>>, BTreeMap<String, BTreeSet<String>>) {
+    let fixtures = repo().join("tests/fixtures/tailscale");
+    let mut scenarios: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for entry in std::fs::read_dir(fixtures.join("scenarios")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "json") {
+            let s = Scenario::load(&path).unwrap();
+            for id in s.requirements {
+                scenarios.entry(id).or_default().insert(s.id.clone());
+            }
+        }
+    }
+    let mut corpus: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for c in Case::load_dir(&fixtures.join("corpus"), fake_tailscaled::scenario::IMPLEMENTATIONS).unwrap() {
+        for id in c.requirements {
+            corpus.entry(id).or_default().insert(c.id.clone());
+        }
+    }
+    (scenarios, corpus)
+}
+
+/// Table C lists every R-HTTP, R-PARSE and R-GROUP requirement once, in
+/// order, with its evidence class and exactly the scenarios and corpus
+/// cases that name it.
+#[test]
+fn table_c_lists_the_harness_tests_of_each_http_parse_and_group_requirement() {
+    let ev = loaded();
+    let (scenarios, corpus) = tests_by_requirement();
+    let empty = BTreeSet::new();
+    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-"];
+    let want: Vec<evidence::HarnessRow> = ev
+        .requirements
+        .iter()
+        .filter(|r| areas.iter().any(|a| r.id.starts_with(a)))
+        .map(|r| evidence::HarnessRow {
+            id: r.id.clone(),
+            class: serde_json::to_value(r.class).unwrap().as_str().unwrap().to_string(),
+            scenarios: scenarios.get(&r.id).unwrap_or(&empty).clone(),
+            corpus: corpus.get(&r.id).unwrap_or(&empty).clone(),
+        })
+        .collect();
+    let got = evidence::table_c(&traceability());
+    assert_eq!(got.len(), want.len(), "Table C has {} rows, want {}", got.len(), want.len());
+    for (g, w) in got.iter().zip(&want) {
+        assert_eq!(g, w, "Table C's row for {} differs from evidence.json and the test files", w.id);
+    }
+}
+
 /// A corpus case runs harness-on-cpp clauses of the requirements it names.
 /// A `fix` case expects what #286 does not do, so every requirement it
 /// names is a `fix` one; a `parity` case may name a `fix` requirement whose
