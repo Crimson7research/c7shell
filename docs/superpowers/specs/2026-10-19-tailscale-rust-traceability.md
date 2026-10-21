@@ -669,7 +669,7 @@ checks every row against evidence.json and the test files.
 | R-PARSE-14 | `harness-on-cpp` | — | `parse-14-array-wrong-type`, `parse-14-bool-from-number-and-string`, `parse-14-exit-node-status-fields`, `parse-14-integer-null-self`, `parse-14-integer-wrong-type`, `parse-14-null-string-and-object`, `parse-14-object-wrong-type`, `parse-14-user-entry-not-an-object`, `parse-14-wrong-string-and-bool` | PR #307; deferred clauses: phase3-only |
 | R-GROUP-01 | `harness-on-cpp` | — | `group-01-tagged-test-comes-first`, `group-03-hand-built-order`, `status-idle` | PR #307 |
 | R-GROUP-02 | `harness-on-cpp` | — | `group-01-tagged-test-comes-first`, `status-idle` | PR #307 |
-| R-GROUP-03 | `harness-on-cpp` | — | `group-03-accented-names`, `group-03-full-lowercase`, `group-03-hand-built-order`, `group-03-outside-the-bmp`, `group-03-same-name-by-node-id`, `status-idle` | PR #307; fail on cpp-286: `group-03-full-lowercase`, `group-03-outside-the-bmp` |
+| R-GROUP-03 | `harness-on-cpp` | — | `group-03-accented-names`, `group-03-full-lowercase`, `group-03-full-not-simple-lowercase`, `group-03-hand-built-order`, `group-03-outside-the-bmp`, `group-03-same-name-by-node-id`, `status-idle` | PR #307; fail on cpp-286: `group-03-full-lowercase`, `group-03-outside-the-bmp` |
 | R-GROUP-04 | `harness-on-cpp` | — | `status-idle` | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-05 | `harness-on-cpp` | `group-05-flat-list` | — | PR #307 |
 | R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves`, `group-06-unmoved-row-updates` | — | PR #307; deferred clauses: harness-on-cpp (#309) |
