@@ -34,6 +34,9 @@ fi
 
 plugin=$repo/plugin
 mktmp
+# makepkg check() sets RUSTFLAGS and LTO flags the workspace cannot link with.
+# shellcheck source=fixtures/cargo-env.sh
+. "$repo/tests/fixtures/cargo-env.sh"
 log=$tmp/log
 # run_logged WHAT CMD... -- run CMD into $log; on failure show the log, then fail.
 run_logged() {

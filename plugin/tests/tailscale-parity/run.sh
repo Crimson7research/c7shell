@@ -19,4 +19,6 @@ done
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 qml=$("$here/build-reference.sh" | tail -1)
 cd "$here/../.."
+# shellcheck source=../../../tests/fixtures/cargo-env.sh
+. "$here/../../../tests/fixtures/cargo-env.sh"
 C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_REPEAT=$repeat cargo test --locked -q -p tailscale-parity --test scenarios
