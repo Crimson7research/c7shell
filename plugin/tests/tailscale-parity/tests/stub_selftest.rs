@@ -112,7 +112,7 @@ fn the_verdicts(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["cannot-run, as declared"], |o| *o == Outcome::CannotRun);
     check(failures, !r.started, "cannot-run: no child was started");
     let r = run_stub("scenarios/signal-count.json");
-    verdict(failures, &r, true, &["fail as declared: fired-twice"], |o| matches!(o, Outcome::Fail(_)));
+    verdict(failures, &r, true, &["fail as declared: fired-twice, never-fired"], |o| matches!(o, Outcome::Fail(_)));
 }
 
 /// 5. The errors, which never match a declaration.

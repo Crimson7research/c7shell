@@ -4,14 +4,15 @@
   "requirements": ["R-HTTP-01"],
   "tag": "fix",
   "evidence": "harness-on-cpp",
-  "clauses": ["runner self-test: a signal expectation fails on a wrong count, with the count that fired"],
+  "clauses": ["runner self-test: a signal expectation fails on a count above or below the one that fired, with the count that fired"],
   "needs": [],
   "fake": { "rules": [] },
   "steps": [
     { "start": {} },
     { "call": { "name": "setAcceptRoutes", "args": [true] } },
     { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1 } } },
-    { "expect": { "id": "fired-twice", "signal": { "name": "writeErrorChanged", "count": 2 } } }
+    { "expect": { "id": "fired-twice", "signal": { "name": "writeErrorChanged", "count": 2 } } },
+    { "expect": { "id": "never-fired", "signal": { "name": "writeErrorChanged", "count": 0 } } }
   ],
-  "on": { "stub": { "result": "fail", "failing": [ { "id": "fired-twice", "actual": 1 } ], "reason": "self-test" } }
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "fired-twice", "actual": 1 }, { "id": "never-fired", "actual": 1 } ], "reason": "self-test" } }
 }
