@@ -352,3 +352,25 @@ fn binary_and_library_record_the_same_bytes() {
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+
+/// The fake's own faults reach an out-of-process user: a write bounded by
+/// `set-write-timeout` that times out is reported by `faults`.
+#[test]
+fn faults_reports_a_write_that_timed_out() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let mut bin = Bin::start(&["--socket", path.to_str().unwrap()]);
+    bin.line();
+    assert_eq!(bin.ok(json!({ "cmd": "faults" })), json!([]));
+    let _client = Client::connect(&path);
+    bin.poll(json!({ "cmd": "connected" }), |r| r == &json!(1));
+    assert_eq!(bin.ok(json!({ "cmd": "set-write-timeout", "ms": 1 })), Value::Null);
+    // Far more than a Unix socket buffer holds, to a client that never reads.
+    assert_eq!(bin.ok(json!({ "cmd": "push-chunk", "bytes": "x".repeat(4 << 20) })), json!(0));
+    let faults = bin.ok(json!({ "cmd": "faults" }));
+    assert_eq!(faults.as_array().map(Vec::len), Some(1), "{faults}");
+    assert!(faults[0].as_str().unwrap().starts_with("a write to client 1 timed out"), "{faults}");
+    let answer = bin.send(json!({ "cmd": "set-write-timeout", "ms": 0 }));
+    assert_eq!(answer["ok"], json!(false), "a zero bound was accepted: {answer}");
+    assert!(bin.finish().success());
+}
