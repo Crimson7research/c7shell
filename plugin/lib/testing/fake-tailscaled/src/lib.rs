@@ -9,3 +9,7 @@
 //! Its behaviour is specified by R-FAKE-01 to R-FAKE-07 in
 //! `docs/superpowers/specs/2026-10-19-tailscale-rust-requirements.md`, and
 //! each is tested by the `r_fake_0N_*` tests under `tests/`.
+
+mod server;
+
+pub use server::{ClientId, Fake, State, FAILURE_BOUND};

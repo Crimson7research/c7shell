@@ -10,7 +10,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 
 use fake_tailscaled::Fake;
-use support::{Client, TestDir};
+use support::TestDir;
 
 #[test]
 fn r_fake_06_listens_at_the_given_path_for_this_user_only() {
