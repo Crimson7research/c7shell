@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "With 20 peers shown (status-idle.json), a notification brings a status without a Peer key as the next /status; once its tailnet example.net is seen (a positive wait on that snapshot, as group-12's kept rows wait for NeedsLogin), peers still has 20 rows and exitNodes 2, no rowsRemoved fired on either since the notification, and state reads Running. The tailnet name is seen only once the fake has served that second GET of /status. #286 replaces rows only from a Peer object (LocalApiTailscaleBackend.cpp:655-671), so it keeps them",
+    "With 20 peers shown (status-idle.json), a notification brings a status without a Peer key as the next /status; once its tailnet example.net is seen (a positive wait on that snapshot, as group-12's kept rows wait for NeedsLogin), peers still has 20 rows and exitNodes 2, no rowsRemoved fired on either since the notification, and state reads Running; one /status is recorded before the mark, so the no-Peer reply is served after it. The tailnet name is seen only once the fake has served that second GET of /status. #286 replaces rows only from a Peer object (LocalApiTailscaleBackend.cpp:655-671), so it keeps them",
     "A later status with \"Peer\":{} leaves 0 rows in both models: from status-idle.json's 20 peers and 2 exit nodes, a status without a Peer key (its tailnet example.net, seen first) and then one with \"Peer\":{}, each served as a change; peers and exitNodes read 0 rows once the Peer:{} status's tailnet example.info is seen (R-UI-06 fills both models before any property signal, so neither count races). #286 already clears both from an empty Peer object (LocalApiTailscaleBackend.cpp:655-671), so the scenario is tagged parity"
   ],
   "deferred": [
@@ -32,6 +32,7 @@
     {"wait": {"model": {"name": "peers", "count": 20}}},
     {"expect": {"id": "exit-nodes-before", "model": {"name": "exitNodes", "count": 2}}},
     {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"expect": {"id": "no-peer-not-served-yet", "precondition": true, "requests": {"match": {"method": "GET", "target": "/localapi/v0/status"}, "count": 1}}},
     {"mark": "before-no-peer"},
     {"fake": {"push_watch_line": "{\"State\":6}"}},
     {"wait": {"contract": {"tailnet": "example.net"}}},

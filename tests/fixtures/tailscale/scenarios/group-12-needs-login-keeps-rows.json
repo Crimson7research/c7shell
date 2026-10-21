@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "Backend half: from Running with 20 peers and 2 exit nodes (status-idle.json), a notification brings {\"BackendState\":\"NeedsLogin\",\"Peer\":null} as the next /status; once state NeedsLogin is seen, peers has 20 rows, exitNodes has 2, and no rowsRemoved, modelReset or rowsInserted fired on either model since the notification (a reset and refill from a cache is not keeping the rows, and rebuilds the delegates). #286 never counts a null Peer (StatusParser.cpp:126-131), so it keeps them too and the scenario is tagged parity"
+    "Backend half: from Running with 20 peers and 2 exit nodes (status-idle.json), a notification brings {\"BackendState\":\"NeedsLogin\",\"Peer\":null} as the next /status; once state NeedsLogin is seen, peers has 20 rows, exitNodes has 2, and no rowsRemoved, modelReset or rowsInserted fired on either model since the notification; one /status is recorded before the mark, so the NeedsLogin reply is served after it (a reset and refill from a cache is not keeping the rows, and rebuilds the delegates). #286 never counts a null Peer (StatusParser.cpp:126-131), so it keeps them too and the scenario is tagged parity"
   ],
   "deferred": [
     "the Running return with peersKnown, and the view half: phase3-only, both read or stage peersKnown, a contract addition"
@@ -29,6 +29,7 @@
     {"wait": {"model": {"name": "peers", "count": 20}}},
     {"wait": {"model": {"name": "exitNodes", "count": 2}}},
     {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"expect": {"id": "logout-not-served-yet", "precondition": true, "requests": {"match": {"method": "GET", "target": "/localapi/v0/status"}, "count": 1}}},
     {"mark": "before-logout"},
     {"fake": {"push_watch_line": "{\"State\":6}"}},
     {"wait": {"contract": {"state": {"enum": "NeedsLogin"}}}},

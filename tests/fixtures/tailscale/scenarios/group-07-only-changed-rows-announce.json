@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "Setting the same three peers again emits 0 dataChanged (and no row signal, reset or layout change): a served status whose peers are unchanged and whose tailnet name changed, counted once the new tailnet is seen",
+    "Setting the same three peers again emits 0 dataChanged (and no row signal, reset or layout change): a served status whose peers are unchanged and whose tailnet name changed, counted once the new tailnet is seen, and only after its mark: one /status is recorded before the mark, so the reply carrying example.org is served after it",
     "Changing one row's ownerName emits one dataChanged: a served status that renames charlie's owner, counted once charlie's row reads the new ownerName",
     "Setting an empty list leaves 0 rows, one rowsRemoved and no reset: a served status with \"Peer\":{}, counted once the row count reads 0"
   ],
@@ -35,6 +35,7 @@
     {"wait": {"model": {"name": "peers", "count": 3}}},
     {"wait": {"model": {"name": "peers", "row": 2, "values": {"nodeId": "nCCC1CNTRL", "ownerName": "Other Person"}}}},
     {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"expect": {"id": "same-not-served-yet", "precondition": true, "requests": {"match": {"method": "GET", "target": "/localapi/v0/status"}, "count": 1}}},
     {"mark": "before-same"},
     {"fake": {"push_watch_line": "{\"State\":6}"}},
     {"wait": {"contract": {"tailnet": "example.org"}}},
