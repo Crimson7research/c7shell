@@ -87,6 +87,8 @@ pub(crate) struct ClientEntry {
     pub(crate) parked: Option<Parked>,
     pub(crate) watch: bool,
     pending: Vec<u8>,
+    /// Writes that failed through the fake's fault, in order.
+    faults: Vec<String>,
 }
 
 impl ClientEntry {
@@ -95,11 +97,16 @@ impl ClientEntry {
         if !self.connected || self.closed {
             return false;
         }
-        let ok = (&*self.stream).write_all(bytes).is_ok();
-        if ok {
-            self.written += bytes.len();
+        match (&*self.stream).write_all(bytes) {
+            Ok(()) => {
+                self.written += bytes.len();
+                true
+            }
+            Err(e) => {
+                self.faults.extend(write_fault(self.id, &e));
+                false
+            }
         }
-        ok
     }
 
     /// Takes pushed bytes: connected, not closed, not held, not parked.
@@ -143,6 +150,9 @@ pub struct State {
     hold_fragment: Option<Vec<u8>>,
     disconnects: usize,
     script: Option<Compiled>,
+    /// Failures inside the fake that are not a client's doing.
+    faults: Vec<String>,
+    write_timeout: Duration,
 }
 
 impl Default for State {
@@ -156,6 +166,8 @@ impl Default for State {
             hold_fragment: None,
             disconnects: 0,
             script: None,
+            faults: Vec::new(),
+            write_timeout: FAILURE_BOUND,
         }
     }
 }
@@ -205,6 +217,12 @@ impl State {
     /// The clients connected now.
     pub fn connected_count(&self) -> usize {
         self.clients.iter().filter(|c| c.connected).count()
+    }
+
+    /// The fake's own failures: an accept that failed, then each write that
+    /// timed out, by client. A test that sees one cannot blame the client.
+    pub fn faults(&self) -> Vec<String> {
+        self.faults.iter().chain(self.clients.iter().flat_map(|c| &c.faults)).cloned().collect()
     }
 
     /// The held client whose last request contains `fragment`.
@@ -353,6 +371,14 @@ impl State {
         }
         reached
     }
+}
+
+/// The fault a failed write is, if the fake is to blame: a write that timed
+/// out because the client did not drain it. A peer that went away (a broken
+/// pipe, a reset) is the client's doing, not a fault.
+fn write_fault(id: ClientId, e: &std::io::Error) -> Option<String> {
+    matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+        .then(|| format!("a write to client {id} timed out ({e}): the client did not drain it"))
 }
 
 /// The first position of `needle` in `hay`.
@@ -517,6 +543,22 @@ impl Fake {
         self.shared.lock().disconnects()
     }
 
+    /// The fake's own failures ([`State::faults`]).
+    pub fn faults(&self) -> Vec<String> {
+        self.shared.lock().faults()
+    }
+
+    /// Bounds each write to a client from now on, [`FAILURE_BOUND`] by
+    /// default. A write that reaches it is a fault.
+    pub fn set_write_timeout(&self, bound: Duration) {
+        self.locked(|s| {
+            s.write_timeout = bound;
+            for c in &s.clients {
+                let _ = c.stream.set_write_timeout(Some(bound));
+            }
+        });
+    }
+
     /// Runs `f` on the state, then wakes every waiter.
     fn locked<T>(&self, f: impl FnOnce(&mut State) -> T) -> T {
         let value = f(&mut self.shared.lock());
@@ -604,16 +646,22 @@ fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => return,
+            Err(e) => {
+                if !shared.closing.load(Ordering::SeqCst) {
+                    shared.lock().faults.push(format!("accept() failed, so the fake stopped accepting: {e}"));
+                    shared.changed.notify_all();
+                }
+                return;
+            }
         };
         if shared.closing.load(Ordering::SeqCst) {
             return;
         }
-        // A stuck peer turns into a failed write, not a hung fake.
-        let _ = stream.set_write_timeout(Some(FAILURE_BOUND));
         let stream = Arc::new(stream);
         let id = {
             let mut state = shared.lock();
+            // A stuck peer turns into a failed write, not a hung fake.
+            let _ = stream.set_write_timeout(Some(state.write_timeout));
             let id = state.clients.len() + 1;
             state.clients.push(ClientEntry {
                 id,
@@ -626,6 +674,7 @@ fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
                 parked: None,
                 watch: false,
                 pending: Vec::new(),
+                faults: Vec::new(),
             });
             id
         };

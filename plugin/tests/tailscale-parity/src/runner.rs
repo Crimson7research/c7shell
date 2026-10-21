@@ -272,16 +272,31 @@ fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
     let unmatched: Vec<String> =
         fake.requests().iter().filter(|r| r.unmatched).map(|r| format!("{} {}", r.method(), r.target())).collect();
     let unused = fake.armed_hold().map(|f| format!("a hold was armed for {} and never used", json!(Bytes(f))));
-    let outcome = match (result, unused) {
+    let outcome = conclude(result, unused, &unmatched, &fake.faults(), &run.failing);
+    drop(run.loaded.take());
+    outcome
+}
+
+/// A child's outcome from its steps' `result`, an armed hold never used,
+/// the requests no rule matched, the fake's own faults and the failed
+/// expectations. A fault in the fake comes first: a wait it made
+/// unreachable is not the implementation's doing.
+pub fn conclude(
+    result: Result<(), String>,
+    unused: Option<String>,
+    unmatched: &[String],
+    faults: &[String],
+    failing: &[Failing],
+) -> Outcome {
+    match (result, unused) {
+        _ if !faults.is_empty() => Outcome::Error(format!("the fake failed: {}", faults.join("; "))),
         (Err(e), _) | (Ok(()), Some(e)) => Outcome::Error(e),
         (Ok(()), None) if !unmatched.is_empty() => {
             Outcome::Error(format!("the fake answered unmatched requests with 404: {}", unmatched.join(", ")))
         }
-        (Ok(()), None) if run.failing.is_empty() => Outcome::Pass,
-        (Ok(()), None) => Outcome::Fail(run.failing.clone()),
-    };
-    drop(run.loaded.take());
-    outcome
+        (Ok(()), None) if failing.is_empty() => Outcome::Pass,
+        (Ok(()), None) => Outcome::Fail(failing.to_vec()),
+    }
 }
 
 /// What an expectation asks for, for the log.
