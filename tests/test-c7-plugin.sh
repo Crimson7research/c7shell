@@ -42,7 +42,9 @@ ignored() {
 }
 
 # Not process substitution: errexit cannot see a failing find inside one.
-files=$(cd "$repo" && find plugin -type f)
+# plugin/target is cargo's output when it runs from the root with
+# --manifest-path (see .gitignore), not a source.
+files=$(cd "$repo" && find plugin -path plugin/target -prune -o -type f -print)
 mapfile -t files <<<"$files"
 hits=$(ignored "${files[@]}" plugin/src/x.cpp plugin/lib/x/x.cpp plugin/tests/x.cpp)
 [[ -z $hits ]] || fail "git ignores plugin sources, so a clean clone lacks them:\n$hits"

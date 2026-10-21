@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "id": "http-09-error-body-in-write-error",
+  "requirements": ["R-HTTP-09"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Given a fake that answers a PATCH of /localapi/v0/prefs with HTTP/1.1 403 Forbidden and the body `prefs write access denied\\n`, writeError equals `/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied` (read after writeErrorChanged and the client barrier, in place of the read barrier)"
+  ],
+  "deferred": [
+    "the chunked 403, the 500 bodies on /status, the empty and invalid UTF-8 bodies: harness-on-cpp, #307",
+    "bounds and incomplete bodies, the watch cases and the backend half: phase3-only, they need the clock and the retry hook"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {
+        "BackendState": "Running", "CurrentTailnet": { "Name": "example.com" },
+        "Self": { "ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.",
+                  "TailscaleIPs": ["100.64.0.1"], "Online": true }, "Peer": {} } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {
+        "WantRunning": true, "RouteAll": false, "CorpDNS": true,
+        "ExitNodeID": "", "ExitNodeAllowLANAccess": false } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {} } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 403, "reason": "Forbidden", "framing": "content-length",
+                 "body": "prefs write access denied\n" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1 } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "expect": { "id": "patch-sent", "precondition": true,
+      "requests": { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 1 } } },
+    { "expect": { "id": "write-error-keeps-the-daemons-words",
+      "contract": { "writeError": "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied" } } }
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [ { "id": "write-error-keeps-the-daemons-words",
+                     "actual": "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden" } ],
+      "reason": "#286 fails a non-2xx exchange at its headers (plugin/lib/tailscale/LocalApiClient.cpp:221-230) and never reads the body, so writeError is the status line alone; the defect pr286-body:119-120 names" },
+    "rust": { "result": "pass" }
+  }
+}

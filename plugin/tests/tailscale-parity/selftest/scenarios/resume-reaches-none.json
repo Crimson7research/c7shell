@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "resume-reaches-none",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: no reply is parked, so a resume reaches none: an error"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "fake": { "resume": "after-headers" } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

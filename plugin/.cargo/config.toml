@@ -1,0 +1,18 @@
+# Read by cargo when it runs with plugin/ as its working directory.
+
+[build]
+# Outside plugin/: tests/test-c7-plugin.sh fails if git ignores any file under
+# plugin/, so the build output lives in the repository root's /target/
+# (ignored by .gitignore). Relative paths here resolve against plugin/, the
+# directory that holds .cargo/.
+target-dir = "../target"
+
+# Pin the linker to rust-lld (shipped with rustup; rustc passes
+# -B<sysroot>/gcc-ld). The cxx-qt spike (#288, check 8) found that GNU ld.bfd
+# cannot link a cxx-qt QML plugin: it rejects a second version script next to
+# rustc's anonymous one, and nothing else exports the plugin entry points.
+# Setting -fuse-ld here also stops qt-build-utils from picking the deprecated
+# gold. A RUSTFLAGS environment variable replaces this list entirely (cargo's
+# precedence), so a packager must not put -fuse-ld=bfd there.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

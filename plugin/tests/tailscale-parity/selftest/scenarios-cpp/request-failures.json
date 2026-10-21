@@ -1,0 +1,204 @@
+{
+  "format": 1,
+  "id": "request-failures",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: a request expectation fails on other bytes with the bytes sent, and on a request never sent with null; a requests expectation fails on a wrong count with the count sent"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "framing": "content-length",
+          "body": {
+            "json": {
+              "BackendState": "Running",
+              "CurrentTailnet": {
+                "Name": "example.com"
+              },
+              "Self": {
+                "ID": "nSELF1CNTRL",
+                "HostName": "self",
+                "DNSName": "self.example.ts.net.",
+                "TailscaleIPs": [
+                  "100.64.0.1"
+                ],
+                "Online": true
+              },
+              "Peer": {}
+            }
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "framing": "content-length",
+          "body": {
+            "json": {
+              "WantRunning": true,
+              "RouteAll": false,
+              "CorpDNS": true,
+              "ExitNodeID": "",
+              "ExitNodeAllowLANAccess": false
+            }
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "framing": "content-length",
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/watch-ipn-bus?mask=18"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/prefs"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/suggest-exit-node"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "connected": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "wrong-host",
+        "request": {
+          "match": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "raw": "GET /localapi/v0/status HTTP/1.1\r\nHost: tailscaled.sock\r\n\r\n"
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "never-sent",
+        "request": {
+          "match": {
+            "method": "GET",
+            "target": "/localapi/v0/never"
+          },
+          "raw": "GET /localapi/v0/never HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n"
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "sent-twice",
+        "requests": {
+          "match": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 2
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "never-sent",
+          "actual": null
+        },
+        {
+          "id": "sent-twice",
+          "actual": 1
+        },
+        {
+          "id": "wrong-host",
+          "actual": "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n"
+        }
+      ],
+      "reason": "self-test"
+    }
+  }
+}

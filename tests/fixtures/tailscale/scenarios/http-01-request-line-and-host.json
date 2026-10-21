@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "id": "http-01-request-line-and-host",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Every request starts with `<METHOD> <path> HTTP/1.1`, carries `Host: local-tailscaled.sock` and, without a body, no other header: the four requests of the backend's opening pass, each recorded as exactly its request line, the Host line and CRLFCRLF",
+    "tailscaled would accept that request: 200 replies to those requests bring the contract to Running, with readError and writeError still empty once every request is recorded"
+  ],
+  "deferred": [
+    "exactly one request after the read and fake barriers: needs the read barrier (cpp-suite: tst_localapiclient.cpp::sendsAHostHeaderTailscaledAccepts; Phase 3: the transport test)"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {
+        "BackendState": "Running",
+        "CurrentTailnet": { "Name": "example.com" },
+        "Self": { "ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.",
+                  "TailscaleIPs": ["100.64.0.1"], "Online": true },
+        "Peer": {} } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {
+        "WantRunning": true, "RouteAll": false, "CorpDNS": true,
+        "ExitNodeID": "", "ExitNodeAllowLANAccess": false } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "framing": "content-length", "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/status" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/prefs" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "expect": { "id": "no-failure", "contract": { "readError": "", "writeError": "" } } },
+    { "expect": { "id": "status-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "raw": "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } },
+    { "expect": { "id": "prefs-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "raw": "GET /localapi/v0/prefs HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } },
+    { "expect": { "id": "suggest-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "raw": "GET /localapi/v0/suggest-exit-node HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } },
+    { "expect": { "id": "watch-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "raw": "GET /localapi/v0/watch-ipn-bus?mask=18 HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

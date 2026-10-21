@@ -1,0 +1,2105 @@
+{
+  "format": 1,
+  "source": "a38dbcae841a1134514f68cba8f5b98d4efddb68",
+  "decided": "2026-10-21",
+  "notes": [
+    "Procedure: docs/superpowers/plans/2026-10-21-phase2-harness.md, \"Evidence classes and the classification rule\", read per clause. A clause runs on a38dbca when it needs no clock advance, no injected timing, no core-crate hook and no contract addition, its observable is a contract member #286 has, a model row, #286's views over the QML stand-in, or the fake's records, and the harness reaches it by a positive wait.",
+    "The transport is not reachable through QML. Its own outcomes (reply, failure, status code, token, socket-absent flag, event, started, ended) are outside-module. The request bytes it sends are not: the fake records them when a backend pass or action sends them, as R-HTTP-01 renders its criterion through the opening pass.",
+    "Values of one published snapshot are read once a positive wait has seen that snapshot (a value or a change signal), because the contract stores everything before it announces anything (R-UI-06, R-WATCH-11). A negative, an unchanged value or an exact count where more could still arrive needs the read, idle or retry barrier, so it is deferred.",
+    "A deferred clause of a parity requirement is cpp-suite when Table B maps #286 tests to the requirement, and names those tests; otherwise it is phase3-only with its reason.",
+    "pr names the Phase 2 PR whose scenarios run the clauses: 306 (this one), 307 (R-HTTP, R-PARSE, R-GROUP), 308 (R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC, the backend half of R-FAKE-03) or 309 (views and view halves). A later PR may move an entry only by editing this file, with the reason in its commit message."
+  ],
+  "requirements": [
+    {
+      "id": "R-HTTP-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 306,
+      "runs": "the four requests of the backend's opening pass, each recorded as exactly its request line, `Host: local-tailscaled.sock` and CRLFCRLF; and \"tailscaled would accept that request\", rendered as 200 replies bringing `state` to `Running`, with `readError` and `writeError` still empty once every request is recorded (a failure processed later is the deferred clause)",
+      "deferred": [
+        {
+          "clause": "exactly one request after the read and fake barriers, and exactly one reply and no failure after the read barrier",
+          "class": "cpp-suite",
+          "needs": [
+            "read-barrier",
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::sendsAHostHeaderTailscaledAccepts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-HTTP-02",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "a PATCH sent by a setter, recorded by the fake: it starts with `PATCH /localapi/v0/prefs HTTP/1.1\\r\\n`, carries the Host header and its own `Content-Length`, and ends with CRLFCRLF and the exact body",
+      "deferred": [
+        {
+          "clause": "exactly one request recorded, and exactly one reply with body `{}` and no failure",
+          "class": "cpp-suite",
+          "needs": [
+            "read-barrier",
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::patchCarriesItsTokenBackOnEitherEnding",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::patchSendsTheBodyUnderItsOwnLength"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-HTTP-03",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::getReturnsTheBodyWithoutHeaders"
+      ]
+    },
+    {
+      "id": "R-HTTP-04",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::getReassemblesAChunkedBody",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::joinsAWatchLineSplitAcrossChunks",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::waitsForAChunkSizeLineSplitAcrossReads"
+      ]
+    },
+    {
+      "id": "R-HTTP-05",
+      "tag": "parity",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "reason": "no #286 test and cannot run on C++: the transport's own outcomes (reply, failure, status, token, flag, event, started, ended) are not reachable through QML, and each count and \"no reply\" is read after the read barrier"
+    },
+    {
+      "id": "R-HTTP-06",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::readsABodyThatEndsAtTheClose"
+      ]
+    },
+    {
+      "id": "R-HTTP-07",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::failsWhenTheConnectionClosesBeforeTheResponseHeaders"
+      ]
+    },
+    {
+      "id": "R-HTTP-08",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::failsOnANonSuccessStatus",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::patchFailsWhenTailscaledRefusesTheWrite"
+      ]
+    },
+    {
+      "id": "R-HTTP-09",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 306,
+      "runs": "the first acceptance paragraph's PATCH case: a PATCH of `/localapi/v0/prefs` answered `HTTP/1.1 403 Forbidden` with the body `prefs write access denied\\n` gives `writeError` exactly `/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied`, read after `writeErrorChanged` and the client barrier",
+      "deferred": [
+        {
+          "clause": "the same for a chunked 403 body; `readError` for a 500 on `/status` with `{\"error\":\"boom\"}`, with `{\"message\":\"boom\"}` and with the invalid UTF-8 body; and a 403 with `Content-Length: 0`, each read after its change signal",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 307
+        },
+        {
+          "clause": "\"no reply is delivered\" and every failure count",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module",
+            "read-barrier"
+          ],
+          "reason": "the transport's own outcomes (reply, failure, status, token, flag, event, started, ended) are not reachable through QML, counted after the read barrier"
+        },
+        {
+          "clause": "bounds and incomplete bodies (the 512-byte cut, the 403 cut short, stalled or ending mid-chunk)",
+          "class": "phase3-only",
+          "needs": [
+            "clock",
+            "read-barrier"
+          ],
+          "reason": "each runs with paused time and a 50 ms deadline"
+        },
+        {
+          "clause": "the watch cases and the backend half",
+          "class": "phase3-only",
+          "needs": [
+            "clock",
+            "retry-hook"
+          ],
+          "reason": "they advance paused time and read the retry barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-HTTP-10",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::failsRatherThanHangingWhenTheSocketIsAbsent"
+      ]
+    },
+    {
+      "id": "R-HTTP-11",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier",
+        "idle-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aConnectionThatHoldsClearsTheBackoff",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aNotificationCarryingNothingThisModuleReadsDoesNotRefresh",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::coalescesNotificationsArrivingWhileARefreshIsOutAndThenReplaysThem",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::dropsAHalfFinishedPassWhenTheConnectionIsLost",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::everyExitNodeFieldIsStoredBeforeBlockedIsAnnounced",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::followsTheBusWhenASwitchPrefChanges",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::forgetsTheSuggestionWhenTheEndpointStopsOfferingOne",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::keepsTheDeviceListWhenAStatusDoesNotDescribeTheTailnet",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::refreshesOnANotificationItDoesNotRecognise",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::republishesOnAWatchEvent",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::rereadsTheSuggestionOnANotification",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::retriesWhenTailscaledAcceptsARequestAndNeverAnswersIt",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::theBackoffAdvancesWhenTheWatchKeepsEndingAfterItStarts"
+      ]
+    },
+    {
+      "id": "R-HTTP-12",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::handsTheTokenBackOnTheFailure",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::handsTheTokenBackOnTheReply",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::patchCarriesItsTokenBackOnEitherEnding",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::reportsZeroForAnUntaggedGetAndForTheWatch"
+      ]
+    },
+    {
+      "id": "R-HTTP-13",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::aGetWhoseBodyNeverArrivesEndsInFailedAtItsDeadline",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::aGetWithNoAnswerAtAllEndsInFailedAtItsDeadline"
+      ]
+    },
+    {
+      "id": "R-HTTP-14",
+      "tag": "new",
+      "class": "phase3-only",
+      "needs": [
+        "added-member",
+        "clock",
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the POST is sent by `login()`, which #286 lacks (added-member); its reply clauses are transport outcomes read with paused time"
+    },
+    {
+      "id": "R-HTTP-15",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "outside-module",
+        "read-barrier",
+        "retry-hook"
+      ],
+      "reason": "cannot run on C++: the cap is read as transport outcomes after the read barrier, and the backend half advances paused time to the retry barrier"
+    },
+    {
+      "id": "R-PARSE-01",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the parser's \"no status\" and its cause are not reachable through QML; the backend's rendering of them is R-CONN-03's and R-CONN-04's"
+    },
+    {
+      "id": "R-PARSE-02",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "served through the backend: `status-idle.json` gives `state` `Running` and `tailnet` `example.com`; `\"Health\":null` and `[\"a\",null,3]` give `issues` empty and `[\"a\",\"\",\"\"]`, read once the snapshot's `state` is seen",
+      "deferred": [
+        {
+          "clause": "exactly one parsed health entry containing `--accept-routes`: the contract suppresses it (R-PARSE-12), so only the parser shows it",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_statusparser.cpp::parsesBackendStateAndHealth"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-PARSE-03",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through `selfIp4` and `selfIp6` once the served status is published"
+    },
+    {
+      "id": "R-PARSE-04",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through `keyExpiry` (QML sees an invalid Date for none) once the served status is published"
+    },
+    {
+      "id": "R-PARSE-05",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "`selfName` for the capture and for a Self with only `HostName`, and each peer's displayName and dnsName through the `peers` model rows",
+      "deferred": [
+        {
+          "clause": "the parsed Self DNS name with its trailing dot: the contract strips it (R-UI-07)",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_statusparser.cpp::fallsBackToTheHostNameWithoutMagicDns",
+            "plugin/lib/tailscale/tests/tst_statusparser.cpp::fallsBackToThisDevicesHostNameWithoutMagicDns",
+            "plugin/lib/tailscale/tests/tst_statusparser.cpp::namesThisDeviceByItsDnsLabelToo",
+            "plugin/lib/tailscale/tests/tst_statusparser.cpp::prefersTheDnsLabelOverTheHostName"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-PARSE-06",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through the `peers` model rows"
+    },
+    {
+      "id": "R-PARSE-07",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "the peer lists of each status, through the `peers` model rows once the snapshot is published",
+      "deferred": [
+        {
+          "clause": "whether a Peer section is present",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "the parser's Peer-section flag is not on #286's contract"
+        }
+      ]
+    },
+    {
+      "id": "R-PARSE-08",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "the exit node's id and online value through `exitNodeId`, `exitNodeOnline` and `exitNodeActive`, for each capture"
+    },
+    {
+      "id": "R-PARSE-09",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through `exitNodeName` and `exitNodeId` (\"through the contract, `exitNodeName` reads the same strings\")"
+    },
+    {
+      "id": "R-PARSE-10",
+      "tag": "withdrawn",
+      "class": "none"
+    },
+    {
+      "id": "R-PARSE-11",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "`recommendedExitNodeId` reads `nEwJFIats021CNTRL` once the backend is `Running`, and empty after a 500 or a malformed reply and a notification, each reached by a positive wait on its value",
+      "deferred": [
+        {
+          "clause": "the change counts, \"no retry\", the arrival-order runs and the readError and retry clauses of the malformed runs",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier",
+            "read-barrier",
+            "retry-hook"
+          ],
+          "reason": "exact counts and negatives after the idle or read barrier, and the retry hook"
+        }
+      ]
+    },
+    {
+      "id": "R-PARSE-12",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "both cases on the backend: `issues` and `issueCount` read once the snapshot's `state` `Running` is seen"
+    },
+    {
+      "id": "R-PARSE-13",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_statusparser.cpp::stripsTheMaskFromExitNodeAddresses"
+      ]
+    },
+    {
+      "id": "R-PARSE-14",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "each parser case through the contract members and `peers` rows it names, and the backend half's values once its snapshot is published",
+      "deferred": [
+        {
+          "clause": "\"the retry hook reads 0 retries armed\"",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook"
+          ],
+          "reason": "the retry hook is a core-crate test hook"
+        }
+      ]
+    },
+    {
+      "id": "R-GROUP-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through the `peers` model rows and their group role"
+    },
+    {
+      "id": "R-GROUP-02",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through the `peers` rows' group and ownerName roles"
+    },
+    {
+      "id": "R-GROUP-03",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every ordering clause, through the order of the `peers` rows of a served status (the two non-ASCII fixtures fail on a38dbca at that order)"
+    },
+    {
+      "id": "R-GROUP-04",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "the exitNodeOption and gamma row values, through the `peers` model rows",
+      "deferred": [
+        {
+          "clause": "the role-name table has exactly these 10 entries: `roleNames()` is not invokable from QML",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_peermodel.cpp::namesEveryRoleForViews",
+            "plugin/lib/tailscale/tests/tst_peermodel.cpp::pinsAKnownPeersFields",
+            "plugin/lib/tailscale/tests/tst_peermodel.cpp::pinsTheOwnerAndExitNodeRoles"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-GROUP-05",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "through the backend's `peers` model from QML: a fresh backend has 0 rows; with three peers, `data()` of row 99 and row 0's display role are undefined and row 0 has no children"
+    },
+    {
+      "id": "R-GROUP-06",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "through the backend: a served change keeps the rows keyed by nodeId, and its rowsMoved, rowsInserted and rowsRemoved are counted from QML once the snapshot's value is seen, with no reset",
+      "deferred": [
+        {
+          "clause": "the QML delegate half: the delegate survives a re-sort, a join and a leave, and a rebuilt model makes a new one",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 309
+        }
+      ]
+    },
+    {
+      "id": "R-GROUP-07",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "through the backend: the model signals a served change emits, counted from QML once the snapshot's value is seen"
+    },
+    {
+      "id": "R-GROUP-08",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "through the backend: over two peers with empty ids, a status with alpha alone leaves 1 row titled alpha and one rowsRemoved",
+      "deferred": [
+        {
+          "clause": "the property test over random list sequences: it drives the model's own replacement call at volume",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_peermodel.cpp::dropsRowsLeftOverWhenPeersShareANodeId"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-GROUP-09",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "every clause, through `exitNodes` and `peers` once the backend is `Running`"
+    },
+    {
+      "id": "R-GROUP-10",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "a later status with `\"Peer\":{}` leaves 0 rows in both models",
+      "deferred": [
+        {
+          "clause": "20 rows remain after a status without `Peer`, and the second run's rows and `peersKnown`",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier",
+            "added-member"
+          ],
+          "reason": "an unchanged row count is a negative after the idle barrier, and `peersKnown` is a contract addition"
+        }
+      ]
+    },
+    {
+      "id": "R-GROUP-11",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "added-member",
+        "idle-barrier",
+        "retry-hook"
+      ],
+      "reason": "cannot run on C++: every clause reads `peersKnown`, a contract addition #286 lacks, on the backend and on the stand-in"
+    },
+    {
+      "id": "R-GROUP-12",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 307,
+      "runs": "backend half: from `Running` with 20 peers, a `NeedsLogin` status with `\"Peer\":null` leaves `peers` 20 rows and `exitNodes` 2, with no rowsRemoved, once `state` `NeedsLogin` is seen",
+      "deferred": [
+        {
+          "clause": "the `Running` return with `peersKnown`, and the view half",
+          "class": "phase3-only",
+          "needs": [
+            "added-member"
+          ],
+          "reason": "both read or stage `peersKnown`, a contract addition"
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the backend's watch, recorded by the fake as `GET /localapi/v0/watch-ipn-bus?mask=18 HTTP/1.1` with the Host header; its mask read as an integer has bit 16 set and bit 1 clear",
+      "deferred": [
+        {
+          "clause": "exactly one request after the read and fake barriers",
+          "class": "cpp-suite",
+          "needs": [
+            "read-barrier"
+          ],
+          "tests": [
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::emitsOneEventPerCompleteLine",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::endsTheWatchOnTheLastChunk",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::joinsAWatchLineSplitAcrossChunks",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::neverEmitsAPartialLine",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::waitsForAChunkSizeLineSplitAcrossReads",
+            "plugin/lib/tailscale/tests/tst_localapiclient.cpp::watchesWithoutTheEngineUpdateBitAndWithoutPrivateKeys"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-02",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::neverSaysAWatchStartedForAGet",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::neverSaysAWatchStartedWhenItWasRefused",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::saysWhenTheWatchIsEstablished"
+      ]
+    },
+    {
+      "id": "R-WATCH-03",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::emitsOneEventPerCompleteLine",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::neverEmitsAPartialLine"
+      ]
+    },
+    {
+      "id": "R-WATCH-04",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::aFailingWatchSaysWhyAndThenThatItEnded",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::endsTheWatchOnTheLastChunk",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::endsTheWatchWhenTailscaledGoes"
+      ]
+    },
+    {
+      "id": "R-WATCH-05",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::aWatchThatNeverStartsEndsInFailedAndThenWatchEnded",
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::anEstablishedWatchIsNotTimedOutByAQuietBus"
+      ]
+    },
+    {
+      "id": "R-WATCH-06",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/lib/tailscale/tests/tst_localapiclient.cpp::saysNothingWhenTheWatchIsStopped"
+      ]
+    },
+    {
+      "id": "R-WATCH-07",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "idle-barrier",
+        "read-barrier",
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the request counts are read after the idle barrier, the probe hour advances paused time, and the watch-first order is a transport test hook"
+    },
+    {
+      "id": "R-WATCH-08",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "after the switch to the exit-node capture and a push, `exitNodeActive` becomes true and `exitNodeName` `pentest-exit-node` (positive waits)",
+      "deferred": [
+        {
+          "clause": "the request counts since the push, after the fake barrier",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::republishesOnAWatchEvent",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::rereadsTheSuggestionOnANotification"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-09",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "idle-barrier",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aNotificationCarryingNothingThisModuleReadsDoesNotRefresh",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::refreshesOnANotificationItDoesNotRecognise"
+      ]
+    },
+    {
+      "id": "R-WATCH-10",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "idle-barrier",
+        "read-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::coalescesNotificationsArrivingWhileARefreshIsOutAndThenReplaysThem"
+      ]
+    },
+    {
+      "id": "R-WATCH-11",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "after `/prefs` is released, every property the new snapshot changes reads its new value",
+      "deferred": [
+        {
+          "clause": "while `/prefs` is held no change signal fired and each property reads its old value",
+          "class": "phase3-only",
+          "needs": [
+            "read-barrier"
+          ],
+          "reason": "a negative read at the read barrier"
+        },
+        {
+          "clause": "each change signal fired exactly once",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier"
+          ],
+          "reason": "an exact count after the idle barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-12",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook",
+        "read-barrier",
+        "idle-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::dropsAHalfFinishedPassWhenTheConnectionIsLost"
+      ]
+    },
+    {
+      "id": "R-WATCH-13",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the chunked idle capture gives `state` `Running`, 20 `peers` rows, `selfName`, `selfIp4`, `selfDnsName` and `tailnet`; a `Weird` state gives `readError` exactly the decided reason and a later `Running` clears it, each after its change signal",
+      "deferred": [
+        {
+          "clause": "the QML half: the slot visible and dimmed, and `ts-read-error` equal to that reason",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 309
+        },
+        {
+          "clause": "\"no armed reconnect\", the client counts, the change counts and the `\"NoState\"` run's negatives",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook",
+            "idle-barrier"
+          ],
+          "reason": "the retry hook and negatives after the idle barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-14",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "each capture's exit-node values once its snapshot is published, and the values after the prefs change and a push",
+      "deferred": [
+        {
+          "clause": "each of the four change signals fired exactly once since the push",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::doesNotReportBlockedWhileTheExitNodeAnswers",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::reportsTheBlockedStateWhenTheExitNodeIsOffline"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WATCH-15",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module",
+        "read-barrier",
+        "retry-hook"
+      ],
+      "reason": "cannot run on C++: the caps are transport outcomes after the read barrier, and #286 has no cap, so the backend half's `readError` never comes for a positive wait to reach"
+    },
+    {
+      "id": "R-CONN-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "with `TS_SOCKET` naming the fake's socket, creating the singleton through the QML factory brings it to `Running`",
+      "deferred": [
+        {
+          "clause": "exactly four requests after the idle, read and fake barriers",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "reason": "an exact count after the barriers; #286 has no test of it"
+        },
+        {
+          "clause": "the default socket path as a resolved value",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "the resolution is a core-crate test hook"
+        },
+        {
+          "clause": "the injected 700 ms first retry delay",
+          "class": "phase3-only",
+          "needs": [
+            "clock",
+            "retry-hook"
+          ],
+          "reason": "it reads the retry hook with paused time"
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-02",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "retry-hook"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::saysNothingWhenThereIsNoTailscaledAtAll",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::settlesInNoStateWhenTailscaledIsAbsent"
+      ]
+    },
+    {
+      "id": "R-CONN-03",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "for each untimed staging (403, bad chunk-length line, short chunk, close before headers, close mid-body, the `garbage` head), `readError` becomes non-empty and `state` reads `NoState` after `readErrorChanged`; the first values differ pairwise; the 403 one contains `403`",
+      "deferred": [
+        {
+          "clause": "the never-answered staging",
+          "class": "phase3-only",
+          "needs": [
+            "clock"
+          ],
+          "reason": "it advances paused time past an injected deadline"
+        },
+        {
+          "clause": "`exitNodeBlocked` unchanged, and the counts after the retry and client barriers",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook"
+          ],
+          "reason": "negatives and counts after the retry barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-04",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "retry-hook",
+        "read-barrier",
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: every clause is read after the retry barrier, the issue-order count is a transport test hook, and #286 publishes no `readError` here for a positive wait to reach"
+    },
+    {
+      "id": "R-CONN-05",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook",
+        "read-barrier",
+        "idle-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::clearsTheReadErrorWhenTheDaemonAnswersAgain"
+      ]
+    },
+    {
+      "id": "R-CONN-06",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "with the backend `Running`, destroying the fake fires `stateChanged` and `state` reads `NoState`",
+      "deferred": [
+        {
+          "clause": "no other change signal, the unchanged values, and the fresh-backend run",
+          "class": "phase3-only",
+          "needs": [
+            "clock",
+            "retry-hook",
+            "read-barrier"
+          ],
+          "reason": "negatives after the retry barrier, and paused time"
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-07",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::theRetryCurveDoublesAndCapsAtThirtySeconds"
+      ]
+    },
+    {
+      "id": "R-CONN-08",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "retry-hook",
+        "read-barrier",
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the count of armed retries is the retry hook's, read with paused time, and the issue order is a transport test hook"
+    },
+    {
+      "id": "R-CONN-09",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::theBackoffAdvancesWhenOnlyPartOfTheLocalApiAnswers"
+      ]
+    },
+    {
+      "id": "R-CONN-10",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook",
+        "idle-barrier"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aConnectionThatHoldsClearsTheBackoff",
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::theBackoffAdvancesWhenTheWatchKeepsEndingAfterItStarts"
+      ]
+    },
+    {
+      "id": "R-CONN-11",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "`state` reaches the served state; and from a published `nEwJFIats021CNTRL`, a 404, a 500 or an empty 200 on `/suggest-exit-node` and a push clear `recommendedExitNodeId` while `state` reads `Running`",
+      "deferred": [
+        {
+          "clause": "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the change and retry counts",
+          "class": "cpp-suite",
+          "needs": [
+            "clock",
+            "retry-hook",
+            "idle-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-12",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "clock",
+        "retry-hook"
+      ],
+      "tests": [
+        "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::retriesWhenTailscaledAcceptsARequestAndNeverAnswersIt"
+      ]
+    },
+    {
+      "id": "R-CONN-13",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "idle-barrier",
+        "read-barrier",
+        "retry-hook"
+      ],
+      "reason": "cannot run on C++: the 30 s probe is counted on the explicit-advance clock after the idle barrier, and #286 has neither"
+    },
+    {
+      "id": "R-CONN-14",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "a known field of another type reads as its default: after the wrong-typed `/prefs` and a push, `acceptRoutes` and `acceptDns` read false, `exitNodeId` empty and `exitNodeActive` false, while `state` reads `Running`",
+      "deferred": [
+        {
+          "clause": "the not-an-object clauses and \"no retry is armed\"",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook"
+          ],
+          "reason": "they are read after the retry barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-15",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half: with `state` `NoState` and the clean-end `readError`, the slot is visible with tint `Theme.textDisabled`",
+      "deferred": [
+        {
+          "clause": "the backend half",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook",
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "reason": "every clause is read after the retry or idle barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-CONN-16",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "pushing `zz\\r\\n` on the watch makes `readError` non-empty and containing `zz`, and `state` `NoState`, after `readErrorChanged`",
+      "deferred": [
+        {
+          "clause": "the change and retry counts, and the contrast run's negatives",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook"
+          ],
+          "reason": "they are read after the retry barrier; #286 has no test of them"
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the four switches' values once each served snapshot is published, and `wantRunning` true with `state` `NeedsLogin`",
+      "deferred": [
+        {
+          "clause": "each of the four signals fired exactly once since the push",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::followsTheBusWhenASwitchPrefChanges",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::publishesTheSwitchPrefsFromTheSamePrefsReadItAlreadyMakes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-02",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "for each action, the PATCH the fake records: its request line and its JSON body `{<field>: <argument>, <field>Set: true}`",
+      "deferred": [
+        {
+          "clause": "exactly one PATCH since the call",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling_data"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-03",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "`setExitNode(id)`'s recorded body has `ExitNodeID` and `ExitNodeIDSet` true, no `ExitNodeIP` or `ExitNodeIPSet` key and not the IPv4; `setExitNode(\"\")` sends `\"\"`",
+      "deferred": [
+        {
+          "clause": "exactly one PATCH since the call",
+          "class": "cpp-suite",
+          "needs": [
+            "read-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::selectsAnExitNodeByIdNotByIp"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-04",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "right after `setExitNode(id)` returns, `exitNodeId` is still empty, `exitNodeActive` still false and no property signal has fired",
+      "deferred": [
+        {
+          "clause": "the confirmation pass and the spy on `exitNodeIdChanged`",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "reason": "#286 runs no confirmation pass, so its values can only be read after the idle barrier"
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-05",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "two calls of `setAcceptDns(true)` record two PATCHes, in call order, each with body `{\"CorpDNS\":true,\"CorpDNSSet\":true}`",
+      "deferred": [
+        {
+          "clause": "\"exactly two\" since the first call",
+          "class": "phase3-only",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "reason": "an exact count after the barriers; #286 has no test of it"
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-06",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "a 403 gives `writable` false and a `writeError` containing `403`, readable inside `writableChanged`; a 200 after it gives `writable` true and an empty `writeError`; a write after the fake is gone gives a non-empty `writeError` with `writable` true",
+      "deferred": [
+        {
+          "clause": "the exact signal counts after the client and read barriers, and the deadline ending",
+          "class": "cpp-suite",
+          "needs": [
+            "clock",
+            "read-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aTransientFailureAfterARefusalDoesNotReviveTheControls",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::keepsTheControlsLiveWhenAWriteFailsWithoutBeingRefused",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::letsTheBusOverruleAnOptimisticWrite",
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::reportsThatItCannotWriteOnA403"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-07",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "a PATCH answered 403 leaves `state` `Running`, 20 rows and `readError` empty, read after `writeErrorChanged` and the client barrier at 1",
+      "deferred": [
+        {
+          "clause": "\"no retry scheduled\", and the run with a held PATCH across a reconnect",
+          "class": "phase3-only",
+          "needs": [
+            "clock",
+            "retry-hook"
+          ],
+          "reason": "it reads the retry hook and advances paused time"
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-08",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "idle-barrier",
+        "read-barrier"
+      ],
+      "reason": "cannot run on C++: every value is the confirmation pass's, read after the idle barrier; #286 runs no confirmation pass, so no positive wait reaches it"
+    },
+    {
+      "id": "R-WRITE-09",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "`setWantRunning(false)` sends `{\"WantRunning\":false,\"WantRunningSet\":true}`, then `wantRunning` false, `state` `Stopped` and `writeError` empty once the notified snapshot is published",
+      "deferred": [
+        {
+          "clause": "the toggle enabled and unchecked, and toggling sending the opposite body",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 309
+        }
+      ]
+    },
+    {
+      "id": "R-WRITE-10",
+      "tag": "new",
+      "class": "phase3-only",
+      "needs": [
+        "added-member",
+        "idle-barrier",
+        "read-barrier"
+      ],
+      "reason": "cannot run on C++: every clause reads or calls a contract addition (`setAdvertiseExitNode`, `advertisingExitNode`, `exitNodeAwaitingApproval`, `ipForwardingWarning`) that #286 lacks"
+    },
+    {
+      "id": "R-WRITE-11",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "idle-barrier",
+        "retry-hook"
+      ],
+      "reason": "cannot run on C++: re-arming is read after the idle barrier (#286 never re-arms, so no positive wait reaches it), across a reconnect on paused time"
+    },
+    {
+      "id": "R-UI-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "resolving `Tailscale` from `C7` with only the module directory on the import path returns a non-null object, the same one twice in one engine, and a different one in a second engine",
+      "deferred": [
+        {
+          "clause": "the metaobject inherits the contract type",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "inheritance is not reachable through QML; #286 has no test of it"
+        }
+      ]
+    },
+    {
+      "id": "R-UI-02",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the parity check: #286's 24 names are among the properties QML enumerates, each reading the stated type",
+      "deferred": [
+        {
+          "clause": "the exact-set check of 29 names",
+          "class": "phase3-only",
+          "needs": [
+            "added-member"
+          ],
+          "reason": "it names the five contract additions #286 lacks"
+        },
+        {
+          "clause": "the same notify signal as #286",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "notify metadata is not reachable through QML"
+        }
+      ]
+    },
+    {
+      "id": "R-UI-03",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "`Tailscale.wantRunning = true` fails, and right after it `wantRunning` reads its old value and `wantRunningChanged` has fired 0 times"
+    },
+    {
+      "id": "R-UI-04",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "every clause: the enum values from QML and a fresh backend's `state` 0"
+    },
+    {
+      "id": "R-UI-05",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "retry-hook",
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/tests/tst_module.cpp::tailscaleSingletonLoadsAndStaysInNoState",
+        "plugin/tests/tst_tailscalebackend.cpp::aFreshBackendReadsAsNothingKnownYet",
+        "plugin/tests/tst_tailscalebackend.cpp::aRefusedWriteReachesQmlAsState"
+      ]
+    },
+    {
+      "id": "R-UI-06",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "inside every handler of the three signals, all three hold their new values and `peers` and `exitNodes` their new rows",
+      "deferred": [
+        {
+          "clause": "the exact signal counts after the idle barrier, and the repeated notification",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier"
+          ],
+          "tests": [
+            "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::everyExitNodeFieldIsStoredBeforeBlockedIsAnnounced"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-UI-07",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "every clause, through `selfDnsName` once each served status is published"
+    },
+    {
+      "id": "R-UI-08",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "through QML on the shipped backend, driven from the fake through the three reachable combinations, `exitNodeBlocked` equals `exitNodeActive && !exitNodeOnline` in every change handler; the metaobject QML sees has exactly one `exitNodeBlocked`",
+      "deferred": [
+        {
+          "clause": "the direct reads and the test-only fake's false/true",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/tests/tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed",
+            "plugin/tests/tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed_data"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-UI-09",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/tests/tst_tailscalebackend.cpp::exitNodeBlockedAnnouncesItselfOnEitherInput"
+      ]
+    },
+    {
+      "id": "R-UI-10",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "every clause, on the backend from the fake's inline data, once `state` `Running` is seen"
+    },
+    {
+      "id": "R-UI-11",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/tests/tst_tailscalebackend.cpp::issueCountRidesTheIssuesSignal"
+      ]
+    },
+    {
+      "id": "R-UI-12",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "`peers` 2 rows and `exitNodes` 1, distinct objects, the same objects before and after an update",
+      "deferred": [
+        {
+          "clause": "both properties are constant: the CONSTANT flag is not reachable through QML",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "plugin/tests/tst_module.cpp::tailscaleSingletonLoadsAndStaysInNoState",
+            "plugin/tests/tst_tailscalebackend.cpp::bothCollectionsAreStableRowModels"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-UI-13",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the five signatures are among the invokables QML enumerates, each callable by name",
+      "deferred": [
+        {
+          "clause": "the exact set of seven, and `login()` and `setAdvertiseExitNode(bool)`",
+          "class": "phase3-only",
+          "needs": [
+            "added-member"
+          ],
+          "reason": "they name the two invokables #286 lacks"
+        },
+        {
+          "clause": "the test-only fake's recorded calls",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "the test-only fake is not in the shipped module"
+        }
+      ]
+    },
+    {
+      "id": "R-UI-14",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/tests/tst_tailscalebackend.cpp::aRefusedWriteReachesQmlAsState",
+        "plugin/tests/tst_tailscalebackend.cpp::anActionChangesNothingOnTheContract",
+        "plugin/tests/tst_tailscalebackend.cpp::bothCollectionsAreStableRowModels"
+      ]
+    },
+    {
+      "id": "R-UI-15",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 308,
+      "runs": "the backend half: the table's values once each served status is published",
+      "deferred": [
+        {
+          "clause": "the view half: the six slot readings on the stand-in",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 309
+        }
+      ]
+    },
+    {
+      "id": "R-UI-16",
+      "tag": "fix",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half: on the stand-in with both errors non-empty, the panel shows exactly one Text containing them (a38dbca shows 2), and the follow-up with `readError` cleared",
+      "deferred": [
+        {
+          "clause": "the backend half",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook",
+            "read-barrier"
+          ],
+          "reason": "it is read after the retry and read barriers"
+        }
+      ]
+    },
+    {
+      "id": "R-UI-17",
+      "tag": "new",
+      "class": "phase3-only",
+      "needs": [
+        "added-member",
+        "idle-barrier",
+        "read-barrier"
+      ],
+      "reason": "cannot run on C++: `login()` and `loginUrl` are contract additions #286 lacks"
+    },
+    {
+      "id": "R-UI-18",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "added-member"
+      ],
+      "reason": "cannot run on C++: every clause reads one of the five contract additions #286 lacks"
+    },
+    {
+      "id": "R-UI-19",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "added-member",
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: it is the test-only fake's, and every clause sets a contract addition"
+    },
+    {
+      "id": "R-QML-01",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the QML half: with `state` `NoState`, `readError` empty and an active, online exit node, the slot is not visible and no visible text equals `pentest-exit-node`",
+      "deferred": [
+        {
+          "clause": "the backend half: three retry barriers on paused time",
+          "class": "cpp-suite",
+          "needs": [
+            "clock",
+            "retry-hook"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-02",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view halves: with `state` `NoState` and that `readError`, the slot is visible with tint `Theme.textDisabled` and `ts-read-error` equals it, and the clearing",
+      "deferred": [
+        {
+          "clause": "the backend halves of the 403 and of the clearing",
+          "class": "cpp-suite",
+          "needs": [
+            "clock",
+            "retry-hook"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-03",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half: with the blocked values and `state` `NoState`, the slot is visible and dimmed, the ✕ and the name drawn",
+      "deferred": [
+        {
+          "clause": "the backend half: the unchanged values after the retry barrier",
+          "class": "cpp-suite",
+          "needs": [
+            "retry-hook"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-04",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-05",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-06",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-07",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-08",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-09",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-10",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-11",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-12",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-13",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-14",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-15",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "added-member"
+      ],
+      "reason": "cannot run on C++: `PeerFilter` and `peersKnown` are additions #286 lacks"
+    },
+    {
+      "id": "R-QML-16",
+      "tag": "follow-up",
+      "class": "none"
+    },
+    {
+      "id": "R-QML-17",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half on #286's views over the QML stand-in: what is drawn and the calls each click records",
+      "deferred": [
+        {
+          "clause": "the backend half's exact PATCH counts and its \"until the fake reports\" negatives",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::exitNodeControlChecks",
+            "tests/tailscale-qml-test.qml::panelChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-18",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half on #286's views over the QML stand-in: what is drawn and the calls each click records",
+      "deferred": [
+        {
+          "clause": "the backend half's exact PATCH counts and its \"until the fake reports\" negatives",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::exitNodeControlChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-19",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-20",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half on #286's views over the QML stand-in: what is drawn and the calls each click records",
+      "deferred": [
+        {
+          "clause": "the backend half's exact PATCH counts and its \"until the fake reports\" negatives",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::exitNodeControlChecks",
+            "tests/tailscale-qml-test.qml::panelChecks",
+            "tests/tailscale-qml-test.qml::settingsChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-21",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half on #286's views over the QML stand-in: what is drawn and the calls each click records",
+      "deferred": [
+        {
+          "clause": "the backend half's exact PATCH counts and its \"until the fake reports\" negatives",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::settingsChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-22",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the view half on #286's views over the QML stand-in: what is drawn and the calls each click records",
+      "deferred": [
+        {
+          "clause": "the backend half's exact PATCH counts and its \"until the fake reports\" negatives",
+          "class": "cpp-suite",
+          "needs": [
+            "idle-barrier",
+            "read-barrier"
+          ],
+          "tests": [
+            "tests/tailscale-qml-test.qml::connectToggleChecks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-23",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "the identity rows on #286's views over the stand-in: `ts-self-name` as plain text, `ts-self-ip4` titled with the IPv4 and copying it",
+      "deferred": [
+        {
+          "clause": "the identifier scan of `quickshell/c7shell/`",
+          "class": "phase3-only",
+          "needs": [
+            "outside-module"
+          ],
+          "reason": "a repository scan, not reachable through QML; #286 has no test of it"
+        }
+      ]
+    },
+    {
+      "id": "R-QML-24",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-tailscale.sh:286",
+        "tests/test-tailscale.sh:288"
+      ]
+    },
+    {
+      "id": "R-QML-25",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause, on #286's views over the QML stand-in, after the layout barrier"
+    },
+    {
+      "id": "R-QML-26",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-tailscale.sh:106-119",
+        "tests/test-tailscale.sh:291-330",
+        "tests/test-tailscale.sh:332-359",
+        "tests/test-tailscale.sh:367",
+        "tests/test-tailscale.sh:372",
+        "tests/test-tailscale.sh:374",
+        "tests/test-tailscale.sh:377",
+        "tests/test-tailscale.sh:38-46",
+        "tests/test-tailscale.sh:53-54",
+        "tests/test-tailscale.sh:70-102"
+      ]
+    },
+    {
+      "id": "R-QML-27",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "loading #286's views over the stand-in theme emits no `.qml:` warning",
+      "deferred": [
+        {
+          "clause": "the property scan of the real `Theme.qml`",
+          "class": "cpp-suite",
+          "needs": [
+            "outside-module"
+          ],
+          "tests": [
+            "tests/test-tailscale.sh:145-147"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R-QML-28",
+      "tag": "withdrawn",
+      "class": "none"
+    },
+    {
+      "id": "R-QML-29",
+      "tag": "withdrawn",
+      "class": "none"
+    },
+    {
+      "id": "R-QML-30",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "added-member"
+      ],
+      "reason": "cannot run on C++: every clause is about the stand-in's contract additions, which #286 lacks"
+    },
+    {
+      "id": "R-SEC-01",
+      "tag": "parity",
+      "class": "phase3-only",
+      "needs": [
+        "clock",
+        "idle-barrier",
+        "read-barrier",
+        "retry-hook",
+        "outside-module"
+      ],
+      "reason": "no #286 test and cannot run on C++: the full scenario ends at the idle and read barriers and reconnects on paused time, the nothing-blocks run advances paused time, and the source scan is a repository check"
+    },
+    {
+      "id": "R-SEC-02",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "retry-hook",
+        "outside-module"
+      ],
+      "tests": [
+        "plugin/lib/testing/tests/tst_isolation.cpp::theTailscaleSocketPointsNowhere"
+      ]
+    },
+    {
+      "id": "R-SEC-03",
+      "tag": "parity",
+      "class": "harness-on-cpp",
+      "pr": 309,
+      "runs": "every clause: network strings reach QML byte for byte and are drawn as plain text by #286's views"
+    },
+    {
+      "id": "R-SEC-04",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-tailscale.sh:132-143"
+      ]
+    },
+    {
+      "id": "R-SEC-05",
+      "tag": "parity",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "no #286 test and cannot run on C++: a scan of the committed fixtures is a repository check, not reachable through QML"
+    },
+    {
+      "id": "R-BOOT-01",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-bootstrap.sh:434",
+        "tests/test-bootstrap.sh:435-436",
+        "tests/test-bootstrap.sh:453-454"
+      ]
+    },
+    {
+      "id": "R-BOOT-02",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-bootstrap.sh:394",
+        "tests/test-bootstrap.sh:395",
+        "tests/test-bootstrap.sh:424"
+      ]
+    },
+    {
+      "id": "R-BOOT-03",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the bootstrap script is a shell check, not reachable through QML"
+    },
+    {
+      "id": "R-BOOT-04",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-bootstrap.sh:456-457",
+        "tests/test-bootstrap.sh:458"
+      ]
+    },
+    {
+      "id": "R-BOOT-05",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-bootstrap.sh:463-464",
+        "tests/test-bootstrap.sh:465"
+      ]
+    },
+    {
+      "id": "R-BOOT-06",
+      "tag": "parity",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "no #286 test and cannot run on C++: the bootstrap script is a shell check, not reachable through QML"
+    },
+    {
+      "id": "R-BOOT-07",
+      "tag": "new",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the bootstrap script is a shell check, not reachable through QML"
+    },
+    {
+      "id": "R-BOOT-08",
+      "tag": "fix",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "cannot run on C++: the bootstrap script is a shell check, not reachable through QML"
+    },
+    {
+      "id": "R-PKG-01",
+      "tag": "parity",
+      "class": "cpp-suite",
+      "needs": [
+        "outside-module"
+      ],
+      "tests": [
+        "tests/test-c7-plugin.sh:160-164",
+        "tests/test-c7-plugin.sh:186-187",
+        "tests/test-c7-plugin.sh:188-189"
+      ]
+    },
+    {
+      "id": "R-PKG-02",
+      "tag": "parity",
+      "class": "phase3-only",
+      "needs": [
+        "outside-module"
+      ],
+      "reason": "no #286 test and cannot run on C++: a check of `docs/architecture.md` is a repository check"
+    },
+    {
+      "id": "R-FAKE-01",
+      "tag": "parity",
+      "class": "fake-self"
+    },
+    {
+      "id": "R-FAKE-02",
+      "tag": "parity",
+      "class": "fake-self"
+    },
+    {
+      "id": "R-FAKE-03",
+      "tag": "fix",
+      "class": "fake-self",
+      "deferred": [
+        {
+          "clause": "the transport half of the held GET case: closing only the held client yields exactly one failure, for `/status`, and after the new GET's reply and the read barrier the watch has emitted no failure and no `ended`, and exactly one failure was reported in all (r_fake_03_drops_one_chosen_client covers the fake's half at byte level: end of file for the held client, the watch still pushed to, a new GET answered)",
+          "class": "phase3-only",
+          "needs": [
+            "read-barrier",
+            "outside-module"
+          ],
+          "reason": "transport outcomes are outside-module, and the counts and negatives need the read barrier"
+        },
+        {
+          "clause": "the backend half: closing a held PATCH sets `writeError`, and after `writeErrorChanged` and the client barrier at 1 `writable` is true and `state` `Running`",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 308
+        },
+        {
+          "clause": "`stateChanged` fired 0 times since the close, after the read barrier",
+          "class": "phase3-only",
+          "needs": [
+            "read-barrier"
+          ],
+          "reason": "a negative after the read barrier"
+        },
+        {
+          "clause": "the retry hook reads 0 retries armed since the close",
+          "class": "phase3-only",
+          "needs": [
+            "retry-hook"
+          ],
+          "reason": "the retry hook is a core-crate test hook"
+        }
+      ]
+    },
+    {
+      "id": "R-FAKE-04",
+      "tag": "withdrawn",
+      "class": "none"
+    },
+    {
+      "id": "R-FAKE-05",
+      "tag": "parity",
+      "class": "fake-self"
+    },
+    {
+      "id": "R-FAKE-06",
+      "tag": "parity",
+      "class": "fake-self"
+    },
+    {
+      "id": "R-FAKE-07",
+      "tag": "kit",
+      "class": "fake-self"
+    }
+  ]
+}

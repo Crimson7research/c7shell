@@ -1,0 +1,255 @@
+//! The harness's own checks that need no reference build: the QML bridge,
+//! the driver's start-up failures, the choice of implementation, and the
+//! runner's verdicts, pinned on the QML-only stub C7 under `selftest/qml`.
+//!
+//! Each check that needs Qt runs in a respawned child with an isolated
+//! environment, so QGuiApplication lives on that child's main thread.
+
+mod support;
+
+use serde_json::json;
+use support::{check, error, finish, run_stub, selftest, spawn_child, stub, stub_dir, verdict, STUB_IMPLEMENTATIONS};
+use tailscale_parity::child::{self, PrivateRoot};
+use tailscale_parity::contract::Contract;
+use tailscale_parity::implementation::Implementation;
+use tailscale_parity::runner::{self, Outcome};
+use tailscale_parity::{headless_app, load_driver};
+
+/// Child: the driver over the stub C7 answers through the Probe.
+fn child_probe() -> i32 {
+    let app = headless_app();
+    let loaded = match load_driver(&app, &stub_dir()) {
+        Ok(l) => l,
+        Err(e) => {
+            println!("load failed: {e}");
+            return 1;
+        }
+    };
+    let c = Contract::new();
+    let state = c.read("state");
+    let call = c.call("setAcceptRoutes", &[json!(true)]);
+    let after = c.read("writeError");
+    let unknown = c.read("noSuchMember");
+    drop(loaded);
+    println!("PROBE {state:?} {call:?} {after:?} {unknown:?}");
+    let ok = state == Ok(json!(0)) && call == Ok(json!(null)) && after == Ok(json!("set true")) && unknown.is_err();
+    i32::from(!ok)
+}
+
+/// Child: the driver over the C7 in `selftest/<dir>` must fail to load
+/// with `want` in the reason, reported at once, not waited out.
+fn child_load_fails(dir: &str, want: &str) -> i32 {
+    let app = headless_app();
+    match load_driver(&app, &selftest(dir)) {
+        Ok(_) => {
+            println!("LOAD-FAILS {dir} loaded");
+            1
+        }
+        Err(e) => {
+            println!("LOAD-FAILS {dir}: {e}");
+            i32::from(!e.contains(want))
+        }
+    }
+}
+
+/// 1. The bridge, and a driver that cannot start.
+fn the_bridge(failures: &mut Vec<String>) {
+    // import C7Harness resolves, and a command emitted from Rust is answered
+    // by the driver before the emit returns.
+    let out = spawn_child("probe", &[("C7_QML_DIR", stub_dir().to_str().unwrap())]);
+    check(failures, out.status.success(), "a Probe round trip returns what the driver read and called");
+    // A driver that throws while it starts says why, at once.
+    let out = spawn_child("no-tailscale", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
+    check(failures, out.status.success(), "a C7 without Tailscale fails to load with `Tailscale is not defined`");
+    // A Tailscale that resolves to no backend object fails too, rather than
+    // letting a scenario that reads only the fake pass with no backend.
+    let out = spawn_child("tailscale-type", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
+    check(failures, out.status.success(), "a C7 whose Tailscale is a type fails to load: no backend object");
+}
+
+/// 2. The implementation is named, and its module directory must exist.
+fn the_implementation(failures: &mut Vec<String>) {
+    let missing = Implementation::from_vars(Some("cpp-286"), None).unwrap_err();
+    check(failures, missing.contains("build-reference.sh"), &format!("C7_QML_DIR unset: {missing}"));
+    let empty = PrivateRoot::new();
+    let no_qmldir = Implementation::from_vars(Some("cpp-286"), Some(empty.path().to_str().unwrap())).unwrap_err();
+    check(failures, no_qmldir.contains("build-reference.sh"), &format!("no C7/qmldir: {no_qmldir}"));
+    let unknown = Implementation::from_vars(Some("qml6"), Some(stub_dir().to_str().unwrap())).unwrap_err();
+    check(failures, unknown.contains("qml6"), &format!("unknown implementation: {unknown}"));
+    let unset = Implementation::from_vars(None, Some(stub_dir().to_str().unwrap())).unwrap_err();
+    check(failures, unset.contains("C7_IMPL"), &format!("C7_IMPL unset: {unset}"));
+    let stub = Implementation::from_vars(Some("cpp-286"), Some(stub_dir().to_str().unwrap())).unwrap();
+    check(failures, stub.name == "cpp-286" && stub.capabilities.is_empty(), "cpp-286 has no capabilities");
+}
+
+/// 3. A pass, and the child's environment: only the keep-list, the private
+///    directories, dead buses, the platform and TS_SOCKET.
+fn a_pass_and_its_environment(failures: &mut Vec<String>) {
+    let pass = run_stub("scenarios/pass.json");
+    verdict(failures, &pass, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
+    let env = pass.env.clone().unwrap_or_default();
+    let names: Vec<&String> = env.keys().collect();
+    let allowed = |n: &str| {
+        child::kept(n)
+            || child::PRIVATE.iter().any(|(v, _)| *v == n)
+            || ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "QT_QPA_PLATFORM", "TS_SOCKET"].contains(&n)
+    };
+    check(failures, names.iter().all(|n| allowed(n)), &format!("the child's environment is the allowlist: {names:?}"));
+    let under_root = |k: &str| env.get(k).is_some_and(|v| v.starts_with(pass.root.to_str().unwrap()));
+    for k in ["TS_SOCKET", "HOME", "XDG_RUNTIME_DIR", "TMPDIR", "PATH"] {
+        check(failures, under_root(k), &format!("the child's {k} is under its private root: {:?}", env.get(k)));
+    }
+}
+
+/// 4. The verdicts on declared and undeclared results.
+fn the_verdicts(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/declared-fail.json");
+    verdict(failures, &r, true, &["fail as declared: error-text"], |o| matches!(o, Outcome::Fail(_)));
+    let r = run_stub("scenarios/unexpected-pass.json");
+    verdict(failures, &r, false, &["unexpected pass"], |o| *o == Outcome::Pass);
+    let r = run_stub("scenarios/wrong-actual.json");
+    verdict(failures, &r, false, &["\"set true\"", "\"set maybe\""], |o| matches!(o, Outcome::Fail(_)));
+    let logged = "expect `error-text` failed: wanted {\"writeError\":\"set false\"}, actual \"set true\"";
+    check(failures, r.log.contains(logged), &format!("the child logs what a failed expectation wanted: {logged}"));
+    let r = run_stub("scenarios/cannot-run.json");
+    verdict(failures, &r, true, &["cannot-run, as declared"], |o| *o == Outcome::CannotRun);
+    check(failures, !r.started, "cannot-run: no child was started");
+    let r = run_stub("scenarios/signal-count.json");
+    verdict(failures, &r, true, &["fail as declared: fired-twice, never-fired"], |o| matches!(o, Outcome::Fail(_)));
+}
+
+/// 5. The errors, which never match a declaration.
+fn the_errors(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/wait-never.json");
+    verdict(failures, &r, false, &["wait never reached"], error("wait never reached: state"));
+    let r = run_stub("scenarios/precondition.json");
+    verdict(failures, &r, false, &["precondition"], error("precondition `setup`"));
+    let r = run_stub("scenarios/needs-pass.json");
+    verdict(failures, &r, false, &["on.stub"], error("on.stub"));
+    let r = run_stub("scenarios/crash.json");
+    verdict(failures, &r, false, &["no result line"], error("no result line"));
+    let r = run_stub("scenarios/unknown-member.json");
+    verdict(failures, &r, false, &["noSuchMember"], error("noSuchMember"));
+    let r = run_stub("scenarios/connected-never.json");
+    let never = "wait never reached: the fake has 1 connected clients";
+    verdict(failures, &r, false, &[never], error(never));
+}
+
+/// 6. A fake op that reaches no client, or a hold never used, is an error.
+fn the_fake_op_errors(failures: &mut Vec<String>) {
+    for (file, op) in [
+        ("push-reaches-none", "push_watch_line"),
+        ("push-line-reaches-none", "push_line"),
+        ("push-chunk-reaches-none", "push_chunk"),
+        ("resume-reaches-none", "resume"),
+        ("complete-reaches-none", "complete_held"),
+    ] {
+        let r = run_stub(&format!("scenarios/{file}.json"));
+        let what = format!("steps[1]: {op} reached no client");
+        verdict(failures, &r, false, &[&what], error(&what));
+    }
+    let r = run_stub("scenarios/hold-unused.json");
+    let unused = "a hold was armed for \"/localapi/v0/status \" and never used";
+    verdict(failures, &r, false, &[unused], error(unused));
+}
+
+/// 7. An empty scenario directory is a failure, never a pass, and a filter
+///    id that names no scenario is an error naming it.
+fn the_run_all_filters(failures: &mut Vec<String>) {
+    let empty = PrivateRoot::new();
+    let none = runner::run_all(&stub(), STUB_IMPLEMENTATIONS, empty.path(), 1, None);
+    check(failures, none.as_ref().is_err_and(|e| e.contains("no scenarios found")), &format!("no scenarios: {none:?}"));
+    let dir = selftest("scenarios");
+    let filtered = runner::run_all(&stub(), STUB_IMPLEMENTATIONS, &dir, 1, Some("nothing-by-this-id"));
+    check(
+        failures,
+        filtered.as_ref().is_err_and(|e| e.contains("no scenario has the id nothing-by-this-id")),
+        &format!("a filter matching nothing is an error naming the id: {filtered:?}"),
+    );
+    let typo = runner::run_all(&stub(), STUB_IMPLEMENTATIONS, &dir, 1, Some("pass,typo"));
+    check(
+        failures,
+        typo.as_ref().is_err_and(|e| e.contains("no scenario has the id typo")),
+        &format!("a filter id naming no scenario: {typo:?}"),
+    );
+}
+
+/// 8. A fault inside the fake comes before any other error or result.
+fn the_conclusion(failures: &mut Vec<String>) {
+    let faults = vec!["a write to client 1 timed out".to_string()];
+    let concluded = [
+        runner::conclude(Err("steps[3]: wait never reached: x".into()), None, &[], &faults, &[]),
+        runner::conclude(Ok(()), None, &[], &faults, &[]),
+    ];
+    for o in &concluded {
+        let ok = matches!(o, Outcome::Error(e) if e.starts_with("the fake failed: a write to client 1 timed out"));
+        check(failures, ok, &format!("a fault in the fake is the error: {o:?}"));
+    }
+    let o = runner::conclude(Ok(()), None, &[], &[], &[]);
+    check(failures, o == Outcome::Pass, &format!("no fault, nothing failing: {o:?}"));
+}
+
+/// 9. C7_REPEAT is a whole number of at least 1; anything else is refused.
+fn the_repeat_count(failures: &mut Vec<String>) {
+    for (value, want) in
+        [(None, Some(1)), (Some("3"), Some(3)), (Some(" 2 "), None), (Some("0"), None), (Some("x"), None)]
+    {
+        let got = runner::parse_repeat(value);
+        let ok = match (&got, want) {
+            (Ok(n), Some(w)) => *n == w,
+            (Err(e), None) => e.contains("C7_REPEAT"),
+            _ => false,
+        };
+        check(failures, ok, &format!("C7_REPEAT={value:?} gives {got:?}"));
+    }
+}
+
+/// 10. C7_HARNESS_MAX_ITERATIONS is a whole number of at least 1; a child
+///     given anything else says so instead of waiting with the default cap.
+fn the_wait_cap(failures: &mut Vec<String>) {
+    for (value, want) in [
+        (None, Some(tailscale_parity::MAX_ITERATIONS)),
+        (Some("20000"), Some(20_000)),
+        (Some("20k"), None),
+        (Some("0"), None),
+        (Some(""), None),
+    ] {
+        let got = tailscale_parity::parse_max_iterations(value);
+        let ok = match (&got, want) {
+            (Ok(n), Some(w)) => *n == w,
+            (Err(e), None) => e.contains("C7_HARNESS_MAX_ITERATIONS"),
+            _ => false,
+        };
+        check(failures, ok, &format!("C7_HARNESS_MAX_ITERATIONS={value:?} gives {got:?}"));
+    }
+    let bad = [("C7_HARNESS_MAX_ITERATIONS", "20k")];
+    let r = runner::run_one(&stub(), STUB_IMPLEMENTATIONS, &selftest("scenarios/pass.json"), &bad);
+    verdict(failures, &r, false, &["C7_HARNESS_MAX_ITERATIONS"], error("C7_HARNESS_MAX_ITERATIONS"));
+}
+
+fn parent() -> i32 {
+    let mut failures = Vec::new();
+    the_bridge(&mut failures);
+    the_implementation(&mut failures);
+    a_pass_and_its_environment(&mut failures);
+    the_verdicts(&mut failures);
+    the_errors(&mut failures);
+    the_fake_op_errors(&mut failures);
+    the_run_all_filters(&mut failures);
+    the_conclusion(&mut failures);
+    the_repeat_count(&mut failures);
+    the_wait_cap(&mut failures);
+    finish("stub_selftest", &failures)
+}
+
+fn main() {
+    let code = match child::child_arg().as_deref() {
+        Some("probe") => child_probe(),
+        Some("no-tailscale") => child_load_fails("qml-no-tailscale", "Tailscale is not defined"),
+        Some("tailscale-type") => child_load_fails("qml-tailscale-type", "no backend object"),
+        Some("scenario") => runner::child_main(),
+        Some(other) => panic!("unknown child {other}"),
+        None => parent(),
+    };
+    std::process::exit(code);
+}

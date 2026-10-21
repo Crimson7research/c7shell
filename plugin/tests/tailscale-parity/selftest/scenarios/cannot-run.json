@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "cannot-run",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "fix",
+  "evidence": "phase3-only",
+  "clauses": [
+    "runner self-test: needs the clock, declared cannot-run"
+  ],
+  "needs": [
+    "clock"
+  ],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "advance_ms": 10
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "x"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "cannot-run",
+      "reason": "no clock"
+    }
+  }
+}

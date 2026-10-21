@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "needs-pass",
+  "requirements": [
+    "R-HTTP-01"
+  ],
+  "tag": "parity",
+  "evidence": "phase3-only",
+  "clauses": [
+    "runner self-test: needs the clock, declared pass"
+  ],
+  "needs": [
+    "clock"
+  ],
+  "fake": {
+    "rules": []
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "advance_ms": 10
+    },
+    {
+      "expect": {
+        "id": "error-text",
+        "contract": {
+          "writeError": "x"
+        }
+      }
+    }
+  ],
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}
