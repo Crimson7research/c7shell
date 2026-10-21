@@ -86,7 +86,8 @@ fn parent() -> i32 {
     // 1. The bridge: import C7Harness resolves, and a command emitted from
     //    Rust is answered by the driver before the emit returns.
     let root = PrivateRoot::new();
-    let out = child::isolated(&["--child=probe"], &root, &[("C7_QML_DIR", stub_dir().to_str().unwrap())]).output().unwrap();
+    let out =
+        child::isolated(&["--child=probe"], &root, &[("C7_QML_DIR", stub_dir().to_str().unwrap())]).output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
     print!("{text}");
     check(&mut failures, out.status.success(), "a Probe round trip returns what the driver read and called");
