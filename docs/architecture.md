@@ -5,7 +5,7 @@ Inside it, work splits into two sides:
 
 | Side | Language | Owns |
 |---|---|---|
-| `C7` plugin (`plugin/`) | C++ | Every integration with something c7shell does not control, all state that comes from the system, everything that talks to the system, and pure logic |
+| `C7` plugin (`plugin/`) | Rust, with Qt 6 through cxx-qt | Every integration with something c7shell does not control, all state that comes from the system, everything that talks to the system, and pure logic |
 | The shell (`quickshell/c7shell/`) | QML + JS | Interaction and presentation only: layout, bindings, signal handlers, animation, view state (open, hovered, selected, typing), display formatting, drag geometry |
 
 QML knows "the person clicked here" or "the person hovers this". All it does
@@ -26,8 +26,9 @@ c7shell cannot wait for them to grow.
 Every integration has a contract.
 An integration is external if c7shell does not control the program, the
 service, the protocol or the library behind it.
-Every contract is a C++ class in the C7 plugin.
-Every backend is a C++ subclass of exactly one contract.
+Every contract is a cxx-qt QObject in the C7 plugin.
+Every backend is a Rust type that implements the trait of exactly one
+contract.
 Every contract has exactly one C7 singleton, and the singleton is the selected
 backend.
 A QML file reads an integration only through its C7 singleton.
@@ -49,7 +50,7 @@ UI noticing.
 
 A program that is itself the product -- `grim`, `wf-recorder`, `hyprsunset`,
 `xdg-open`, the terminal, `c7up`, `pkexec c7power-root` -- is still an
-integration: a C7 backend starts it with an async `QProcess`. A privilege
+integration: a C7 backend starts it as an async child process. A privilege
 boundary always stays a separate process.
 
 ## How an integration looks: the network example
@@ -58,7 +59,7 @@ Today's `Services/NetworkService.qml` is the shape to avoid. It parses `ip` and
 `nmcli` output on a 3-second timer, publishes a frozen list of SSIDs because a
 JS array of network objects can crash a Repeater, and keeps the "which row is
 typing a password" state in the service to hold that freeze. Every one of
-those is QML working around a missing C++ layer.
+those is QML working around a missing plugin layer.
 
 The same feature, as it should be:
 
@@ -66,49 +67,68 @@ The same feature, as it should be:
 UI (WifiPopover, WifiPage, PskField, StatusPill)
    │  binds Network.*, calls Network.connect(ssid) on click
    ▼
-C7 singleton  Network  ──is a──▶  NetworkBackend   (contract)
-                                     ▲
-                                     │ subclass
-                        NmNetworkBackend   (QtDBus → org.freedesktop.NetworkManager)
+C7 singleton  Network  (cxx-qt QObject, plugin/src/contracts/network.rs)
+   │  delegates to a Box<dyn NetworkBackend>, chosen when it is constructed
+   ▼
+NmBackend   (plugin/src/backends/network/ → plugin/lib/network/, zbus → org.freedesktop.NetworkManager)
 ```
 
-**The contract** (`plugin/src/contracts/NetworkBackend.h`) is an abstract
-`QObject`:
+**The contract** (`plugin/src/contracts/network.rs`) is a cxx-qt QObject.
+The bridge module only declares; the logic lives in plain Rust beside it:
 
-```cpp
-class NetworkBackend : public QObject {
-  Q_OBJECT
-  QML_NAMED_ELEMENT(Network)
-  QML_SINGLETON
-  Q_PROPERTY(bool wifiEnabled READ wifiEnabled NOTIFY wifiEnabledChanged)
-  Q_PROPERTY(Link primary READ primary NOTIFY primaryChanged)
-  Q_PROPERTY(QString ip READ ip NOTIFY ipChanged)
-  Q_PROPERTY(QString gateway READ gateway NOTIFY gatewayChanged)
-  Q_PROPERTY(Metered metered READ metered NOTIFY meteredChanged)
-  Q_PROPERTY(QAbstractItemModel *networks READ networks CONSTANT)
-public:
-  enum class Link { None, Wifi, Ethernet };  Q_ENUM(Link)
-  enum class ConnectResult { Started, NeedsKey };  Q_ENUM(ConnectResult)
-  enum class Metered { Unknown, Yes, No };  Q_ENUM(Metered)
+```rust
+#[cxx_qt::bridge]
+pub mod qobject {
+    #[qenum(NetworkObject)]
+    enum Link { None, Wifi, Ethernet }
+    #[qenum(NetworkObject)]
+    enum ConnectResult { Started, NeedsKey }
+    #[qenum(NetworkObject)]
+    enum Metered { Unknown, Yes, No }
 
-  Q_INVOKABLE virtual void setWifiEnabled(bool on) = 0;
-  Q_INVOKABLE virtual void requestScan(bool on) = 0;
-  Q_INVOKABLE virtual ConnectResult connect(const QString &ssid) = 0;
-  Q_INVOKABLE virtual void connectWithPsk(const QString &ssid, const QString &psk) = 0;
-  Q_INVOKABLE virtual void forget(const QString &ssid) = 0;
-  Q_INVOKABLE virtual void setMetered(Metered choice) = 0;
+    unsafe extern "RustQt" {
+        #[qobject]
+        #[qml_element = "Network"]
+        #[qml_singleton]
+        #[qproperty(bool, wifi_enabled, cxx_name = "wifiEnabled", READ, NOTIFY)]
+        #[qproperty(Link, primary, READ, NOTIFY)]
+        #[qproperty(QString, ip, READ, NOTIFY)]
+        #[qproperty(QString, gateway, READ, NOTIFY)]
+        #[qproperty(Metered, metered, READ, NOTIFY)]
+        // The singleton owns the model; QML never creates or frees it.
+        #[qproperty(*mut NetworkModel, networks, READ = networks_model, CONSTANT)]
+        type NetworkObject = super::NetworkRust;
+    }
 
-  // The singleton factory picks the backend. A configurable choice comes only
-  // when a second backend exists.
-  static NetworkBackend *create(QQmlEngine *, QJSEngine *);
-  // ...
-};
+    unsafe extern "RustQt" {
+        #[qinvokable] #[cxx_name = "setWifiEnabled"]
+        fn set_wifi_enabled(self: Pin<&mut NetworkObject>, on: bool);
+        #[qinvokable] #[cxx_name = "requestScan"]
+        fn request_scan(self: Pin<&mut NetworkObject>, on: bool);
+        #[qinvokable]
+        fn connect(self: Pin<&mut NetworkObject>, ssid: &QString) -> ConnectResult;
+        #[qinvokable] #[cxx_name = "connectWithPsk"]
+        fn connect_with_psk(self: Pin<&mut NetworkObject>, ssid: &QString, psk: &QString);
+        #[qinvokable]
+        fn forget(self: Pin<&mut NetworkObject>, ssid: &QString);
+        #[qinvokable] #[cxx_name = "setMetered"]
+        fn set_metered(self: Pin<&mut NetworkObject>, choice: Metered);
+    }
+
+    impl cxx_qt::Threading for NetworkObject {}
+    impl cxx_qt::Initialize for NetworkObject {}
+}
 ```
 
-**The backend** (`plugin/src/backends/network/NmNetworkBackend.cpp`) talks to
-NetworkManager over D-Bus and nothing else. Devices, access points, IPv4
-config and `Metered` all arrive as `PropertiesChanged` signals, so nothing
-polls and nothing spawns.
+`NetworkRust` holds a `Box<dyn NetworkBackend>`, a plain Rust trait with no
+Qt in it. Its `Default` picks the backend; a configurable choice comes only
+when a second backend exists. Tests select the fake backend the same way.
+
+**The backend** (`plugin/src/backends/network/`) adapts the plain Rust
+library `plugin/lib/network/`, which talks to NetworkManager over D-Bus and
+nothing else. Devices, access points, IPv4 config and `Metered` all arrive as
+`PropertiesChanged` signals on the plugin's tokio runtime, and reach the Qt
+thread through `CxxQtThread::queue`, so nothing polls and nothing spawns.
 
 **Collections are list models with stable rows.** `networks` is a
 `QAbstractListModel` keyed by SSID, with roles such as `ssid`, `strength`,
@@ -134,7 +154,7 @@ ListView {
 
 ## The contracts
 
-| Contract (C7 singleton) | C++ backend talks to |
+| Contract (C7 singleton) | Backend talks to |
 |---|---|
 | `AudioBackend` (`Audio`) | PipeWire (`libpipewire`) |
 | `BatteryBackend` (`Battery`) | UPower over D-Bus |
@@ -166,7 +186,7 @@ ListView {
 - **Not limited by upstream.** Quickshell's integration modules expose what
   they expose; NetworkManager's gateway and metered flag, tuned's profiles and
   a polkit agent with fingerprint and password at once are all out of reach
-  through them. Owning the C++ removes the ceiling.
+  through them. Owning the plugin removes the ceiling.
 - **One runtime.** Every helper process is another interpreter, another event
   loop and another protocol to keep in sync. The plugin runs on the Qt event
   loop `qs` already has.
@@ -175,35 +195,54 @@ ListView {
 
 ## Rules for the C7 plugin
 
-- **C++ with Qt 6, and nothing else.** No Rust, no Python, no second runtime.
-  Qt is a C++ framework, the contracts are QObjects QML binds to directly, and
-  the Wayland and polkit pieces need C++ regardless.
-- **Two layers.** A library in `plugin/lib/<name>/` is plain C++ (Qt Core,
-  Qt Network, Qt DBus) that talks to one external thing: Hyprland's sockets,
-  NetworkManager, PipeWire. It includes no QML header and no Quickshell
-  header, and it has its own tests. A contract in `plugin/src/contracts/` and
-  its backend in `plugin/src/backends/<area>/` adapt a library to the QML
-  singleton the UI binds to. A library can be tested and reused without QML.
+- **Rust, with Qt 6 through cxx-qt, and nothing else.** No hand-written C++,
+  no Python, no second runtime. cxx-qt generates the C++ glue that makes a
+  Rust type a QObject QML binds to directly. That glue is build output: it
+  is never committed and never edited. A C library (polkit, PipeWire,
+  libddcutil) is reached through Rust bindings, not C++.
+- **No new C++.** The C++ on `main` (`plugin/lib/core/`, `plugin/lib/testing/`,
+  `plugin/src/build.h`, `plugin/tests/`) is ported to Rust under epic #287.
+  Until then it must not grow: never add a `.cpp`, `.h` or `.hpp` file. When
+  the port lands, `tests/test-native-boundary.sh` fails on any hand-written
+  C++.
+- **Two layers.** A library in `plugin/lib/<name>/` is a plain Rust crate,
+  with no Qt, that talks to one external thing: Hyprland's sockets,
+  NetworkManager, PipeWire. It depends on no cxx-qt, QML or Quickshell crate,
+  and it has its own tests. A contract in `plugin/src/contracts/` and its
+  backend in `plugin/src/backends/<area>/` adapt a library to the QML
+  singleton the UI binds to. A library can be tested and reused without Qt.
 - **The plugin never depends on Quickshell**, so the same plugin loads under
   `qs` today and under our own host later.
 - **Quickshell is read, never copied.** Quickshell is LGPL-3.0-only and
   c7shell is MIT. You may read Quickshell to see how it solves a problem. You
   never copy, translate or paraphrase its code, and every PR that touches
   `plugin/` states "No Quickshell code copied or adapted."
-- One QML module, URI `C7`, built from `plugin/` with CMake and
-  `qt_add_qml_module`. It installs to `/usr/lib/qt6/qml/C7/`.
-- A contract is an abstract class: state as read-only `Q_PROPERTY`s with
-  `NOTIFY`, actions as pure-virtual `Q_INVOKABLE` methods, collections as
-  `QAbstractListModel`s with stable rows. It is registered as a
-  `QML_SINGLETON` whose `create()` returns the selected backend.
-- Never block the GUI thread: async D-Bus (`QDBusPendingCallWatcher`), async
-  `QProcess`, no `waitFor*`. Prefer signals to polling.
+- One QML module, URI `C7`, built from `plugin/` by Cargo alone, with
+  `cxx-qt-build`. No CMake. It installs to `/usr/lib/qt6/qml/C7/`.
+- A contract is a cxx-qt QObject: state as read-only `#[qproperty]`s with
+  `NOTIFY`, actions as `#[qinvokable]` methods, collections as
+  `#[base = QAbstractListModel]` models with stable rows. It is registered
+  as a `#[qml_singleton]` and delegates to the backend it selects, a Rust
+  type behind the contract's trait.
+- Never block the GUI thread. I/O runs on a tokio runtime the plugin owns,
+  and results reach the Qt thread through `CxxQtThread::queue`. The runtime
+  shuts down when its owner is destroyed. Prefer signals to polling.
+- Tests drive time with `tokio::time::pause()` and `advance()`, never a sleep
+  or the wall clock.
 - Use only public Qt API, so an Arch Qt update needs a rebuild, not a port.
+  Pin cxx-qt to an exact version: it is pre-1.0, and its API changes between
+  releases.
+- **Link with rust-lld.** `plugin/.cargo/config.toml` passes
+  `-C link-arg=-fuse-ld=lld`, which resolves to the rust-lld rustup ships.
+  GNU ld cannot link the plugin: it rejects the version script that exports
+  Qt's plugin entry points. A `RUSTFLAGS` variable replaces the config, so
+  `PKGBUILD` appends the same flag to makepkg's `RUSTFLAGS`.
 - **Test first.** Every PR adds the failing test before the code that passes
   it, and the commit order shows that.
 - **Tests run against fakes of the outside world, never of our own code.**
   `plugin/lib/testing/` starts a private `dbus-daemon`, a fake Unix socket
-  server or a fake process per test. Tests use the library's public API only,
+  server or a fake process per test. QML-side tests run from Rust test
+  binaries, headless (`QT_QPA_PLATFORM=offscreen`). Tests use the library's public API only,
   never sleep, never read the wall clock and never touch the host's buses,
   sockets or `$XDG_RUNTIME_DIR`. A refactor that keeps the behaviour keeps the
   tests green.
@@ -211,7 +250,11 @@ ListView {
   tests only, never into the installed module.
 - **Gates.** 90% line and 80% branch coverage on libraries and backends, at
   least 70% of mutants killed, and every new or changed test passes 50
-  consecutive runs. The gates run in GitHub Actions and locally.
+  consecutive runs: `cargo llvm-cov`, `cargo mutants` and `cargo nextest`.
+  Branch coverage needs nightly Rust, so only the coverage gate runs on a
+  dated nightly toolchain, pinned in the repository and bumped on purpose.
+  The plugin builds and ships on stable. The gates run in GitHub Actions and
+  locally.
 - **Review.** Three review agents (code reviewer, test analyzer, silent-failure
   hunter) approve every PR before it is merged.
 - Errors surface as properties or signals the UI can show.
@@ -230,13 +273,13 @@ ListView {
 ## Where things live
 
 ```
-plugin/                     C++ QML module "C7"
-  lib/<name>/               one plain C++ library per external thing, + tests/
+plugin/                     Rust QML module "C7" (one Cargo workspace)
+  lib/<name>/               one plain Rust crate per external thing, + tests/
   lib/testing/              per-test fakes: private D-Bus, sockets, processes
   src/contracts/            one abstract contract per integration
   src/backends/<area>/      the backends that implement them
   src/                      other C7 types (files, generated configs, logic)
-  tests/                    QtTest for contracts and backends
+  tests/                    Rust-driven QML tests for contracts and backends
 quickshell/c7shell/         the shell config, copied to ~/.config by c7shell-setup
   Common/                   shared components and .pragma library JS
   Services/                 shell-internal state only

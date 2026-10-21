@@ -7,6 +7,10 @@ description: Use in the c7shell repo whenever you write, edit or review C++ unde
 
 Announce first: **Using c7shell-cpp-style to write this C++.**
 
+**Legacy C++ only.** `docs/architecture.md` makes the plugin Rust with no
+hand-written C++. This skill applies only to C++ already on `main` until epic
+#287 ports it. Never use it to create a new `.cpp`, `.h` or `.hpp` file.
+
 ## 1. Name things
 
 | Thing | Style | Example |
