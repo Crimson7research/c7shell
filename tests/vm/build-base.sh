@@ -14,6 +14,8 @@ vm=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 . "$vm/lib/qmp.sh"
 # shellcheck source=lib/qemu.sh
 . "$vm/lib/qemu.sh"
+# shellcheck source=lib/base.sh
+. "$vm/lib/base.sh"
 
 ver=$(cat "$vm/iso.version")
 name=archlinux-$ver-x86_64.iso
@@ -59,6 +61,10 @@ make_seed() {
 main() {
   [[ -w /dev/kvm ]] || { echo 'build-base: /dev/kvm is not usable' >&2; exit 2; }
   mkdir -p "$C7VT_CACHE"
+  # Keyed on the inputs as the build starts, not as it ends.
+  local key
+  key=$(base_inputs_hash "$vm") \
+    || { echo 'build-base: cannot hash the base image inputs' >&2; exit 2; }
   fetch_iso
   make_secrets
   local run; run=$(mktemp -d "$C7VT_CACHE/build.XXXXXX")
@@ -72,8 +78,7 @@ main() {
   grep -q C7VT-INSTALL-OK "$run/serial.log" \
     || { tail -n 200 "$run/serial.log" >&2; echo 'build-base: archinstall failed' >&2; exit 1; }
   mv "$run/base.qcow2" "$C7VT_CACHE/base.qcow2"
-  cp "$vm/iso.version" "$C7VT_CACHE/base.iso.version"
-  cp "$vm/archinstall.json" "$C7VT_CACHE/base.archinstall.json"
+  base_stamp "$vm" "$key"
 }
 
 main "$@"

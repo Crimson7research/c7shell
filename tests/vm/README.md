@@ -30,9 +30,14 @@ tests/vm/run.sh --branch main
 ```
 
 The first run builds the base image (up to 30 minutes). Later runs reuse it
-until `iso.version` or `archinstall.json` changes, or you pass
-`--rebuild-base`. The install phase first runs `pacman -Syu` in the VM, so a
-base image whose package database has fallen behind the mirrors still installs.
+until one of its inputs changes, or you pass `--rebuild-base`. The inputs are
+`iso.version`, `archinstall.json`, `cloud-init/user-data.in`,
+`cloud-init/meta-data`, `build-base.sh` and the contents of the OVMF firmware
+file; `lib/base.sh` hashes them into `base.inputs` beside the image. If you
+delete `id_ed25519` or `c7test.password` from the cache, pass
+`--rebuild-base`: the base holds the old ones, and they are not in the key.
+The install phase first runs `pacman -Syu` in the VM, so a base image whose
+package database has fallen behind the mirrors still installs.
 
 Results go to `~/.cache/c7shell-vmtest/results/<timestamp>-<branch>/`:
 `summary.txt` ends in `PASS`, `FAIL: <phase>`, or `FAIL: interrupted` when the run

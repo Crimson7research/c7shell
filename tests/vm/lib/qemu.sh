@@ -7,6 +7,9 @@
 
 : "${C7VT_CACHE:=$HOME/.cache/c7shell-vmtest}"
 
+# The UEFI firmware every VM boots. The base image's cache key hashes it.
+vm_ovmf() { echo "${C7VT_OVMF:-/usr/share/edk2/x64/OVMF_CODE.4m.fd}"; }
+
 _vt_port_used() { ss -Hltn "sport = :$1" 2>/dev/null | grep -q .; }
 
 vm_free_port() {
@@ -32,7 +35,7 @@ vm_start() {
   echo "$port" > "$dir/ssh.port"
   ${C7VT_QEMU:-qemu-system-x86_64} \
     -enable-kvm -machine q35 -cpu host -smp 4 -m 4096 \
-    -drive "if=pflash,format=raw,readonly=on,file=${C7VT_OVMF:-/usr/share/edk2/x64/OVMF_CODE.4m.fd}" \
+    -drive "if=pflash,format=raw,readonly=on,file=$(vm_ovmf)" \
     -drive "file=$disk,if=virtio,format=qcow2" \
     -device virtio-vga -display none \
     -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$port-:22" \
