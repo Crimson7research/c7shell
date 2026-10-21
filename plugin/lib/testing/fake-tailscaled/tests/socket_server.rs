@@ -394,6 +394,20 @@ fn a_hold_matches_only_its_fragment() {
 }
 
 #[test]
+fn an_armed_hold_is_reported_until_a_request_uses_it() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"answered"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    assert_eq!(fake.armed_hold(), None);
+    fake.hold_next(b"/status ");
+    assert_eq!(fake.armed_hold(), Some(b"/status ".to_vec()));
+    let mut client = Client::connect(fake.path());
+    client.write(STATUS_GET);
+    wait_requests(&fake, 1);
+    assert_eq!(fake.armed_hold(), None, "the hold was used");
+}
+
+#[test]
 fn completing_with_keep_open_leaves_the_client_connected() {
     let dir = TestDir::new();
     let fake = Fake::start(dir.socket());

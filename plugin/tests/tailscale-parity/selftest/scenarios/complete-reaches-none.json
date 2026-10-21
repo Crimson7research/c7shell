@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "complete-reaches-none",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: nothing is held, so a completion reaches none: an error"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "fake": { "complete_held": { "status": 200 } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

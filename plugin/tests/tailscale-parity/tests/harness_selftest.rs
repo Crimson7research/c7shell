@@ -92,6 +92,21 @@ fn runner_verdicts(failures: &mut Vec<String>) {
     verdict(failures, &r, false, &["noSuchMember"], error("noSuchMember"));
     let r = run_stub("scenarios/signal-count.json");
     verdict(failures, &r, true, &["fail as declared: fired-twice"], |o| matches!(o, Outcome::Fail(_)));
+    // A fake op that reaches no client, or a hold never used, is an error.
+    for (file, op) in [
+        ("push-reaches-none", "push_watch_line"),
+        ("push-line-reaches-none", "push_line"),
+        ("push-chunk-reaches-none", "push_chunk"),
+        ("resume-reaches-none", "resume"),
+        ("complete-reaches-none", "complete_held"),
+    ] {
+        let r = run_stub(&format!("scenarios/{file}.json"));
+        let what = format!("steps[1]: {op} reached no client");
+        verdict(failures, &r, false, &[&what], |o| matches!(o, Outcome::Error(e) if e.contains(&what)));
+    }
+    let r = run_stub("scenarios/hold-unused.json");
+    let unused = "a hold was armed for \"/localapi/v0/status \" and never used";
+    verdict(failures, &r, false, &[unused], error(unused));
     let r = run_stub("scenarios/connected-never.json");
     let never = "wait never reached: the fake has 1 connected clients";
     verdict(failures, &r, false, &[never], error(never));

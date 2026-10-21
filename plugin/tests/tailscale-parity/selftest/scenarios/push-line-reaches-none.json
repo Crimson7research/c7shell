@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "push-line-reaches-none",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: the stub has no client, so a pushed line reaches none: an error"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "fake": { "push_line": "x" } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

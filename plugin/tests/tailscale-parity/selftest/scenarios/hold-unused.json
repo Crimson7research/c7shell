@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "hold-unused",
+  "requirements": ["R-HTTP-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a hold armed and never used is an error at the end"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "fake": { "hold_next": "/localapi/v0/status " } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}
