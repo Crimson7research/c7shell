@@ -449,9 +449,18 @@ fn a_write_the_client_never_takes_is_recorded_as_a_fault() {
     let _client = Client::connect(fake.path());
     wait_connected(&fake, 1);
     assert_eq!(fake.faults(), Vec::<String>::new());
+    // The new bound reaches the client already connected: the write gives
+    // up long before the default bound would let it.
     fake.set_write_timeout(Duration::from_millis(1));
-    // Far more than a Unix socket buffer holds, to a client that never reads.
-    assert_eq!(fake.push_chunk(&vec![b'x'; 16 << 20]), 0);
+    let (done, pushed) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // Far more than a Unix socket buffer holds, to a client that never reads.
+        let took = fake.push_chunk(&vec![b'x'; 16 << 20]);
+        let _ = done.send((took, fake));
+    });
+    let (took, fake) =
+        pushed.recv_timeout(fake_tailscaled::FAILURE_BOUND / 2).expect("the write kept the default bound");
+    assert_eq!(took, 0);
     let faults = fake.faults();
     assert_eq!(faults.len(), 1, "{faults:?}");
     assert!(faults[0].starts_with("a write to client 1 timed out"), "{faults:?}");
@@ -531,6 +540,8 @@ fn r_fake_03_drops_one_chosen_client() {
     wait_requests(&fake, 2);
     assert_eq!(fake.held_count(), 1);
     assert_eq!(fake.connected_count(), 2);
+    let clients = fake.clients();
+    assert_eq!((clients[0].held, clients[1].held), (false, true), "{clients:?}");
 
     let id = fake.client_holding(b"/status ").expect("the held client");
     assert_eq!(id, 2);
@@ -626,4 +637,17 @@ fn dropping_a_fake_whose_path_another_fake_took_neither_hangs_nor_reaches_it() {
     assert!(fs::symlink_metadata(&path).unwrap().file_type().is_socket(), "the second fake's socket was removed");
     let _client = Client::connect(&path);
     wait_connected(&second, 1);
+}
+
+#[test]
+fn r_fake_01_reads_content_length_in_any_case() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"ok"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    let mut client = Client::connect(fake.path());
+    client.write(b"PATCH /p HTTP/1.1\r\ncontent-length: 2\r\n\r\n{}GET /q HTTP/1.1\r\n\r\n");
+    wait_requests(&fake, 2);
+    let requests = fake.requests();
+    assert_eq!(requests[0].recorded, b"PATCH /p HTTP/1.1\r\ncontent-length: 2\r\n\r\n{}");
+    assert_eq!(requests[1].recorded, b"GET /q HTTP/1.1");
 }

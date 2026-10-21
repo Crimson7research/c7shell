@@ -354,3 +354,15 @@ fn a_reply_over_the_write_limit_is_refused() {
     let e = serde_json::from_value::<Script>(head).unwrap().validate().unwrap_err();
     assert!(e.contains("write limit"), "{e}");
 }
+
+#[test]
+fn a_zero_chunk_size_is_refused() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    let script: Script = serde_json::from_value(json!({ "rules": [{ "match": { "method": "GET", "target": "/r" },
+        "reply": { "framing": { "chunked": { "sizes": [0, 5] } }, "body": "hello" } }] }))
+    .unwrap();
+    let error = fake.set_script(script).unwrap_err();
+    assert!(error.contains("framing.chunked.sizes"), "{error}");
+}
+
