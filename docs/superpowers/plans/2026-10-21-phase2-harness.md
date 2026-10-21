@@ -269,7 +269,9 @@ Worked entries this PR depends on:
 - **R-FAKE-03** `fake-self`. The fake's half is in this PR. The backend
   half's `writeError`, `writable` and `state` clauses are deferred as
   `harness-on-cpp` (`pr: 308`). Its "retry hook reads 0" clause is
-  `phase3-only` (needs `retry-hook`).
+  `phase3-only` (needs `retry-hook`). The transport half of the held GET
+  case (one failure for `/status`, none and no `ended` on the watch, one
+  in all) is `phase3-only` (needs `read-barrier` and `outside-module`).
 - **R-CONN-07**, **R-CONN-10** and **R-HTTP-13** are `cpp-suite` (timing
   parity, evidence in #286's QtTest suites). **R-CONN-13**, **R-HTTP-15** and
   **R-WATCH-07** are `phase3-only` (timing fixes). **R-UI-02** and **R-UI-13**

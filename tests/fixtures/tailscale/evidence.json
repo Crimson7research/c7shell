@@ -2049,6 +2049,15 @@
       "class": "fake-self",
       "deferred": [
         {
+          "clause": "the transport half of the held GET case: closing only the held client yields exactly one failure, for `/status`, and after the new GET's reply and the read barrier the watch has emitted no failure and no `ended`, and exactly one failure was reported in all (r_fake_03_drops_one_chosen_client covers the fake's half at byte level: end of file for the held client, the watch still pushed to, a new GET answered)",
+          "class": "phase3-only",
+          "needs": [
+            "read-barrier",
+            "outside-module"
+          ],
+          "reason": "transport outcomes are outside-module, and the counts and negatives need the read barrier"
+        },
+        {
           "clause": "the backend half: closing a held PATCH sets `writeError`, and after `writeErrorChanged` and the client barrier at 1 `writable` is true and `state` `Running`",
           "class": "harness-on-cpp",
           "needs": [],
