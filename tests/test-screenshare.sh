@@ -16,8 +16,23 @@ set -euo pipefail
 picker=$repo/quickshell/c7shell/Modules/SharePicker/PickerApp.qml
 wrapper=$repo/quickshell/c7shell/bin/screenshare-picker.sh
 
+entry=$repo/quickshell/c7shell/sharepicker.qml
+
 [[ -f $picker ]]  || fail 'PickerApp.qml is missing'
 [[ -f $wrapper ]] || fail 'screenshare-picker.sh is missing'
+
+# The picker is launched by path, and `qs -p` roots the `qs` module at that
+# file's directory. From Modules/SharePicker/ neither qs.Theme nor qs.Common
+# resolves, so the entry point sits at the config root beside shell.qml, and
+# the picker itself is a component it instantiates (#95).
+[[ -f $entry ]] || fail 'sharepicker.qml, the picker entry point at the config root, is missing'
+grep -qE '^[[:space:]]*PickerApp[[:space:]]*\{' "$entry" \
+  || fail 'sharepicker.qml does not instantiate PickerApp'
+grep -qF 'quickshell/c7shell/sharepicker.qml' "$wrapper" \
+  || fail 'the wrapper does not launch sharepicker.qml, so qs.Theme does not resolve in the picker'
+grep -q 'ShellRoot' "$picker" \
+  && fail 'PickerApp.qml is still a ShellRoot: it is a component, and sharepicker.qml is the root'
+grep -q '^import qs.Theme$' "$picker" || fail 'PickerApp.qml does not import qs.Theme'
 
 # The selection writer must terminate the line, or xdph eats the last char.
 grep -qF 'printf "%s\\n"' "$picker" \
