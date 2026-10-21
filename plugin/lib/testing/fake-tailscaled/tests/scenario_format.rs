@@ -610,3 +610,27 @@ fn it_rejects_request_parts_with_a_bad_match_an_empty_header_name_or_another_kin
     ));
     assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
 }
+
+#[test]
+fn it_accepts_a_signal_count_since_an_earlier_mark() {
+    let v = with_steps(json!([
+        { "mark": "before-change" },
+        { "fake": { "push_watch_line": "{\"State\":6}" } },
+        { "expect": { "id": "moved", "signal": { "name": "peers.rowsMoved", "count": 1, "since": "before-change" } } }
+    ]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 25);
+}
+
+#[test]
+fn it_rejects_a_since_without_an_earlier_mark_and_a_mark_twice_or_empty() {
+    let since = |label: &str| json!({ "expect": { "id": "since", "signal": { "name": "stateChanged", "count": 0, "since": label } } });
+    let e = rejected(with_steps(json!([since("later"), { "mark": "later" }])));
+    assert_names(&e, "steps[22].expect `since`");
+    assert_names(&e, "no earlier mark `later`");
+    let e = rejected(with_steps(json!([{ "mark": "a" }, { "mark": "a" }])));
+    assert_names(&e, "steps[23].mark: `a` twice");
+    let e = rejected(with_steps(json!([{ "mark": "" }])));
+    assert_names(&e, "steps[22].mark: empty");
+}

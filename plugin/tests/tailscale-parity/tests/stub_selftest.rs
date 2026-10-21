@@ -276,6 +276,14 @@ fn the_model_signals(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: inserted-twice"], read);
 }
 
+/// 14. A mark records every counted signal, and a signal expectation
+///     `since` it counts from there; a failed one reports that count.
+fn the_signal_marks(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/signal-since.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: wrong-since"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -291,6 +299,7 @@ fn parent() -> i32 {
     the_array_values(&mut failures);
     the_model_reads(&mut failures);
     the_model_signals(&mut failures);
+    the_signal_marks(&mut failures);
     finish("stub_selftest", &failures)
 }
 
