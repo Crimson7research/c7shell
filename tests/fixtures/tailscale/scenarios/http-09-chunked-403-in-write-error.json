@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "id": "http-09-chunked-403-in-write-error",
+  "requirements": ["R-HTTP-09"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The same holds for a chunked error body: a PATCH of /localapi/v0/prefs answered HTTP/1.1 403 Forbidden with the chunked body `prefs write access denied\\n` gives writeError exactly `/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied`, read after writeErrorChanged"
+  ],
+  "deferred": ["\"no reply is delivered\" and every failure count: phase3-only, the transport's own outcomes are not reachable through QML", "bounds and incomplete bodies, the watch cases and the backend half: phase3-only, they need the clock and the retry hook"],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 403, "reason": "Forbidden", "framing": "chunked", "body": "prefs write access denied\n" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1 } } },
+    { "expect": { "id": "patch-sent", "precondition": true,
+      "requests": { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 1 } } },
+    { "expect": { "id": "write-error-keeps-the-daemons-words",
+      "contract": { "writeError": "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied" } } }
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [ { "id": "write-error-keeps-the-daemons-words",
+                     "actual": "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden" } ],
+      "reason": "#286 fails a non-2xx exchange at its headers (plugin/lib/tailscale/LocalApiClient.cpp:221-230, the reason at :227) and never reads the body, so the reason is the status line alone; the defect pr286-body:119-120 names" },
+    "rust": { "result": "pass" }
+  }
+}

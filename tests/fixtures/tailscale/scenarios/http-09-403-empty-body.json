@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "id": "http-09-403-empty-body",
+  "requirements": ["R-HTTP-09"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A 403 with `Content-Length: 0` gives exactly `/localapi/v0/prefs answered HTTP/1.1 403 Forbidden`, with no `: `: a PATCH of /localapi/v0/prefs answered so, read at writeError after writeErrorChanged. #286 already gives this, so the scenario is tagged parity"
+  ],
+  "deferred": ["\"no reply is delivered\" and every failure count: phase3-only, the transport's own outcomes are not reachable through QML", "bounds and incomplete bodies, the watch cases and the backend half: phase3-only, they need the clock and the retry hook"],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 403, "reason": "Forbidden", "framing": "content-length", "body": "" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1 } } },
+    { "expect": { "id": "patch-sent", "precondition": true,
+      "requests": { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 1 } } },
+    { "expect": { "id": "write-error-keeps-the-daemons-words",
+      "contract": { "writeError": "/localapi/v0/prefs answered HTTP/1.1 403 Forbidden" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

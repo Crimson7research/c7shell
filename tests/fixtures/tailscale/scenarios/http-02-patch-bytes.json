@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "http-02-patch-bytes",
+  "requirements": ["R-HTTP-02"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A write is PATCH <path> with the Host header, Content-Type: application/json and Content-Length equal to the body's byte length, the body bytes following verbatim: a PATCH sent by a setter (setAcceptRoutes(true)), recorded by the fake, starts with `PATCH /localapi/v0/prefs HTTP/1.1\\r\\n`, carries the Host header and its own `Content-Length` (36), and ends with CRLFCRLF and the exact body, read as JSON"
+  ],
+  "deferred": [
+    "exactly one request recorded, and exactly one reply with body `{}` and no failure: needs the read barrier and the transport's own outcomes (cpp-suite: tst_localapiclient.cpp::patchCarriesItsTokenBackOnEitherEnding, tst_localapiclient.cpp::patchSendsTheBodyUnderItsOwnLength)"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "framing": "content-length", "body": "{}" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" } } } },
+    { "expect": { "id": "patch-bytes", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "headers": [["Host", "local-tailscaled.sock"], ["Content-Type", "application/json"], ["Content-Length", "36"]],
+      "body_json": { "RouteAll": true, "RouteAllSet": true } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
