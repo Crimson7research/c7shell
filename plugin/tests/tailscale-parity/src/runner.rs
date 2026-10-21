@@ -256,6 +256,9 @@ pub fn child_main() -> i32 {
 }
 
 fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
+    if let Err(e) = crate::checked_max_iterations() {
+        return Outcome::Error(e);
+    }
     let scenario = match Scenario::read(path) {
         Ok(s) => s,
         Err(e) => return Outcome::Error(e),

@@ -28,8 +28,28 @@ pub const MAX_ITERATIONS: u64 = 1_000_000;
 
 /// The cap on event-loop iterations for one wait: [`MAX_ITERATIONS`], or
 /// `C7_HARNESS_MAX_ITERATIONS` for the self-tests of a wait never reached.
+/// Panics on a value [`parse_max_iterations`] refuses; a scenario child
+/// checks it first with [`checked_max_iterations`] and reports it.
 pub fn max_iterations() -> u64 {
-    std::env::var("C7_HARNESS_MAX_ITERATIONS").ok().and_then(|v| v.parse().ok()).unwrap_or(MAX_ITERATIONS)
+    checked_max_iterations().unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The cap `C7_HARNESS_MAX_ITERATIONS` gives, or why it gives none.
+pub fn checked_max_iterations() -> Result<u64, String> {
+    parse_max_iterations(std::env::var("C7_HARNESS_MAX_ITERATIONS").ok().as_deref())
+}
+
+/// The cap a `C7_HARNESS_MAX_ITERATIONS` value gives: [`MAX_ITERATIONS`]
+/// when unset, else a whole number of at least 1.
+pub fn parse_max_iterations(value: Option<&str>) -> Result<u64, String> {
+    match value.map(str::parse::<u64>) {
+        None => Ok(MAX_ITERATIONS),
+        Some(Ok(n)) if n >= 1 => Ok(n),
+        _ => Err(format!(
+            "C7_HARNESS_MAX_ITERATIONS must be a whole number of at least 1, not {:?}",
+            value.unwrap_or("")
+        )),
+    }
 }
 
 /// Registers `C7Harness` and creates the application, headless. Call it
