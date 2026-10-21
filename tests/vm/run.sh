@@ -101,6 +101,7 @@ remote_install_script() {
   printf -v b %q "$1"; printf -v u %q "$2"
   cat <<REMOTE
 set -euo pipefail
+sudo pacman -Syu --noconfirm
 git clone --branch $b $u c7shell
 cd c7shell
 C7SHELL_BRANCH=$b C7SHELL_SKIP_OPTIONAL=1 ./install.sh --yes --noconfirm

@@ -182,6 +182,16 @@ script=$(remote_install_script "a';touch /x;'" 'u r')
 grep -qF "git clone --branch a\\'\\;touch\\ /x\\;\\' u\\ r c7shell" <<<"$script" \
   || fail "remote_install_script: branch not quoted:\n$script"
 
+# The base image's package database ages between rebuilds, and the mirrors
+# keep only current packages, so install.sh's pacman -S hits 404s unless the
+# system is refreshed first (#297). A full -Syu, never -Sy: a partial upgrade
+# is unsupported on Arch.
+script=$(remote_install_script main u)
+syu=$(awk '$0 == "sudo pacman -Syu --noconfirm" { print NR; exit }' <<<"$script")
+inst=$(awk '/\.\/install\.sh/ { print NR; exit }' <<<"$script")
+[[ $syu && $inst && $syu -lt $inst ]] \
+  || fail "remote_install_script: no pacman -Syu before install.sh:\n$script"
+
 # A QEMU that greets but never answers the command is a failure, and an
 # event that mentions "error" is not.
 printf '%s\n' '#!/bin/sh' 'cat >/dev/null' "printf '%s\n' '{\"QMP\":{}}' '{\"return\":{}}'" > "$tmp/socat-mute"
