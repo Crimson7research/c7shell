@@ -21,10 +21,8 @@ entry=$repo/quickshell/c7shell/sharepicker.qml
 [[ -f $picker ]]  || fail 'PickerApp.qml is missing'
 [[ -f $wrapper ]] || fail 'screenshare-picker.sh is missing'
 
-# The picker is launched by path, and `qs -p` roots the `qs` module at that
-# file's directory. From Modules/SharePicker/ neither qs.Theme nor qs.Common
-# resolves, so the entry point sits at the config root beside shell.qml, and
-# the picker itself is a component it instantiates (#95).
+# The entry point sits at the config root so qs.Theme resolves; sharepicker.qml
+# says why (#95).
 [[ -f $entry ]] || fail 'sharepicker.qml, the picker entry point at the config root, is missing'
 grep -qE '^[[:space:]]*PickerApp[[:space:]]*\{' "$entry" \
   || fail 'sharepicker.qml does not instantiate PickerApp'
@@ -33,6 +31,10 @@ grep -qF 'quickshell/c7shell/sharepicker.qml' "$wrapper" \
 grep -q 'ShellRoot' "$picker" \
   && fail 'PickerApp.qml is still a ShellRoot: it is a component, and sharepicker.qml is the root'
 grep -q '^import qs.Theme$' "$picker" || fail 'PickerApp.qml does not import qs.Theme'
+# Theme pulls in AppearanceStore; the flag keeps it from re-applying the desktop
+# on every share (tests/test-appearance-readonly.sh tests the store itself).
+grep -qF 'C7SHELL_APPEARANCE_READONLY=1 qs -p' "$wrapper" \
+  || fail 'the wrapper starts the picker without C7SHELL_APPEARANCE_READONLY=1, so every share re-applies the appearance'
 
 # The selection writer must terminate the line, or xdph eats the last char.
 grep -qF 'printf "%s\\n"' "$picker" \

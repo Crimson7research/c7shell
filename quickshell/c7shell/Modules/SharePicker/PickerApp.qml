@@ -54,6 +54,9 @@ Scope {
     WlrLayershell.namespace: "c7shell-sharepicker"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    // The mockup's rgba(4,4,6,.6); Theme.bg is a shade off it, as in
+    // CaptureOverlay. Below the 0.7 ignore_alpha of hypr/conf/rules.lua, so the
+    // dim stays sharp: the dialog is the only thing that needs blur here.
     color: Theme.alpha(Theme.bg, 0.6)
 
     MouseArea { anchors.fill: parent; onClicked: Qt.quit() }   // click-away cancels
@@ -112,7 +115,7 @@ Scope {
               Rectangle {
                 required property var modelData
                 required property int index
-                width: 254; height: 170; radius: 13
+                width: 254; height: 170; radius: Theme.radiusPreview
                 color: Theme.surface04
                 border.width: 2
                 border.color: root.selScreen === index ? Theme.accent : Theme.hairline
@@ -152,7 +155,7 @@ Scope {
               model: root.windows
               Rectangle {
                 required property var modelData
-                width: parent.width; height: 40; radius: 10
+                width: parent.width; height: 40; radius: Theme.radiusTile
                 color: root.selWindow === modelData.handle ? Theme.accentFill : Theme.surface04
                 border.width: 1
                 border.color: root.selWindow === modelData.handle ? Theme.accentBorder : Theme.surface07

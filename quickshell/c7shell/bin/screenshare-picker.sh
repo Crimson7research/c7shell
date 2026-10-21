@@ -4,6 +4,6 @@
 # writes the selection to a temp file and this wrapper relays the single
 # line xdph parses.
 out=$(mktemp)
-XDPH_OUT="$out" qs -p "$HOME/.config/quickshell/c7shell/sharepicker.qml" >&2
+XDPH_OUT="$out" C7SHELL_APPEARANCE_READONLY=1 qs -p "$HOME/.config/quickshell/c7shell/sharepicker.qml" >&2
 cat "$out"
 rm -f "$out"
