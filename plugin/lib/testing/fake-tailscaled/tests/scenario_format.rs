@@ -447,20 +447,21 @@ fn it_accepts_every_model_query_in_an_expect_and_a_wait() {
                                                "values": { "hostName": "gamma", "group": 1, "online": true } } } },
         { "expect": { "id": "off-end", "model": { "name": "peers", "row": 99, "values": { "#0": { "undefined": true } } } } },
         { "expect": { "id": "children", "model": { "name": "exitNodes", "row": 0, "has_children": false } } },
-        { "expect": { "id": "root-children", "model": { "name": "exitNodes", "has_children": true } } }
+        { "expect": { "id": "root-children", "model": { "name": "exitNodes", "has_children": true } } },
+        { "expect": { "id": "two-models", "model": { "name": "exitNodes", "distinct_from": "peers" } } }
     ]));
     let dir = TestDir::new();
     let s = load(&dir, "full", &v).unwrap();
-    assert_eq!(s.steps.len(), 30);
+    assert_eq!(s.steps.len(), 31);
 }
 
 #[test]
 fn it_rejects_a_model_query_with_no_or_two_kinds() {
     let e = rejected(with_model_expect(json!({ "name": "peers" })));
     assert_names(&e, "steps[22].expect `model`: model");
-    assert_names(&e, "exactly one of count, values and has_children");
+    assert_names(&e, "exactly one of count, values, has_children and distinct_from");
     let e = rejected(with_model_expect(json!({ "name": "peers", "count": 1, "has_children": false })));
-    assert_names(&e, "exactly one of count, values and has_children");
+    assert_names(&e, "exactly one of count, values, has_children and distinct_from");
     let e = rejected(with_steps(json!([{ "wait": { "model": { "name": "peers" } } }])));
     assert_names(&e, "steps[22].wait.model");
 }
@@ -633,4 +634,13 @@ fn it_rejects_a_since_without_an_earlier_mark_and_a_mark_twice_or_empty() {
     assert_names(&e, "steps[23].mark: `a` twice");
     let e = rejected(with_steps(json!([{ "mark": "" }])));
     assert_names(&e, "steps[22].mark: empty");
+}
+
+#[test]
+fn it_rejects_distinct_from_with_a_row_or_no_name() {
+    let e = rejected(with_model_expect(json!({ "name": "exitNodes", "row": 0, "distinct_from": "peers" })));
+    assert_names(&e, "distinct_from takes no row");
+    let e = rejected(with_model_expect(json!({ "name": "exitNodes", "distinct_from": "" })));
+    assert_names(&e, "distinct_from");
+    assert_names(&e, "empty");
 }

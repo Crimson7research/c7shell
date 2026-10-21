@@ -284,6 +284,14 @@ fn the_signal_marks(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: wrong-since"], read);
 }
 
+/// 15. Two model members are told apart as objects; the same member twice
+///     is not distinct.
+fn the_distinct_models(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-distinct.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(false));
+    verdict(failures, &r, true, &["fail as declared: one-model"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -300,6 +308,7 @@ fn parent() -> i32 {
     the_model_reads(&mut failures);
     the_model_signals(&mut failures);
     the_signal_marks(&mut failures);
+    the_distinct_models(&mut failures);
     finish("stub_selftest", &failures)
 }
 
