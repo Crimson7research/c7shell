@@ -36,6 +36,18 @@ pub enum AfterReply {
     KeepOpen,
 }
 
+/// What the fake reports about one client, for the barriers (R-FAKE-07).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClientReport {
+    pub id: ClientId,
+    pub connected: bool,
+    /// Bytes consumed from the client, whether or not they form a request.
+    pub received: usize,
+    /// Bytes written to the client: replies, completions and pushes.
+    pub written: usize,
+    pub held: bool,
+}
+
 /// One accepted client.
 pub(crate) struct ClientEntry {
     pub(crate) id: ClientId,
@@ -83,6 +95,7 @@ pub struct State {
     after: AfterReply,
     delimiter: Option<Vec<u8>>,
     hold_fragment: Option<Vec<u8>>,
+    disconnects: usize,
 }
 
 impl Default for State {
@@ -94,6 +107,7 @@ impl Default for State {
             after: AfterReply::CloseAfterReply,
             delimiter: None,
             hold_fragment: None,
+            disconnects: 0,
         }
     }
 }
@@ -112,6 +126,30 @@ impl State {
     /// The bytes written to client `id` so far: replies, completions, pushes.
     pub fn written(&self, id: ClientId) -> usize {
         self.client(id).map_or(0, |c| c.written)
+    }
+
+    /// Every client accepted, connected or not, in accept order.
+    pub fn clients(&self) -> Vec<ClientReport> {
+        self.clients
+            .iter()
+            .map(|c| ClientReport {
+                id: c.id,
+                connected: c.connected,
+                received: c.received,
+                written: c.written,
+                held: c.held && c.connected,
+            })
+            .collect()
+    }
+
+    /// Every client accepted since the fake started. It never drops.
+    pub fn accepted_total(&self) -> usize {
+        self.clients.len()
+    }
+
+    /// The disconnects the fake has handled.
+    pub fn disconnects(&self) -> usize {
+        self.disconnects
     }
 
     /// The clients connected now.
@@ -329,6 +367,26 @@ impl Fake {
         self.shared.lock().held_count()
     }
 
+    /// Every client accepted, in accept order (R-FAKE-07).
+    pub fn clients(&self) -> Vec<ClientReport> {
+        self.shared.lock().clients()
+    }
+
+    /// The clients connected now.
+    pub fn connected_count(&self) -> usize {
+        self.shared.lock().connected_count()
+    }
+
+    /// Every client accepted since the fake started.
+    pub fn accepted_total(&self) -> usize {
+        self.shared.lock().accepted_total()
+    }
+
+    /// The disconnects the fake has handled.
+    pub fn disconnects(&self) -> usize {
+        self.shared.lock().disconnects()
+    }
+
     /// Runs `f` on the state, then wakes every waiter.
     fn locked<T>(&self, f: impl FnOnce(&mut State) -> T) -> T {
         let value = f(&mut self.shared.lock());
@@ -438,6 +496,7 @@ fn read_loop(id: ClientId, stream: Arc<UnixStream>, shared: Arc<Shared>) {
             c.held = false;
             c.pending.clear();
         }
+        state.disconnects += 1;
     }
     shared.changed.notify_all();
 }
