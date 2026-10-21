@@ -339,3 +339,65 @@ fn it_rejects_a_push_or_completion_over_the_write_limit() {
         assert_names(&e, "write limit");
     }
 }
+
+#[test]
+fn it_rejects_a_rust_declaration_of_fail() {
+    let mut v = full();
+    v["on"]["rust"] = json!({ "result": "fail", "failing": [{ "id": "error", "actual": "y" }], "reason": "a regression" });
+    let e = rejected(v);
+    assert_names(&e, "on.rust");
+    assert_names(&e, "rewrite");
+}
+
+#[test]
+fn it_rejects_a_failing_id_named_twice() {
+    let mut v = full();
+    v["on"]["cpp-286"]["failing"] = json!([{ "id": "error", "actual": "y" }, { "id": "error", "actual": "z" }]);
+    let e = rejected(v);
+    assert_names(&e, "on.cpp-286: failing");
+    assert_names(&e, "named twice");
+}
+
+#[test]
+fn it_rejects_failing_on_a_pass_or_a_cannot_run() {
+    let mut v = full();
+    v["on"]["rust"] = json!({ "result": "pass", "failing": [{ "id": "error", "actual": "y" }] });
+    assert_names(&rejected(v), "on.rust: failing");
+    let mut v = timed();
+    v["on"]["rust"] = json!({ "result": "cannot-run", "failing": [{ "id": "state", "actual": 1 }], "reason": "later" });
+    assert_names(&rejected(v), "on.rust: failing");
+}
+
+#[test]
+fn it_rejects_a_requirement_number_that_is_not_two_digits() {
+    for bad in ["R-HTTP-1", "R-HTTP-100", "R-HTTP-0a", "R--01", "R-http-01"] {
+        let mut v = full();
+        v["requirements"] = json!([bad]);
+        let e = rejected(v);
+        assert_names(&e, "requirements");
+        assert_names(&e, bad);
+    }
+}
+
+#[test]
+fn it_rejects_a_count_without_recorded() {
+    let mut v = full();
+    v["steps"][4]["wait"]["fake"] = json!({ "connected": 1, "count": 1 });
+    let e = rejected(v);
+    assert_names(&e, "steps[4].wait.fake");
+    assert_names(&e, "count goes with recorded");
+}
+
+#[test]
+fn it_rejects_an_empty_contract_map_in_a_wait_or_an_expect() {
+    let mut v = full();
+    v["steps"][2]["wait"]["contract"] = json!({});
+    let e = rejected(v);
+    assert_names(&e, "steps[2].wait.contract");
+    assert_names(&e, "empty");
+    let mut v = full();
+    v["steps"][17]["expect"]["contract"] = json!({});
+    let e = rejected(v);
+    assert_names(&e, "steps[17].expect `error`: contract");
+    assert_names(&e, "empty");
+}
