@@ -32,6 +32,10 @@
   "steps": [
     { "start": {} },
     { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/status" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/prefs" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
     { "wait": { "fake": { "connected": 1 } } },
     { "expect": { "id": "status-request", "request": { "match": { "method": "GET", "target": "/localapi/v0/status" },
       "raw": "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\n\r\n" } } },
