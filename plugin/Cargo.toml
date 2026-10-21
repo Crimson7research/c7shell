@@ -1,4 +1,4 @@
-# The Rust half of the C7 plugin, beside the CMake build (plugin/CMakeLists.txt).
+# The C7 plugin's Cargo workspace.
 # Run cargo from this directory: .cargo/config.toml (the target directory and
 # the rust-lld pin) and rust-toolchain.toml are read from the working
 # directory, not from --manifest-path.

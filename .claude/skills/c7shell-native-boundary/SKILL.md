@@ -38,7 +38,7 @@ QML, and the backend is Rust against the system API itself.
   I/O on the plugin's tokio runtime only, and add a Rust-driven headless QML
   test. Ship a fake backend for the contract, built into tests only and
   never into the installed module. Never write a `.cpp`, `.h` or `.hpp`
-  file: until epic #287 moves the plugin build to Cargo, a new contract
+  file. Until epic #287 lands the cxx-qt plugin crate, a new contract
   waits for it. QML binds to the singleton and calls its
   actions; it never imports the integration module or starts the process.
 - **Other C7 type** (file operations, generated configs, pure logic): add it

@@ -74,7 +74,7 @@ for mod in Quickshell Quickshell/Hyprland Quickshell/Io Quickshell/Wayland \
            Quickshell/Services/Pipewire Quickshell/Services/UPower \
            Quickshell/Services/SystemTray Quickshell/Services/Notifications \
            Quickshell/Services/Mpris \
-           QtQuick/Effects QtQuick/Shapes C7; do
+           QtQuick/Effects QtQuick/Shapes; do
   mkdir -p "$root/usr/lib/qt6/qml/$mod"
   : > "$root/usr/lib/qt6/qml/$mod/qmldir"
 done
@@ -119,16 +119,6 @@ rc=0; out=$(run 2>&1) || rc=$?
 ((rc == 1)) || fail "missing QML module should fail, got exit $rc"
 grep -q 'Quickshell.Bluetooth not available' <<<"$out" || fail "no QML complaint:\n$out"
 mv "$tmp/gone" "$root/usr/lib/qt6/qml/Quickshell/Bluetooth"
-
-# the C7 plugin is ours, so its absence names this package. A directory with no
-# qmldir is not a module: an upgrade that removed the files but left the
-# directory loads nothing either.
-rm "$root/usr/lib/qt6/qml/C7/qmldir"
-rc=0; out=$(run 2>&1) || rc=$?
-((rc == 1)) || fail "missing C7 qmldir should fail, got exit $rc"
-grep -q 'QML module C7 not available.*(package: c7shell)' <<<"$out" \
-  || fail "no C7 complaint naming the c7shell package:\n$out"
-: > "$root/usr/lib/qt6/qml/C7/qmldir"
 
 # no DRM device: the compositor cannot start, and that is the black-screen case
 rm "$root/dev/dri/card0"

@@ -437,7 +437,7 @@ file, which it then names; 2 on bad options.
 | `hypr/xdph.conf` | points xdph's screencopy picker at the shell's own picker |
 | `quickshell/c7shell/shell.qml` | shell entry point |
 | `quickshell/c7shell/preview.qml` | preview harness; must sit here to resolve `qs.*`, not shipped |
-| `plugin/` | the `C7` QML module in C++; installed to `/usr/lib/qt6/qml/C7` |
+| `plugin/` | the Rust Cargo workspace for the `C7` QML module (not shipped yet) |
 | `tools/qml-imports` | builds the module tree editors resolve `qs.*` against |
 | `tools/qml-preview` | runs one component in a window of its own |
 | `quickshell/c7shell/Services/` | brightness, network, bluetooth, audio, notifications, capture |
@@ -670,22 +670,14 @@ at.
 
 ## Working on the C7 plugin
 
-`plugin/` is the shell's C++ side: the `C7` QML module, built with CMake
-against Qt 6 (`docs/architecture.md` says what belongs there). The package
-installs it to `/usr/lib/qt6/qml/C7`. To run the shell against your build
-instead, build into `build/` and put its module directory first on the import
-path:
+`plugin/` is the shell's Rust side, one Cargo workspace (`docs/architecture.md`
+says what belongs there). It ships no `C7` QML module yet: today it holds the
+test fakes and parity harness for the Tailscale rewrite (epic #287). Run cargo
+from `plugin/`, which reads its toolchain and linker config from there:
 
 ```bash
-cmake -S plugin -B build -G Ninja && cmake --build build && ctest --test-dir build
-qs kill -c c7shell
-QML_IMPORT_PATH=$PWD/build/qml qs -c c7shell
+cd plugin && cargo test
 ```
-
-Qt searches `QML_IMPORT_PATH` before its own directory, so the built `C7`
-wins over the installed one. Rebuild and restart `qs` after each C++ change:
-unlike the QML, a loaded plugin does not reload in place. `build/` is ignored
-by git.
 
 ## Tests
 

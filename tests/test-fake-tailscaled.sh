@@ -19,8 +19,7 @@
 #      runs this suite in exactly that environment.
 #   6. the fake crate's tests pass
 #   7. they pass 50 consecutive runs
-# Skips, with the reason, when cargo is not on PATH, the rule
-# tests/test-c7-plugin.sh applies to cmake.
+# Skips, with the reason, when cargo is not on PATH.
 set -euo pipefail
 shopt -s inherit_errexit
 
