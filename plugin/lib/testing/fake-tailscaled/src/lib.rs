@@ -12,6 +12,7 @@
 
 mod bytes;
 pub mod control;
+pub mod evidence;
 mod reply;
 mod request;
 pub mod scenario;
