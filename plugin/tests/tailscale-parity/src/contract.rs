@@ -60,6 +60,26 @@ impl Contract {
         v.as_u64().ok_or_else(|| format!("count of {name} is {v}"))
     }
 
+    /// `rowCount()` of model member `name`, or with `row` that row's child
+    /// count.
+    pub fn model_rows(&self, name: &str, row: Option<i64>) -> Result<u64, String> {
+        let v = self.request(json!({ "op": "rows", "name": name, "row": row }))?;
+        v.as_u64().ok_or_else(|| format!("rowCount of {name} is {v}"))
+    }
+
+    /// `hasChildren()` of model member `name`'s root, or with `row` of that
+    /// row.
+    pub fn model_has_children(&self, name: &str, row: Option<i64>) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "has_children", "name": name, "row": row }))?;
+        v.as_bool().ok_or_else(|| format!("hasChildren of {name} is {v}"))
+    }
+
+    /// Role `role` of row `row` of model member `name`: a role name, or
+    /// `#<n>` for role number `n`. No value reads `{"undefined": true}`.
+    pub fn model_data(&self, name: &str, row: i64, role: &str) -> Result<Value, String> {
+        self.request(json!({ "op": "data", "name": name, "row": row, "role": role }))
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;

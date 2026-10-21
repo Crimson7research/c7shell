@@ -4,9 +4,13 @@
 // Probe.reply before the emit returns.
 //
 // Commands, as JSON: {"op": "read", "name"}, {"op": "enum", "key"},
-// {"op": "call", "name", "args"}, {"op": "count", "name"}, {"op": "members"}.
+// {"op": "call", "name", "args"}, {"op": "count", "name"}, {"op": "members"},
+// and on a model member {"op": "rows", "name", "row"},
+// {"op": "has_children", "name", "row"} and {"op": "data", "name", "row",
+// "role"} (row null for the root; role a name or "#<number>").
 // The answer is {"value": ...} or {"error": "..."}.
 import QtQml
+import QtQml.Models
 import C7
 import C7Harness
 
@@ -15,6 +19,19 @@ QtObject {
 
     // Signal name -> times fired since the driver loaded.
     property var counts: ({})
+
+    // Model member name -> a DelegateModel over it. QAbstractItemModel's
+    // roleNames() is not invokable from QML, so a role named in a scenario
+    // is read the way a view reads it: through the delegate model's item
+    // for the row, whose properties are the model's roles.
+    property var views: ({})
+    property Component viewOf: Component {
+        DelegateModel {
+            delegate: QtObject {}
+        }
+    }
+    // What a delegate model item has beside the model's roles.
+    readonly property var notRoles: ["index", "row", "column", "model", "hasModelChildren", "modelData"]
 
     // A contract value as JSON: an enum is already a number, a Date is
     // {"date": ISO or null}, a model is {"rows": n}, a list is an array.
@@ -44,6 +61,30 @@ QtObject {
         return Tailscale[name];
     }
 
+    function model(name) {
+        const m = member(name);
+        if (m === null || typeof m !== "object" || typeof m.rowCount !== "function")
+            throw new Error(name + " is not a model");
+        return m;
+    }
+
+    // Row `row` of model `name`'s role `role`, read by number through
+    // data(), or by name through the delegate model.
+    function data(name, row, role) {
+        const m = model(name);
+        if (role.startsWith("#"))
+            return encode(m.data(m.index(row, 0), Number(role.slice(1))));
+        if (!(name in root.views))
+            root.views[name] = root.viewOf.createObject(root, { "model": m });
+        const items = root.views[name].items;
+        if (row >= items.count)
+            throw new Error(name + " has no row " + row + " to read " + role + " from");
+        const item = items.get(row).model;
+        if (root.notRoles.includes(role) || !(role in item))
+            throw new Error(role + " is not a role of " + name);
+        return encode(item[role]);
+    }
+
     function run(c) {
         switch (c.op) {
         case "read": {
@@ -69,6 +110,16 @@ QtObject {
             if (!(c.name in root.counts))
                 throw new Error("no signal " + c.name + " is counted");
             return root.counts[c.name];
+        case "rows": {
+            const m = model(c.name);
+            return c.row === null ? m.rowCount() : m.rowCount(m.index(c.row, 0));
+        }
+        case "has_children": {
+            const m = model(c.name);
+            return c.row === null ? m.hasChildren() : m.hasChildren(m.index(c.row, 0));
+        }
+        case "data":
+            return data(c.name, c.row, c.role);
         case "members": {
             const names = [];
             for (const k in Tailscale)

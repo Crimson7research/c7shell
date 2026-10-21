@@ -16,6 +16,10 @@ use crate::bytes::Bytes;
 use crate::reply::{watch_chunk, ReplySpec};
 use crate::script::{within_write_limit, Match, Script};
 
+mod model;
+
+pub use model::{role, ModelQuery, Role};
+
 /// What an implementation lets a scenario do beyond the contract and the
 /// fake.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -119,6 +123,8 @@ pub enum Wait {
     Signal(SignalWait),
     /// Until the fake reports this.
     Fake(FakeWait),
+    /// Until the model query holds.
+    Model(ModelQuery),
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -199,6 +205,8 @@ pub struct Expect {
     pub request: Option<RequestBytes>,
     /// Exactly `count` recorded requests match.
     pub requests: Option<RequestCount>,
+    /// The model query holds.
+    pub model: Option<ModelQuery>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -334,6 +342,7 @@ impl Scenario {
                     check_values(values).map_err(|e| at(format!("wait.contract.{e}")))?
                 }
                 Step::Wait(Wait::Fake(f)) => check_fake_wait(f).map_err(|e| at(format!("wait.fake: {e}")))?,
+                Step::Wait(Wait::Model(q)) => q.validate().map_err(|e| at(format!("wait.model: {e}")))?,
                 Step::Expect(e) => {
                     check_expect(e).map_err(|m| at(format!("expect `{}`: {m}", e.id)))?;
                     if !ids.insert(e.id.as_str()) {
@@ -430,14 +439,18 @@ fn is_requirement_id(id: &str) -> bool {
 }
 
 /// A contract value a scenario can compare: a JSON scalar, `{"enum": name}`,
-/// `{"date": null | ISO string}`, or an array of such values (a string
-/// list, such as `issues`).
+/// `{"date": null | ISO string}`, `{"undefined": true}` (no value, as a
+/// model's `data()` off the end returns), or an array of such values (a
+/// string list, such as `issues`).
 pub fn check_value(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(map) if map.len() == 1 => match map.iter().next().unwrap() {
             (k, Value::String(_)) if k == "enum" => Ok(()),
             (k, Value::String(_) | Value::Null) if k == "date" => Ok(()),
-            _ => Err(format!("{value} is not {{\"enum\": name}} or {{\"date\": null | string}}")),
+            (k, Value::Bool(true)) if k == "undefined" => Ok(()),
+            _ => Err(format!(
+                "{value} is not {{\"enum\": name}}, {{\"date\": null | string}} or {{\"undefined\": true}}"
+            )),
         },
         Value::Array(items) => items.iter().try_for_each(check_value),
         Value::Object(_) => Err(format!("{value} is not a scalar, an enum, a date or an array of them")),
@@ -467,12 +480,16 @@ fn check_fake_wait(f: &FakeWait) -> Result<(), String> {
 }
 
 fn check_expect(e: &Expect) -> Result<(), String> {
-    let kinds = [e.contract.is_some(), e.signal.is_some(), e.request.is_some(), e.requests.is_some()]
-        .iter()
-        .filter(|&&k| k)
-        .count();
+    let kinds =
+        [e.contract.is_some(), e.signal.is_some(), e.request.is_some(), e.requests.is_some(), e.model.is_some()]
+            .iter()
+            .filter(|&&k| k)
+            .count();
     if kinds != 1 {
-        return Err("give exactly one of contract, signal, request and requests".into());
+        return Err("give exactly one of contract, signal, request, requests and model".into());
+    }
+    if let Some(q) = &e.model {
+        q.validate().map_err(|m| format!("model: {m}"))?;
     }
     if let Some(values) = &e.contract {
         check_values(values).map_err(|m| format!("contract.{m}"))?;

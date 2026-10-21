@@ -114,6 +114,37 @@ The driver reads a list as a JSON array, so the comparison is element by
 element and in order. A failed one reports the array read as its actual
 value. `{"enum": key}` inside an array is resolved like any other.
 
+### Model reads (#307)
+
+A `model` expect, and a `model` wait that holds once the same read does,
+query a list model member of `Tailscale` (`peers`, `exitNodes`). Give
+`name` and exactly one of `count`, `values` and `has_children`:
+
+```json
+{ "wait":   { "model": { "name": "peers", "count": 3 } } },
+{ "expect": { "id": "gamma", "model": { "name": "peers", "row": 0,
+              "values": { "hostName": "gamma", "group": 1 } } } },
+{ "expect": { "id": "off-end", "model": { "name": "peers", "row": 99,
+              "values": { "#0": { "undefined": true } } } } },
+{ "expect": { "id": "flat", "model": { "name": "peers", "row": 0, "has_children": false } } }
+```
+
+- `count` is `rowCount()`; with `row` it is that row's child count. Its
+  actual value is the count read.
+- `values` reads roles of row `row` (required, never negative). A key is a
+  role name or `#<n>`, role number `n` (`#0` is `Qt::DisplayRole`). A role
+  named by name is read the way a view reads it, through a
+  `DelegateModel` item for the row, since `roleNames()` is not invokable
+  from QML: the row must exist and the name must be a role, or the step is
+  an error naming it. A role by number goes straight to `data()`, so it
+  can read any row, one off the end included. `{"undefined": true}` is no
+  value. The actual value is the one role's value, or an object by role
+  for several.
+- `has_children` is `hasChildren()`, of the root or with `row` of that row.
+
+A `name` that is no model member is an error. A model `wait` never reached
+says what it last read.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in

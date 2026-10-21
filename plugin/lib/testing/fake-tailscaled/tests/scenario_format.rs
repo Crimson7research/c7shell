@@ -485,7 +485,8 @@ fn it_rejects_a_role_it_cannot_name() {
 
 #[test]
 fn it_rejects_a_model_value_it_cannot_compare_or_no_name() {
-    let e = rejected(with_model_expect(json!({ "name": "peers", "row": 0, "values": { "hostName": { "regex": "x" } } })));
+    let e =
+        rejected(with_model_expect(json!({ "name": "peers", "row": 0, "values": { "hostName": { "regex": "x" } } })));
     assert_names(&e, "values.hostName");
     let e = rejected(with_model_expect(json!({ "name": "", "count": 0 })));
     assert_names(&e, "name");
@@ -496,12 +497,17 @@ fn it_rejects_a_model_value_it_cannot_compare_or_no_name() {
 #[test]
 fn it_accepts_undefined_only_as_true() {
     let dir = TestDir::new();
-    load(&dir, "full", &with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": true } } })))
-        .unwrap();
+    load(
+        &dir,
+        "full",
+        &with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": true } } })),
+    )
+    .unwrap();
     let mut v = full();
     v["steps"][17]["expect"]["contract"] = json!({ "writeError": { "undefined": true } });
     load(&dir, "full", &v).unwrap();
-    let e = rejected(with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": false } } })));
+    let e =
+        rejected(with_model_expect(json!({ "name": "peers", "row": 9, "values": { "#0": { "undefined": false } } })));
     assert_names(&e, "undefined");
 }
 

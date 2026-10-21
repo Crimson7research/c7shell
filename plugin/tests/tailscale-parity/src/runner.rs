@@ -12,17 +12,15 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use cxx_qt_lib::QGuiApplication;
-use fake_tailscaled::scenario::{
-    ClientSelector, Declaration, Expect, Failing, FakeOp, Implementation as Known, Scenario, Step, Verdict, Wait,
-};
-use fake_tailscaled::{Bytes, Fake, Match};
+use fake_tailscaled::scenario::{Declaration, Failing, Implementation as Known, Scenario, Verdict};
+use fake_tailscaled::{Bytes, Fake};
 use serde_json::{json, Value};
 
 use crate::child::{self, PrivateRoot};
 use crate::contract::Contract;
+use crate::headless_app;
 use crate::implementation::Implementation;
-use crate::{headless_app, load_driver, wait_until, Loaded};
+use crate::steps::Run;
 
 /// The line a child prints its outcome on.
 pub const RESULT_PREFIX: &str = "C7-SCENARIO-RESULT ";
@@ -304,182 +302,5 @@ pub fn conclude(
         }
         (Ok(()), None) if failing.is_empty() => Outcome::Pass,
         (Ok(()), None) => Outcome::Fail(failing.to_vec()),
-    }
-}
-
-/// What an expectation asks for, for the log.
-fn wanted(e: &Expect) -> Value {
-    match (&e.contract, &e.signal, &e.request, &e.requests) {
-        (Some(values), ..) => json!(values),
-        (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count }),
-        (_, _, Some(r), _) => json!(r.raw),
-        (_, _, _, Some(r)) => json!({ "requests": r.count }),
-        _ => Value::Null,
-    }
-}
-
-struct Run<'a> {
-    app: &'a QGuiApplication,
-    fake: &'a Fake,
-    qml: &'a Path,
-    loaded: Option<Loaded>,
-    contract: Contract,
-    failing: Vec<Failing>,
-}
-
-impl Run<'_> {
-    /// QML asked the application to exit: the child ends there, with that
-    /// code and no result line, as a crash would.
-    fn exit_if_asked(&self) {
-        if let Some(code) = self.loaded.as_ref().and_then(Loaded::exit_code) {
-            let _ = std::io::stdout().flush();
-            std::process::exit(code);
-        }
-    }
-
-    /// Pumps until `done` holds; an error from it ends the wait at once.
-    fn wait(&self, what: &str, mut done: impl FnMut() -> Result<bool, String>) -> Result<(), String> {
-        let mut last = Ok(false);
-        let reached = wait_until(self.app, || {
-            last = done();
-            match &last {
-                Ok(true) => Some(()),
-                Ok(false) => None,
-                Err(_) => Some(()),
-            }
-        });
-        match (reached, last) {
-            (_, Err(e)) => Err(e),
-            (Some(()), _) => Ok(()),
-            (None, _) => Err(format!("wait never reached: {what}")),
-        }
-    }
-
-    fn matching(&self, m: &Match) -> Vec<fake_tailscaled::Request> {
-        self.fake.requests().into_iter().filter(|r| m.matches(r)).collect()
-    }
-
-    fn step(&mut self, step: &Step) -> Result<(), String> {
-        match step {
-            Step::Start(_) => {
-                self.loaded = Some(load_driver(self.app, self.qml)?);
-                Ok(())
-            }
-            Step::Call(c) => self.contract.call(&c.name, &c.args).map(drop),
-            Step::Wait(w) => self.wait_step(w),
-            Step::Fake(op) => self.fake_op(op),
-            Step::Barrier(b) => Err(format!("the {b:?} barrier needs a capability this implementation lacks")),
-            Step::AdvanceMs(_) => Err("advance_ms needs the clock, which this implementation lacks".into()),
-            Step::Expect(e) => self.expect(e),
-        }
-    }
-
-    /// Runs one wait step until it holds; one never reached is an error.
-    fn wait_step(&self, w: &Wait) -> Result<(), String> {
-        match w {
-            Wait::Contract(values) => {
-                let mut wanted = Vec::new();
-                for (member, v) in values {
-                    wanted.push((member.clone(), v.clone(), self.contract.resolve(v)?));
-                }
-                let what: Vec<String> = wanted.iter().map(|(m, v, _)| format!("{m} {v}")).collect();
-                let mut last = BTreeMap::new();
-                let reached = self.wait(&what.join(", "), || {
-                    for (member, _, want) in &wanted {
-                        let got = self.contract.read(member)?;
-                        let equal = got == *want;
-                        last.insert(member.clone(), got);
-                        if !equal {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                });
-                reached.map_err(|e| format!("{e} (last read {})", json!(last)))
-            }
-            Wait::Signal(s) => self.wait(&format!("{} fired {} times", s.name, s.at_least), || {
-                Ok(self.contract.signal_count(&s.name)? >= s.at_least)
-            }),
-            Wait::Fake(f) => {
-                if let Some(n) = f.connected {
-                    self.wait(&format!("the fake has {n} connected clients"), || Ok(self.fake.connected_count() == n))
-                } else if let Some(m) = &f.recorded {
-                    let n = f.count.unwrap_or(1);
-                    self.wait(&format!("the fake recorded {n} of {}", json!(m)), || Ok(self.matching(m).len() >= n))
-                } else {
-                    let n = f.held.unwrap_or(0);
-                    self.wait(&format!("the fake holds {n} requests"), || Ok(self.fake.held_count() == n))
-                }
-            }
-        }
-    }
-
-    /// Runs one fake op. A push, resume or completion that reaches no
-    /// client is an error: the count it returns is the barrier (R-FAKE-02).
-    fn fake_op(&self, op: &FakeOp) -> Result<(), String> {
-        let reached = |op: &str, n: usize| if n == 0 { Err(format!("{op} reached no client")) } else { Ok(()) };
-        match op {
-            FakeOp::PushLine(b) => reached("push_line", self.fake.push_line(&b.0))?,
-            FakeOp::PushChunk(b) => reached("push_chunk", self.fake.push_chunk(&b.0))?,
-            FakeOp::PushWatchLine(b) => reached("push_watch_line", self.fake.push_watch_line(&b.0))?,
-            FakeOp::HoldNext(b) => self.fake.hold_next(&b.0),
-            FakeOp::CompleteHeld(reply) => {
-                reached("complete_held", self.fake.complete_held(&reply.encode(false)?.bytes))?
-            }
-            FakeOp::Resume(label) => reached("resume", self.fake.resume(label))?,
-            FakeOp::CloseClient(sel) => {
-                let id = match sel {
-                    ClientSelector::Holding(b) => self.fake.client_holding(&b.0),
-                    ClientSelector::Stream(_) => {
-                        self.fake.clients().iter().find(|c| c.stream && c.connected).map(|c| c.id)
-                    }
-                    ClientSelector::Index(n) => Some(*n),
-                };
-                let id = id.ok_or_else(|| format!("no client for close_client {sel:?}"))?;
-                if !self.fake.close_client(id) {
-                    return Err(format!("client {id} was not connected"));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn expect(&mut self, e: &Expect) -> Result<(), String> {
-        let (ok, actual) = if let Some(values) = &e.contract {
-            let mut ok = true;
-            let mut actual = serde_json::Map::new();
-            for (member, v) in values {
-                let got = self.contract.read(member)?;
-                ok &= got == self.contract.resolve(v)?;
-                actual.insert(member.clone(), got);
-            }
-            let actual = if actual.len() == 1 { actual.into_iter().next().unwrap().1 } else { Value::Object(actual) };
-            (ok, actual)
-        } else if let Some(s) = &e.signal {
-            let n = self.contract.signal_count(&s.name)?;
-            (n == s.count, json!(n))
-        } else if let Some(r) = &e.request {
-            let found = self.matching(&r.matcher);
-            match found.iter().find(|q| q.raw != r.raw.0) {
-                Some(differs) => (false, json!(Bytes(differs.raw.clone()))),
-                None if found.is_empty() => (false, Value::Null),
-                None => (true, json!(Bytes(found[0].raw.clone()))),
-            }
-        } else if let Some(r) = &e.requests {
-            let n = self.matching(&r.matcher).len();
-            (n == r.count, json!(n))
-        } else {
-            return Err(format!("expect `{}` has no kind", e.id));
-        };
-        if ok {
-            return Ok(());
-        }
-        if e.precondition {
-            return Err(format!("precondition `{}` failed: actual {actual}", e.id));
-        }
-        // The log the parent prints on a mismatch shows both values.
-        println!("expect `{}` failed: wanted {}, actual {actual}", e.id, wanted(e));
-        self.failing.push(Failing { id: e.id.clone(), actual });
-        Ok(())
     }
 }
