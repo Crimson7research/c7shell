@@ -522,6 +522,26 @@ fn r_fake_03_drops_one_chosen_client() {
 }
 
 #[test]
+fn r_fake_03_finds_the_held_client_by_its_fragment() {
+    let dir = TestDir::new();
+    let fake = Fake::start(dir.socket());
+    fake.on_request(reply_with(b"answered"), AfterReply::KeepOpen, Some(b"\r\n\r\n"));
+    fake.hold_next(b"/status ");
+    let mut status = Client::connect(fake.path());
+    status.write(STATUS_GET);
+    wait_requests(&fake, 1);
+    fake.hold_next(b"/prefs ");
+    let mut prefs = Client::connect(fake.path());
+    prefs.write(b"GET /prefs HTTP/1.1\r\n\r\n");
+    wait_requests(&fake, 2);
+    assert_eq!(fake.held_count(), 2);
+
+    assert_eq!(fake.client_holding(b"/status "), Some(1));
+    assert_eq!(fake.client_holding(b"/prefs "), Some(2));
+    assert_eq!(fake.client_holding(b"/suggest "), None, "no held request carries that fragment");
+}
+
+#[test]
 fn closing_a_client_that_is_gone_or_unknown_says_so() {
     let dir = TestDir::new();
     let fake = Fake::start(dir.socket());
