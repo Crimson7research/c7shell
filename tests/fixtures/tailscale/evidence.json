@@ -518,16 +518,15 @@
       "tag": "fix",
       "class": "harness-on-cpp",
       "pr": 307,
-      "runs": "a later status with `\"Peer\":{}` leaves 0 rows in both models",
+      "runs": "a status without `Peer` leaves 20 rows, with no rowsRemoved, and `state` `Running`, read once that status's own tailnet name is seen; a later status with `\"Peer\":{}` leaves 0 rows in both models; in the second run, `Running` with `\"Peer\":null` after `{\"Prefs\":{}}` leaves 0 rows in both models and `state` `Running`, read once that status's own tailnet name is seen",
       "deferred": [
         {
-          "clause": "20 rows remain after a status without `Peer`, and the second run's rows and `peersKnown`",
+          "clause": "the second run's `peersKnown`",
           "class": "phase3-only",
           "needs": [
-            "idle-barrier",
             "added-member"
           ],
-          "reason": "an unchanged row count is a negative after the idle barrier, and `peersKnown` is a contract addition"
+          "reason": "`peersKnown` is a contract addition"
         }
       ]
     },
