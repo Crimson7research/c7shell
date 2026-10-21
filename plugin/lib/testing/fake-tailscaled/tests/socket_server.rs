@@ -607,3 +607,23 @@ fn a_fake_whose_socket_was_replaced_leaves_the_new_file_alone() {
     drop(fake);
     assert_eq!(fs::read(&path).unwrap(), b"someone else's");
 }
+
+#[test]
+fn dropping_a_fake_whose_path_another_fake_took_neither_hangs_nor_reaches_it() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let first = Fake::start(&path);
+    fs::remove_file(&path).unwrap();
+    let second = Fake::start(&path);
+    assert!(second.is_listening(), "precondition: {:?}", second.error());
+    let (done, dropped) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        drop(first);
+        let _ = done.send(());
+    });
+    dropped.recv_timeout(fake_tailscaled::FAILURE_BOUND).expect("dropping the first fake hung");
+    assert_eq!(second.accepted_total(), 0, "the first fake's drop connected to the second");
+    assert!(fs::symlink_metadata(&path).unwrap().file_type().is_socket(), "the second fake's socket was removed");
+    let _client = Client::connect(&path);
+    wait_connected(&second, 1);
+}
