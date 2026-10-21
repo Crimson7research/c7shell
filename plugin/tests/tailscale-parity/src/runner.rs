@@ -132,10 +132,15 @@ pub fn run_all(
         .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect())
         .unwrap_or_default();
     paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
-    paths.retain(|p| {
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        wanted.as_ref().is_none_or(|w| w.contains(&stem))
-    });
+    let stem = |p: &PathBuf| p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    if let Some(w) = &wanted {
+        let stems: Vec<String> = paths.iter().map(stem).collect();
+        let missing: Vec<&str> = w.iter().copied().filter(|id| !stems.iter().any(|s| s == id)).collect();
+        if !missing.is_empty() {
+            return Err(format!("no scenario has the id {} in {}", missing.join(", "), dir.display()));
+        }
+        paths.retain(|p| w.contains(&stem(p).as_str()));
+    }
     paths.sort();
     if paths.is_empty() {
         return Err(format!("no scenarios found in {}", dir.display()));
@@ -161,6 +166,16 @@ pub fn run_all(
         }
     }
     Ok(format!("{} scenarios matched their declarations on {} in {repeat} runs", paths.len(), imp.name))
+}
+
+/// The repeat count `C7_REPEAT` gives: 1 when unset, else a whole number
+/// of at least 1.
+pub fn parse_repeat(value: Option<&str>) -> Result<u32, String> {
+    match value.map(str::parse::<u32>) {
+        None => Ok(1),
+        Some(Ok(n)) if n >= 1 => Ok(n),
+        _ => Err(format!("C7_REPEAT must be a whole number of at least 1, not {:?}", value.unwrap_or(""))),
+    }
 }
 
 fn error_text(o: &Outcome) -> String {

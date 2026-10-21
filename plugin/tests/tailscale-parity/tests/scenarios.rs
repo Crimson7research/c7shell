@@ -20,7 +20,13 @@ fn main() {
         }
     };
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/tailscale/scenarios");
-    let repeat = std::env::var("C7_REPEAT").ok().and_then(|r| r.parse().ok()).unwrap_or(1);
+    let repeat = match runner::parse_repeat(std::env::var("C7_REPEAT").ok().as_deref()) {
+        Ok(n) => n,
+        Err(e) => {
+            println!("FAIL {e}");
+            std::process::exit(2);
+        }
+    };
     let filter = std::env::var("C7_SCENARIOS").ok();
     match runner::run_all(&imp, fake_tailscaled::scenario::IMPLEMENTATIONS, &dir, repeat, filter.as_deref()) {
         Ok(summary) => println!("{summary}"),

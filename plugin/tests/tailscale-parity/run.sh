@@ -8,7 +8,10 @@ shopt -s inherit_errexit
 repeat=1
 while (($#)); do
   case $1 in
-    --repeat) repeat=${2:?--repeat needs a count}; shift 2 ;;
+    --repeat)
+      repeat=${2:?--repeat needs a count}
+      [[ $repeat =~ ^[1-9][0-9]*$ ]] || { printf '%s: --repeat needs a whole number of at least 1, not %q\n' "$0" "$repeat" >&2; exit 2; }
+      shift 2 ;;
     *) printf 'usage: %s [--repeat N]\n' "$0" >&2; exit 2 ;;
   esac
 done
