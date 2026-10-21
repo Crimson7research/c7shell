@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "R-GROUP-06, the model half of the same-update clause: over alpha (nAAA1CNTRL, online), bravo (nBBB1CNTRL, 100.64.0.2) and gamma (nCCC1CNTRL, another user, 100.64.0.4) at rows 0 to 2, one served status that takes alpha offline and gives gamma 100.64.0.9 moves bravo to row 0 and alpha to row 1, leaves gamma at row 2 reading ip4 100.64.0.9, bravo still reading 100.64.0.2 and alpha reading online false, with one rowsMoved and no reset, counted from QML from just before the change once gamma's new ip4 is seen"
+    "R-GROUP-06, the model half of the same-update clause: over alpha (nAAA1CNTRL, online), bravo (nBBB1CNTRL, 100.64.0.2) and gamma (nCCC1CNTRL, another user, 100.64.0.4) at rows 0 to 2, one served status that takes alpha offline and gives gamma 100.64.0.9 moves bravo to row 0 and alpha to row 1, leaves gamma at row 2 reading ip4 100.64.0.9, bravo still reading 100.64.0.2 and alpha reading online false, with one rowsMoved, two dataChanged (alpha's and gamma's, none for bravo), no insert, no remove and no reset, counted from QML from just before the change once gamma's new ip4 is seen"
   ],
   "deferred": [
     "the delegate half (alpha's and gamma's delegates read the new values, bravo's keeps the old): harness-on-cpp, #309"
@@ -31,7 +31,10 @@
     {"expect": {"id": "bravo-moved-up-unchanged", "model": {"name": "peers", "row": 0, "values": {"nodeId": "nBBB1CNTRL", "ip4": "100.64.0.2", "online": true}}}},
     {"expect": {"id": "alpha-offline", "model": {"name": "peers", "row": 1, "values": {"nodeId": "nAAA1CNTRL", "online": false}}}},
     {"expect": {"id": "one-move", "signal": {"name": "peers.rowsMoved", "count": 1, "since": "before-change"}}},
-    {"expect": {"id": "no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-change"}}}
+    {"expect": {"id": "no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-change"}}},
+    {"expect": {"id": "two-data-changes", "signal": {"name": "peers.dataChanged", "count": 2, "since": "before-change"}}},
+    {"expect": {"id": "no-insert", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-change"}}},
+    {"expect": {"id": "no-remove", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-change"}}}
   ],
   "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
 }
