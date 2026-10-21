@@ -8,8 +8,10 @@
 #      outside plugin/ (tests/test-c7-plugin.sh check 1 fails on any ignored
 #      file under plugin/)
 #   3. plugin/.cargo/config.toml pins rust-lld
-#   4. git ignores /target/ and no file under plugin/
-#   5. a workspace build leaves no plugin/target behind
+#   4. git ignores /target/ and /plugin/target/ (where cargo builds when run
+#      from the root with --manifest-path), and no other file under plugin/
+#   5. a build of the whole workspace, every target, leaves no plugin/target
+#      behind
 #   6. the fake crate's tests pass
 #   7. they pass 50 consecutive runs
 # Skips, with the reason, when cargo is not on PATH, the rule
@@ -72,16 +74,20 @@ ignored() {
   ((rc <= 1)) || fail "git check-ignore exited $rc in $repo"
 }
 [[ -n $(ignored target/x) ]] || fail "git does not ignore /target/, cargo's target directory"
-files=$(cd "$repo" && find plugin -type f)
+[[ -n $(ignored plugin/target/x) ]] \
+  || fail "git does not ignore /plugin/target/, where cargo --manifest-path from the root builds"
+files=$(cd "$repo" && find plugin -path plugin/target -prune -o -type f -print)
 mapfile -t files <<<"$files"
 hits=$(ignored "${files[@]}")
 [[ -z $hits ]] || fail "git ignores files under plugin/:\n$hits"
-echo "PASS: /target/ is ignored, no file under plugin/ is"
+echo "PASS: /target/ and /plugin/target/ are ignored, no other file under plugin/ is"
 
 # 5. no target directory inside plugin/ ----------------------------------------
-run_logged 'cargo build' in_plugin cargo build --locked
+# The whole workspace and every target, so the parity harness, its tests and
+# its scenarios runner compile here even where the reference build is absent.
+run_logged 'cargo build' in_plugin cargo build --locked --workspace --all-targets
 [[ ! -e $plugin/target ]] || fail "a cargo build created plugin/target"
-echo "PASS: a build leaves no plugin/target"
+echo "PASS: a build of the whole workspace leaves no plugin/target"
 
 # 6. the fake's tests ----------------------------------------------------------
 run_logged 'the fake tailscaled tests' in_plugin cargo test --locked -p fake-tailscaled
