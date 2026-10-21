@@ -10,8 +10,14 @@
 //! `docs/superpowers/specs/2026-10-19-tailscale-rust-requirements.md`, and
 //! each is tested by the `r_fake_0N_*` tests under `tests/`.
 
+mod bytes;
+mod reply;
 mod request;
+mod script;
 mod server;
 
+pub use bytes::{decode_hex, encode_hex, Body, Bytes};
+pub use reply::{canonical_reason, Chunked, Encoded, Framing, ReplySpec, Split, Then};
 pub use request::Request;
+pub use script::{Match, Rule, Script, Times};
 pub use server::{AfterReply, ClientId, ClientReport, Fake, Handler, State, FAILURE_BOUND};

@@ -16,7 +16,9 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::reply::{watch_chunk, Encoded, Then};
 use crate::request::{declared_body_size, Request};
+use crate::script::{Action, Compiled, Script};
 
 /// The bound on every wait in the fake and its tests. A passing test never
 /// reaches it; it only turns a hang into a failure. Nothing asserts on time.
@@ -46,6 +48,19 @@ pub struct ClientReport {
     /// Bytes written to the client: replies, completions and pushes.
     pub written: usize,
     pub held: bool,
+    /// A scripted reply is part-written and waits for its release.
+    pub parked: bool,
+    /// A scripted watch stream: watch lines reach it.
+    pub stream: bool,
+}
+
+/// The rest of a split reply, waiting for `label`.
+pub(crate) struct Parked {
+    label: String,
+    rest: Vec<u8>,
+    /// Later splits, as offsets into `rest`.
+    splits: Vec<(usize, String)>,
+    then: Then,
 }
 
 /// One accepted client.
@@ -59,6 +74,8 @@ pub(crate) struct ClientEntry {
     pub(crate) written: usize,
     /// Its request is held: recorded, unanswered, connected.
     pub(crate) held: bool,
+    pub(crate) parked: Option<Parked>,
+    pub(crate) watch: bool,
     pending: Vec<u8>,
 }
 
@@ -75,9 +92,28 @@ impl ClientEntry {
         ok
     }
 
-    /// Takes pushed bytes: connected, not closed and not held.
+    /// Takes pushed bytes: connected, not closed, not held, not parked.
     fn takes_pushes(&self) -> bool {
-        self.connected && !self.closed && !self.held
+        self.connected && !self.closed && !self.held && self.parked.is_none()
+    }
+
+    /// Writes `bytes` up to the first of `splits` and parks the rest, or
+    /// writes it all and does what `then` says.
+    fn write_until_split(&mut self, mut bytes: Vec<u8>, mut splits: Vec<(usize, String)>, then: Then) {
+        if splits.is_empty() {
+            if then != Then::CloseWithoutReply {
+                self.write(&bytes);
+            }
+            if then != Then::KeepOpen {
+                self.close();
+            }
+            return;
+        }
+        let (at, label) = splits.remove(0);
+        let rest = bytes.split_off(at);
+        self.write(&bytes);
+        let splits = splits.into_iter().map(|(o, l)| (o - at, l)).collect();
+        self.parked = Some(Parked { label, rest, splits, then });
     }
 
     pub(crate) fn close(&mut self) {
@@ -96,6 +132,7 @@ pub struct State {
     delimiter: Option<Vec<u8>>,
     hold_fragment: Option<Vec<u8>>,
     disconnects: usize,
+    script: Option<Compiled>,
 }
 
 impl Default for State {
@@ -108,6 +145,7 @@ impl Default for State {
             delimiter: None,
             hold_fragment: None,
             disconnects: 0,
+            script: None,
         }
     }
 }
@@ -138,6 +176,8 @@ impl State {
                 received: c.received,
                 written: c.written,
                 held: c.held && c.connected,
+                parked: c.parked.is_some() && c.connected,
+                stream: c.watch,
             })
             .collect()
     }
@@ -218,6 +258,10 @@ impl State {
             self.client_mut(id).unwrap().held = true;
             return;
         }
+        if self.script.is_some() {
+            self.answer_from_script(id, request);
+            return;
+        }
         let reply = self.handler.as_ref().and_then(|h| h(&request));
         self.requests.push(request);
         let after = self.after;
@@ -232,6 +276,52 @@ impl State {
 }
 
 impl State {
+    /// Answers `request` from the script; a request no rule matches gets 404
+    /// and is flagged.
+    fn answer_from_script(&mut self, id: ClientId, mut request: Request) {
+        let action = self.script.as_mut().unwrap().answer(&request);
+        if action.is_none() {
+            request.unmatched = true;
+        }
+        self.requests.push(request);
+        let client = self.client_mut(id).unwrap();
+        match action {
+            Some(Action::Reply(Encoded { bytes, splits, then })) => client.write_until_split(bytes, splits, then),
+            Some(Action::Hold) => client.held = true,
+            Some(Action::Stream(Encoded { bytes, .. })) => {
+                client.watch = true;
+                client.write(&bytes);
+            }
+            None => {
+                client.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+                client.close();
+            }
+        }
+    }
+
+    /// Writes the next part of every reply parked on `label`.
+    fn resume(&mut self, label: &str) -> usize {
+        let mut resumed = 0;
+        for c in self.clients.iter_mut().filter(|c| c.connected && c.parked.as_ref().is_some_and(|p| p.label == label))
+        {
+            let Parked { rest, splits, then, .. } = c.parked.take().unwrap();
+            c.write_until_split(rest, splits, then);
+            resumed += 1;
+        }
+        resumed
+    }
+
+    /// Writes `line` as one chunk to every watch stream that takes pushes.
+    fn push_watch_line(&mut self, line: &[u8]) -> usize {
+        let chunk = watch_chunk(line);
+        self.clients
+            .iter_mut()
+            .filter(|c| c.watch && c.takes_pushes())
+            .map(|c| c.write(&chunk))
+            .filter(|&ok| ok)
+            .count()
+    }
+
     /// Writes `bytes` to every client that takes pushes; returns how many
     /// took them.
     fn push(&mut self, bytes: &[u8]) -> usize {
@@ -419,6 +509,34 @@ impl Fake {
         value
     }
 
+    /// Answers from `script` from now on: requests are framed on CRLFCRLF
+    /// with their declared bodies, each rule replies, holds or opens a watch
+    /// stream, and a request no rule matches gets 404 and is flagged
+    /// ([`Request::unmatched`]). A held request is completed with
+    /// [`Fake::complete_held`], which then closes it. Fails, changing
+    /// nothing, when a rule cannot be encoded.
+    pub fn set_script(&self, script: Script) -> Result<(), String> {
+        let compiled = script.compile()?;
+        self.locked(|s| {
+            s.script = Some(compiled);
+            s.after = AfterReply::CloseAfterReply;
+            s.delimiter = Some(b"\r\n\r\n".to_vec());
+        });
+        Ok(())
+    }
+
+    /// Writes `line` and a newline as one chunk, `<hex length>\r\n<line>\n\r\n`,
+    /// to every scripted watch stream not held or parked; returns how many.
+    pub fn push_watch_line(&self, line: &[u8]) -> usize {
+        self.locked(|s| s.push_watch_line(line))
+    }
+
+    /// Writes the next part of every reply parked on `label`, up to its next
+    /// split or its end; returns how many it resumed.
+    pub fn resume(&self, label: &str) -> usize {
+        self.locked(|s| s.resume(label))
+    }
+
     /// Every request recorded, in order.
     pub fn requests(&self) -> Vec<Request> {
         self.shared.lock().requests.clone()
@@ -490,6 +608,8 @@ fn accept_loop(listener: UnixListener, shared: Arc<Shared>) {
                 received: 0,
                 written: 0,
                 held: false,
+                parked: None,
+                watch: false,
                 pending: Vec::new(),
             });
             id
@@ -519,6 +639,7 @@ fn read_loop(id: ClientId, stream: Arc<UnixStream>, shared: Arc<Shared>) {
         if let Some(c) = state.clients.iter_mut().find(|c| c.id == id) {
             c.connected = false;
             c.held = false;
+            c.parked = None;
             c.pending.clear();
         }
         state.disconnects += 1;
@@ -554,7 +675,12 @@ impl Drop for Fake {
 
 /// Waits on the fake's condition variable until `f` returns Some, or fails
 /// naming `what` once `bound` has passed.
-fn wait_for<T>(shared: &Shared, what: &str, bound: Duration, mut f: impl FnMut(&State) -> Option<T>) -> Result<T, String> {
+fn wait_for<T>(
+    shared: &Shared,
+    what: &str,
+    bound: Duration,
+    mut f: impl FnMut(&State) -> Option<T>,
+) -> Result<T, String> {
     let deadline = Instant::now() + bound;
     let mut state = shared.lock();
     loop {

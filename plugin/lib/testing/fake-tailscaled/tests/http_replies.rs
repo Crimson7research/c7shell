@@ -60,7 +60,8 @@ fn chunked_sends_one_chunk_and_the_final_chunk() {
 
 #[test]
 fn chunked_with_given_sizes() {
-    let got = reply_bytes(json!({ "status": 200, "framing": { "chunked": { "sizes": [6, 7] } }, "body": "hello, world!" }));
+    let got =
+        reply_bytes(json!({ "status": 200, "framing": { "chunked": { "sizes": [6, 7] } }, "body": "hello, world!" }));
     assert_eq!(
         text(&got),
         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\nhello,\r\n7\r\n world!\r\n0\r\n\r\n"
@@ -103,8 +104,11 @@ fn no_framing_then_close() {
 #[test]
 fn no_framing_then_keep_open() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([{ "match": { "method": "GET", "target": "/r" },
-        "reply": { "framing": "none", "body": "hello", "then": "keep-open" } }]));
+    let fake = scripted(
+        &dir,
+        json!([{ "match": { "method": "GET", "target": "/r" },
+        "reply": { "framing": "none", "body": "hello", "then": "keep-open" } }]),
+    );
     let mut client = Client::connect(fake.path());
     client.write(&get("/r"));
     let want = b"HTTP/1.1 200 OK\r\n\r\nhello";
@@ -158,8 +162,11 @@ fn close_without_reply() {
 #[test]
 fn a_split_waits_for_its_release() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([{ "match": { "method": "GET", "target": "/r" },
-        "reply": { "status": 200, "body": "0123456789".repeat(5), "split": [{ "at": 40, "await": "rest" }] } }]));
+    let fake = scripted(
+        &dir,
+        json!([{ "match": { "method": "GET", "target": "/r" },
+        "reply": { "status": 200, "body": "0123456789".repeat(5), "split": [{ "at": 40, "await": "rest" }] } }]),
+    );
     let mut client = Client::connect(fake.path());
     client.write(&get("/r"));
     let whole = format!("HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\n{}", "0123456789".repeat(5)).into_bytes();
@@ -176,9 +183,12 @@ fn a_split_waits_for_its_release() {
 #[test]
 fn several_splits_release_in_order() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([{ "match": { "method": "GET", "target": "/r" },
+    let fake = scripted(
+        &dir,
+        json!([{ "match": { "method": "GET", "target": "/r" },
         "reply": { "status_line": "X", "framing": "none", "body": "abcdef",
-                   "split": [{ "at": 3, "await": "one" }, { "at": 7, "await": "two" }] } }]));
+                   "split": [{ "at": 3, "await": "one" }, { "at": 7, "await": "two" }] } }]),
+    );
     let mut client = Client::connect(fake.path());
     client.write(&get("/r"));
     assert_eq!(client.read_exactly(3), b"X\r\n");
@@ -205,11 +215,14 @@ fn split_offsets_must_increase_and_stay_inside_the_reply() {
 #[test]
 fn a_stream_rule_keeps_the_client_for_watch_lines() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([
-        { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
-          "stream": { "status": 200, "framing": "chunked" } },
-        { "match": { "method": "GET", "path": "/other" }, "reply": { "then": "keep-open" } }
-    ]));
+    let fake = scripted(
+        &dir,
+        json!([
+            { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+              "stream": { "status": 200, "framing": "chunked" } },
+            { "match": { "method": "GET", "path": "/other" }, "reply": { "then": "keep-open" } }
+        ]),
+    );
     let mut watch = Client::connect(fake.path());
     watch.write(&get("/localapi/v0/watch-ipn-bus?mask=18"));
     let head = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
@@ -229,10 +242,13 @@ fn a_stream_rule_keeps_the_client_for_watch_lines() {
 #[test]
 fn times_falls_through_to_the_next_rule() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([
-        { "match": { "method": "GET", "target": "/r" }, "times": 1, "reply": { "body": "first" } },
-        { "match": { "method": "GET", "target": "/r" }, "times": "always", "reply": { "body": "rest" } }
-    ]));
+    let fake = scripted(
+        &dir,
+        json!([
+            { "match": { "method": "GET", "target": "/r" }, "times": 1, "reply": { "body": "first" } },
+            { "match": { "method": "GET", "target": "/r" }, "times": "always", "reply": { "body": "rest" } }
+        ]),
+    );
     for want in ["first", "rest", "rest"] {
         let mut client = Client::connect(fake.path());
         client.write(&get("/r"));
@@ -281,7 +297,10 @@ fn a_hold_rule_is_released_by_complete_held() {
 #[test]
 fn a_patch_body_is_framed_by_its_length() {
     let dir = TestDir::new();
-    let fake = scripted(&dir, json!([{ "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "reply": { "body": "{}" } }]));
+    let fake = scripted(
+        &dir,
+        json!([{ "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "reply": { "body": "{}" } }]),
+    );
     let mut client = Client::connect(fake.path());
     let patch: &[u8] = b"PATCH /localapi/v0/prefs HTTP/1.1\r\nHost: local-tailscaled.sock\r\nContent-Type: application/json\r\nContent-Length: 14\r\n\r\n{\"RouteAll\":1}";
     client.write(&patch[..patch.len() - 1]);
@@ -310,7 +329,9 @@ fn bytes_round_trip_through_json() {
     let body: Body = serde_json::from_value(json!({ "hex": "4142" })).unwrap();
     assert_eq!(body.0, b"AB");
 
-    for bad in [json!({ "hex": "0" }), json!({ "hex": "zz" }), json!(3), json!({ "json": 1 }), json!({ "hex": "00", "x": 1 })] {
+    for bad in
+        [json!({ "hex": "0" }), json!({ "hex": "zz" }), json!(3), json!({ "json": 1 }), json!({ "hex": "00", "x": 1 })]
+    {
         assert!(serde_json::from_value::<Bytes>(bad.clone()).is_err(), "{bad} was accepted as Bytes");
     }
     assert!(serde_json::from_value::<Body>(json!({ "nope": 1 })).is_err());
