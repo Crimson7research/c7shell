@@ -87,6 +87,14 @@ fn the_request_failures(failures: &mut Vec<String>, imp: &Implementation) {
     verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
 }
 
+/// 4. A body read from a capture file, a C++ model read by role name and
+///    number with its own signals counted, and a served change: a second
+///    `/status` reply after a watch notification asks for it.
+fn a_served_change(failures: &mut Vec<String>, imp: &Implementation) {
+    let r = runner::run_one(imp, CPP_ONLY, &selftest("scenarios-cpp/served-change.json"), &[]);
+    verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     match Implementation::from_env() {
@@ -95,6 +103,7 @@ fn parent() -> i32 {
             the_module(&mut failures, &imp);
             an_unmatched_request(&mut failures, &imp);
             the_request_failures(&mut failures, &imp);
+            a_served_change(&mut failures, &imp);
         }
     }
     finish("harness_selftest", &failures)

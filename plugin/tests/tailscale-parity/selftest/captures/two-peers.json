@@ -1,0 +1,13 @@
+{
+  "BackendState": "Running",
+  "CurrentTailnet": { "Name": "example.com" },
+  "Self": { "ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.",
+            "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1 },
+  "User": { "1": { "ID": 1, "LoginName": "me@example.com", "DisplayName": "Me" } },
+  "Peer": {
+    "nodekey:aaaa": { "ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.",
+                      "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1 },
+    "nodekey:cccc": { "ID": "nCCC1CNTRL", "HostName": "charlie", "DNSName": "charlie.example.ts.net.",
+                      "TailscaleIPs": ["100.64.0.4"], "Online": true, "ExitNodeOption": true, "UserID": 1 }
+  }
+}

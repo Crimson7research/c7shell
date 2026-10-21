@@ -517,3 +517,57 @@ fn it_rejects_an_expect_with_a_model_and_another_kind() {
                                                        "signal": { "name": "stateChanged", "count": 0 } } }])));
     assert_names(&e, "exactly one of contract, signal, request, requests and model");
 }
+
+/// Writes `value` as `<root>/scenarios/<stem>.json`, so `{"file": ...}`
+/// names a path under `<root>`, and loads it.
+fn load_under(root: &TestDir, stem: &str, value: &Value) -> Result<Scenario, String> {
+    std::fs::create_dir_all(root.join("scenarios")).unwrap();
+    let path = root.join(format!("scenarios/{stem}.json"));
+    std::fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
+    Scenario::load(&path)
+}
+
+/// `full()` with its status reply, its stream head and its completion
+/// taking their bodies from `file`.
+fn with_body_file(file: &str) -> Value {
+    let mut v = full();
+    v["fake"]["rules"][1]["reply"]["body"] = json!({ "file": file });
+    v["fake"]["rules"][1]["reply"].as_object_mut().unwrap().remove("split");
+    v["fake"]["rules"][0]["stream"]["body"] = json!({ "file": file });
+    v["steps"][11]["fake"]["complete_held"]["body"] = json!({ "file": file });
+    v
+}
+
+#[test]
+fn it_reads_a_body_from_a_file_under_the_fixture_root() {
+    let root = TestDir::new();
+    std::fs::create_dir_all(root.join("captures")).unwrap();
+    let capture = b"{\"BackendState\": \"Running\",\n \"Peer\": {}}\n";
+    std::fs::write(root.join("captures/status.json"), capture).unwrap();
+    let s = load_under(&root, "full", &with_body_file("captures/status.json")).unwrap();
+    let reply = s.fake.rules[1].reply.as_ref().unwrap();
+    assert_eq!(reply.body.0, capture, "the reply body is the file's bytes, unchanged");
+    assert_eq!(s.fake.rules[0].stream.as_ref().unwrap().body.0, capture);
+    match &s.steps[11] {
+        fake_tailscaled::scenario::Step::Fake(fake_tailscaled::scenario::FakeOp::CompleteHeld(r)) => {
+            assert_eq!(r.body.0, capture)
+        }
+        other => panic!("steps[11] is {other:?}"),
+    }
+}
+
+#[test]
+fn it_rejects_a_body_file_that_is_missing_or_outside_the_fixture_root() {
+    let root = TestDir::new();
+    let e = load_under(&root, "full", &with_body_file("captures/none.json")).unwrap_err();
+    assert_names(&e, "fake.rules[0].stream.body.file");
+    assert_names(&e, "captures/none.json");
+    for bad in ["/etc/hostname", "../outside.json", "captures/../../outside.json", ""] {
+        let e = load_under(&root, "full", &with_body_file(bad)).unwrap_err();
+        assert_names(&e, "body.file");
+        assert_names(&e, "relative");
+    }
+    let mut v = full();
+    v["fake"]["rules"][1]["reply"]["body"] = json!({ "file": 7 });
+    assert_names(&load_under(&root, "full", &v).unwrap_err(), "fake.rules[1].reply.body.file");
+}
