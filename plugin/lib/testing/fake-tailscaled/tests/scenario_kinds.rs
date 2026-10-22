@@ -163,3 +163,17 @@ fn it_rejects_an_assign_without_a_member_and_a_type_it_does_not_know() {
                                                      "member_types": { "state": "number" } } }])));
     assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
 }
+
+#[test]
+fn it_accepts_a_singleton_expect() {
+    let v = with_steps(json!([{ "expect": { "id": "one-per-engine", "singleton": {} } }]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 23);
+    let e = rejected(with_steps(json!([{ "expect": { "id": "s", "singleton": { "engines": 3 } } }])));
+    assert_names(&e, "engines");
+    let e = rejected(with_steps(
+        json!([{ "expect": { "id": "two", "singleton": {}, "member_types": { "state": "number" } } }]),
+    ));
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
+}
