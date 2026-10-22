@@ -232,6 +232,21 @@ naming the rule or step. The self-tests' root is `selftest/`, so
 `selftest/scenarios-cpp/served-change.json` reads
 `selftest/captures/two-peers.json`.
 
+### String matchers (#308)
+
+A contract value, an array element or a model role value may be a
+matcher instead of a value, where a requirement asks only that a reason
+exists or names a word:
+
+```json
+{ "expect": { "id": "named", "contract": { "readError": { "non_empty": true } } } },
+{ "expect": { "id": "code", "contract": { "writeError": { "contains": "403" } } } }
+```
+
+`{"non_empty": true}` holds for a non-empty string, `{"contains": text}`
+(text not empty) for a string holding `text`. Neither holds for a value
+that is not a string. A failed one reports the value read.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

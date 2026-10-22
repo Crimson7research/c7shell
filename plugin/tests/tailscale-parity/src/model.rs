@@ -28,7 +28,7 @@ pub fn read(contract: &Contract, q: &ModelQuery) -> Result<(bool, Value), String
     let mut actual = Map::new();
     for (role, want) in values {
         let got = contract.model_data(&q.name, row, role)?;
-        ok &= got == contract.resolve(want)?;
+        ok &= crate::contract::matches(&got, &contract.resolve(want)?);
         actual.insert(role.clone(), got);
     }
     Ok((ok, one_or_all(actual)))
