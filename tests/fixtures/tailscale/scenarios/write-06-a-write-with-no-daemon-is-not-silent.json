@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "write-06-a-write-with-no-daemon-is-not-silent",
+  "requirements": ["R-WRITE-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The backend reaches Running, then the fake is destroyed so that nothing exists at the path; once state reads NoState, a write (setAcceptDns(true)) gives, once writeErrorChanged has fired, a non-empty writeError with writable still true: a write to an absent socket is never silent, and only a 403 revokes writable"
+  ],
+  "deferred": [
+    "exactly one writeErrorChanged, writableChanged 0 times, and readError and state unchanged, after the retry and read barriers with paused time; the same after a 403: phase3-only"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "fake": { "stop": {} } },
+    { "wait": { "contract": { "state": { "enum": "NoState" } } } },
+    { "mark": "before-write" },
+    { "call": { "name": "setAcceptDns", "args": [true] } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1, "since": "before-write" } } },
+    { "expect": { "id": "said-and-still-writable", "contract": { "writeError": { "non_empty": true }, "writable": true } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

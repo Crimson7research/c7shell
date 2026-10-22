@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "write-01-want-running-while-needs-login",
+  "requirements": ["R-WRITE-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "wantRunning is what tailscaled was told: with WantRunning true and BackendState NeedsLogin, once state reads NeedsLogin, wantRunning reads true"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": { "BackendState": "NeedsLogin" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "NeedsLogin" } } } },
+    { "expect": { "id": "told-to-run", "contract": { "wantRunning": true } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

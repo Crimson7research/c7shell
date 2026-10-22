@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "fake-03-closing-a-held-write",
+  "requirements": ["R-FAKE-03"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The backend half: with a held PATCH on a backend that is Running, closing only that client sets writeError; once writeErrorChanged has fired and the client barrier holds at 1 (the watch), writable is true and state Running. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "state unchanged since the close, stateChanged 0 times since it, and the retry hook at 0: phase3-only, negatives after the read barrier and the retry hook"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "hold": true },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "fake": { "held": 1 } } },
+    { "mark": "before-close" },
+    { "fake": { "close_client": { "holding": "PATCH /localapi/v0/prefs" } } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1, "since": "before-close" } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "expect": { "id": "said", "contract": { "writeError": { "non_empty": true } } } },
+    { "expect": { "id": "still-writable-and-running", "contract": { "writable": true, "state": { "enum": "Running" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

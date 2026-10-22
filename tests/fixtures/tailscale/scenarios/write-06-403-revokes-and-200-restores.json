@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "id": "write-06-403-revokes-and-200-restores",
+  "requirements": ["R-WRITE-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From Running, a write answered 403 gives writable false and a writeError containing 403, read once writableChanged has fired; inside writableChanged, writable already reads false and the new writeError is readable",
+    "A setAcceptRoutes(true) answered 200 then gives writable true and an empty writeError, read once writableChanged has fired again; inside that handler writable reads true and writeError empty: the 200's own outcome stores both before either signal. Both writes are setAcceptRoutes(true), as #286 stages it, and /prefs keeps serving prefs.json"
+  ],
+  "deferred": [
+    "the exact counts of writableChanged and writeErrorChanged, the 500-after-403, dropped, fresh-500, two-writes and deadline runs: phase3-only, they need the client and read barriers, counts after them or paused time"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "times": 1,
+      "reply": { "status": 403, "reason": "Forbidden", "body": "prefs write access denied\n" } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "writable-at-first", "precondition": true, "contract": { "writable": true, "writeError": "" } } },
+    { "watch_handlers": ["writable", "writeError"] },
+    { "mark": "before-403" },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writableChanged", "at_least": 1, "since": "before-403" } } },
+    { "expect": { "id": "revoked", "contract": { "writable": false, "writeError": { "contains": "403" } } } },
+    { "expect": { "id": "revoked-inside-the-handler", "handlers": { "signals": ["writableChanged"], "since": "before-403",
+      "values": { "writable": false, "writeError": { "contains": "403" } } } } },
+    { "mark": "before-200" },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writableChanged", "at_least": 1, "since": "before-200" } } },
+    { "expect": { "id": "restored", "contract": { "writable": true, "writeError": "" } } },
+    { "expect": { "id": "restored-inside-the-handler", "handlers": { "signals": ["writableChanged"], "since": "before-200",
+      "values": { "writable": true, "writeError": "" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

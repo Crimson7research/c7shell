@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "write-09-disconnecting-end-to-end",
+  "requirements": ["R-WRITE-09"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With the fake Running, setWantRunning(false) sends {\"WantRunning\":false,\"WantRunningSet\":true}. The fake answers 200 and from then on reports WantRunning false and BackendState Stopped, and notifies; once state reads Stopped, wantRunning is false and writeError empty. #286 meets these clauses of the fix requirement (its writeError is empty after any 200), so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the toggle enabled and unchecked, and toggling sending {\"WantRunning\":true,\"WantRunningSet\":true}: the view half, #309",
+    "writeError empty because R-WRITE-08's confirmation finds the write applied: phase3-only, #286 has no confirmation pass"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": { "BackendState": "Stopped" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": false, "CorpDNS": true } } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": false, "CorpDNS": true } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "running-and-wanted", "precondition": true, "contract": { "wantRunning": true } } },
+    { "call": { "name": "setWantRunning", "args": [false] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" } } } },
+    { "expect": { "id": "disconnect-sent", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "body_json": { "WantRunning": false, "WantRunningSet": true } } } },
+    { "fake": { "push_watch_line": "{\"State\":3}" } },
+    { "wait": { "contract": { "state": { "enum": "Stopped" } } } },
+    { "expect": { "id": "follows-tailscaled", "contract": { "wantRunning": false, "writeError": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

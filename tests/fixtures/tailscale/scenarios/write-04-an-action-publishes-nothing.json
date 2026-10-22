@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "id": "write-04-an-action-publishes-nothing",
+  "requirements": ["R-WRITE-04"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Once the backend is Running with exitNodeId empty and exitNodeActive false, setExitNode(nEwJFIats021CNTRL) returning is the barrier: right after it, before the event loop runs, exitNodeId is still empty, exitNodeActive still false, and no property change signal has fired since just before the call (each counted one: state, the exit-node five, writable, writeError, readError and the four switches). #286 meets these clauses of the fix requirement, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the confirmation pass after the PATCH's 200 (exitNodeId B's id, writeError `exit node was not applied`) and the spy that never sees the requested id: phase3-only, they need the idle barrier with paused time and R-WRITE-08's confirmation, which #286 lacks"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "none-selected", "precondition": true, "contract": { "exitNodeId": "", "exitNodeActive": false } } },
+    { "mark": "before-call" },
+    { "call": { "name": "setExitNode", "args": ["nEwJFIats021CNTRL"] } },
+    { "expect": { "id": "nothing-published", "contract": { "exitNodeId": "", "exitNodeActive": false } } },
+    { "expect": { "id": "no-state-signal", "signal": { "name": "stateChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeId-signal", "signal": { "name": "exitNodeIdChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeActive-signal", "signal": { "name": "exitNodeActiveChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeName-signal", "signal": { "name": "exitNodeNameChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeOnline-signal", "signal": { "name": "exitNodeOnlineChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeBlocked-signal", "signal": { "name": "exitNodeBlockedChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-writable-signal", "signal": { "name": "writableChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-writeError-signal", "signal": { "name": "writeErrorChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-readError-signal", "signal": { "name": "readErrorChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-wantRunning-signal", "signal": { "name": "wantRunningChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-acceptRoutes-signal", "signal": { "name": "acceptRoutesChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-acceptDns-signal", "signal": { "name": "acceptDnsChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodeAllowLANAccess-signal", "signal": { "name": "exitNodeAllowLANAccessChanged", "count": 0, "since": "before-call" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

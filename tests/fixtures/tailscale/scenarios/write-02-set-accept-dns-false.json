@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "write-02-set-accept-dns-false",
+  "requirements": ["R-WRITE-02"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "setAcceptDns(false), called by name once the backend is Running, sends one PATCH the fake answers 200: its request line starts with `PATCH /localapi/v0/prefs HTTP/1.1` and its JSON body equals {\"CorpDNS\": false, \"CorpDNSSet\": true}, with Host and a Content-Length of the body's length"
+  ],
+  "deferred": [
+    "exactly one PATCH since the call, after the idle, read and fake barriers: phase3-only, an exact count after the barriers"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setAcceptDns", "args": [false] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" } } } },
+    { "expect": { "id": "patch", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "headers": [["Host", "local-tailscaled.sock"]],
+      "body_json": {"CorpDNS": false, "CorpDNSSet": true} } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
