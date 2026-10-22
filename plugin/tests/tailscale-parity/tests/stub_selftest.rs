@@ -349,6 +349,23 @@ fn the_kept_values(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: not-same, other-model, repeat"], read);
 }
 
+/// 20. Inside every firing after watch_handlers the driver reads the
+///     watched members; a handlers expect checks every firing since the
+///     watch or a mark, and reports the first firing that read otherwise,
+///     or a signal that never fired.
+fn the_handler_reads(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/handler-reads.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("half-update") == Some(json!({ "signal": "acceptRoutesChanged", "values": { "writeError": "" } }))
+            && actual("never-fired") == Some(json!({ "signal": "stateChanged", "fired": 0 }))
+    };
+    verdict(failures, &r, true, &["fail as declared: half-update, never-fired"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -370,6 +387,7 @@ fn parent() -> i32 {
     the_model_reset_and_layout(&mut failures);
     the_string_matchers(&mut failures);
     the_kept_values(&mut failures);
+    the_handler_reads(&mut failures);
     finish("stub_selftest", &failures)
 }
 

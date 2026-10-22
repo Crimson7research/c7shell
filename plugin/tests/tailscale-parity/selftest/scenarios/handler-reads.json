@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "handler-reads",
+  "requirements": ["R-UI-06"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: inside every firing of a signal after watch_handlers, the driver reads the watched members; a handlers expect holds when every firing of each named signal since the watch or a mark read those values, with matchers and a model's row count; one firing that read another value is reported with the values it read, and a signal that never fired with fired 0. The stub's setAcceptRoutes sets acceptRoutes before writeError, so acceptRoutesChanged sees the old writeError"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "watch_handlers": ["acceptRoutes", "writeError", "peers"] },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "expect": { "id": "stored-then-announced", "handlers": { "signals": ["writeErrorChanged"],
+      "values": { "acceptRoutes": true, "writeError": { "contains": "true" }, "peers": { "rows": 3 } } } } },
+    { "mark": "second" },
+    { "call": { "name": "setAcceptRoutes", "args": [false] } },
+    { "expect": { "id": "since-the-mark", "handlers": { "signals": ["writeErrorChanged", "acceptRoutesChanged"], "since": "second",
+      "values": { "acceptRoutes": false } } } },
+    { "expect": { "id": "half-update", "handlers": { "signals": ["acceptRoutesChanged"], "values": { "writeError": { "non_empty": true } } } } },
+    { "expect": { "id": "never-fired", "handlers": { "signals": ["writeErrorChanged", "stateChanged"], "values": { "peers": { "rows": 3 } } } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "half-update", "actual": { "signal": "acceptRoutesChanged", "values": { "writeError": "" } } },
+    { "id": "never-fired", "actual": { "signal": "stateChanged", "fired": 0 } }
+  ], "reason": "self-test" } }
+}
