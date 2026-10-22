@@ -775,7 +775,7 @@
       "tag": "parity",
       "class": "harness-on-cpp",
       "pr": 308,
-      "runs": "each capture's exit-node values once its snapshot is published, and the values after the prefs change and a push",
+      "runs": "each capture's exit-node values once its snapshot is published, the values after the prefs change and a push, and the status whose `ExitNodeStatus` has no `ID` with prefs `ExitNodeID` `nX1CNTRL`, once published",
       "deferred": [
         {
           "clause": "each of the four change signals fired exactly once since the push",
