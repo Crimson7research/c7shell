@@ -28,6 +28,12 @@ fn wanted(e: &Expect) -> Value {
     if let Some(h) = &e.handlers {
         return json!({ "signals": h.signals, "since": h.since, "values": h.values });
     }
+    if let Some(a) = &e.assign {
+        return json!({ "assign": a.member, "value": a.value, "throws": true });
+    }
+    if let Some(types) = &e.member_types {
+        return json!(types);
+    }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
         (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count, "since": s.since }),
@@ -282,8 +288,18 @@ impl Run<'_> {
             self.kept(k)?
         } else if let Some(h) = &e.handlers {
             self.handlers(h)?
-        } else if e.assign.is_some() || e.member_types.is_some() {
-            return Err(format!("expect `{}`: this runner cannot assign or read member types yet", e.id));
+        } else if let Some(a) = &e.assign {
+            let (threw, error) = self.contract.assign(&a.member, &a.value)?;
+            if let Some(error) = error {
+                println!("assigning {} threw: {error}", a.member);
+            }
+            (threw, json!({ "threw": threw }))
+        } else if let Some(types) = &e.member_types {
+            let mut read = serde_json::Map::new();
+            for member in types.keys() {
+                read.insert(member.clone(), json!(self.contract.member_type(member)?));
+            }
+            (types.iter().all(|(m, t)| read[m] == json!(t)), Value::Object(read))
         } else {
             return Err(format!("expect `{}` has no kind", e.id));
         };

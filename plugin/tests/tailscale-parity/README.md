@@ -300,6 +300,27 @@ the path. What it recorded before stays readable to `requests` and
 `request_parts` expects. A push after it reaches no client, which is an
 error. `selftest/scenarios-cpp/stop.json` is the worked example.
 
+### Assignment and member types (#308)
+
+An `assign` expect assigns a member from QML, the way
+`Tailscale.wantRunning = true` would, and holds when that throws. Its
+actual value is `{"threw": false}`; the log shows the error when it
+throws. Reads after it in the same step sequence see the state right
+after the assignment, since the event loop runs only inside waits.
+
+```json
+{ "mark": "before-assign" },
+{ "expect": { "id": "read-only", "assign": { "member": "wantRunning", "value": true } } },
+{ "expect": { "id": "unchanged", "contract": { "wantRunning": false } } },
+{ "expect": { "id": "no-signal", "signal": { "name": "wantRunningChanged", "count": 0, "since": "before-assign" } } }
+```
+
+A `member_types` expect reads each named member and holds when each reads
+as its type: `number`, `string`, `boolean`, `date`, `array`, `model` or
+`function`. Its actual value is the type each read as. QML reads an enum
+and an int both as `number`, and shows no method's parameter types, so a
+`function` says only that the name is callable.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

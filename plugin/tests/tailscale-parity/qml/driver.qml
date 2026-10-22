@@ -180,6 +180,25 @@ QtObject {
             return null;
         case "firings":
             return c.from === undefined ? root.firings.length : root.firings.slice(c.from);
+        case "assign": {
+            member(c.name);
+            try {
+                Tailscale[c.name] = c.value;
+            } catch (e) {
+                return { "threw": true, "error": String(e) };
+            }
+            return { "threw": false };
+        }
+        case "type": {
+            const v = member(c.name);
+            if (v instanceof Date)
+                return "date";
+            if (isModel(v))
+                return "model";
+            if (v !== null && typeof v === "object" && typeof v.length === "number")
+                return "array";
+            return v === null ? "null" : typeof v;
+        }
         case "members": {
             const names = [];
             for (const k in Tailscale)

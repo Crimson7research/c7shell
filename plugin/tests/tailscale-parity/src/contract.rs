@@ -157,6 +157,21 @@ impl Contract {
             .collect()
     }
 
+    /// Assigns `value` to member `name` from QML: whether that threw, and
+    /// with what.
+    pub fn assign(&self, name: &str, value: &Value) -> Result<(bool, Option<String>), String> {
+        let v = self.request(json!({ "op": "assign", "name": name, "value": value }))?;
+        let threw = v.get("threw").and_then(Value::as_bool).ok_or_else(|| format!("assign answered {v}"))?;
+        Ok((threw, v.get("error").and_then(Value::as_str).map(str::to_string)))
+    }
+
+    /// The type member `name` reads as: number, string, boolean, date,
+    /// array, model, function, or what `typeof` says of anything else.
+    pub fn member_type(&self, name: &str) -> Result<String, String> {
+        let v = self.request(json!({ "op": "type", "name": name }))?;
+        v.as_str().map(str::to_string).ok_or_else(|| format!("the type of {name} is {v}"))
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;
