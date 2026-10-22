@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "singleton-named",
+  "requirements": ["R-UI-01"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: against selftest/qml-singleton-named, whose every Tailscale already carries the driver's name, the second engine's Tailscale reads as the driver's own, so a singleton expect fails with second_engine same"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "one-per-engine", "singleton": {} } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "one-per-engine", "actual": { "same_in_engine": true, "second_engine": "same" } }
+  ], "reason": "self-test" } }
+}

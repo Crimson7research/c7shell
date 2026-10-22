@@ -177,3 +177,9 @@ fn it_accepts_a_singleton_expect() {
     ));
     assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
+
+#[test]
+fn it_rejects_stopping_the_fake_twice() {
+    let e = rejected(with_steps(json!([{ "fake": { "stop": {} } }, { "fake": { "stop": {} } }])));
+    assert_names(&e, "steps[23].fake.stop: the fake is already stopped");
+}

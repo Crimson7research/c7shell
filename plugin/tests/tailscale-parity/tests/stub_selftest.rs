@@ -334,7 +334,7 @@ fn the_string_matchers(failures: &mut Vec<String>) {
 
 /// 19. A keep step stores a member's value; kept values differing pairwise
 ///     hold, a repeat is reported by label, and a kept object is the same
-///     as its member and no other.
+///     as its member and no other. A list or a date compares by value.
 fn the_kept_values(failures: &mut Vec<String>) {
     let r = run_stub("scenarios/kept-values.json");
     let read = |o: &Outcome| {
@@ -345,8 +345,9 @@ fn the_kept_values(failures: &mut Vec<String>) {
         actual("repeat") == Some(json!({ "w1": "set true", "w2": "set false", "w3": "set false" }))
             && actual("not-same") == Some(json!(false))
             && actual("other-model") == Some(json!(false))
+            && actual("equal-lists") == Some(json!({ "issues-1": [], "issues-2": [] }))
     };
-    verdict(failures, &r, true, &["fail as declared: not-same, other-model, repeat"], read);
+    verdict(failures, &r, true, &["fail as declared: equal-lists, not-same, other-model, repeat"], read);
 }
 
 /// 20. Inside every firing after watch_handlers the driver reads the
@@ -366,9 +367,10 @@ fn the_handler_reads(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: half-update, never-fired"], read);
 }
 
-/// 21. Assigning a read-only member from QML throws and a writable one does
-///     not; each member reads as its type, and a wrong one reports the
-///     types read.
+/// 21. Assigning a read-only member from QML throws as read-only; a
+///     writable one does not throw, and a value of the wrong type throws for
+///     another reason. Each member reads as its type, and a wrong one
+///     reports the types read.
 fn the_members(failures: &mut Vec<String>) {
     let r = run_stub("scenarios/members.json");
     let read = |o: &Outcome| {
@@ -376,18 +378,27 @@ fn the_members(failures: &mut Vec<String>) {
             Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
             _ => None,
         };
-        actual("writable") == Some(json!({ "threw": false }))
-            && actual("wrong-type") == Some(json!({ "state": "number", "peers": "model" }))
+        actual("writable") == Some(json!({ "threw": false, "read_only": false }))
+            && actual("wrong-type") == Some(json!({ "threw": true, "read_only": false }))
+            && actual("wrong-member-type") == Some(json!({ "state": "number", "peers": "model" }))
     };
-    verdict(failures, &r, true, &["fail as declared: writable, wrong-type"], read);
+    verdict(failures, &r, true, &["fail as declared: writable, wrong-member-type, wrong-type"], read);
 }
 
 /// 22. The stub's Tailscale is one object per engine: a second component
 ///     in the driver's engine sees the same one, a second engine another,
-///     and the driver still answers after that engine is gone.
+///     and the driver still answers after that engine is gone. A Tailscale
+///     the second engine reads as the driver's fails the check.
 fn the_singleton(failures: &mut Vec<String>) {
     let r = run_stub("scenarios/singleton.json");
     verdict(failures, &r, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
+    // A second engine whose Tailscale reads as the driver's fails the check.
+    let named = Implementation { qml_dir: selftest("qml-singleton-named"), ..stub() };
+    let env = [("C7_HARNESS_MAX_ITERATIONS", "20000")];
+    let r = runner::run_one(&named, STUB_IMPLEMENTATIONS, &selftest("scenarios/singleton-named.json"), &env);
+    let same = json!({ "same_in_engine": true, "second_engine": "same" });
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == same);
+    verdict(failures, &r, true, &["fail as declared: one-per-engine"], read);
 }
 
 fn parent() -> i32 {
