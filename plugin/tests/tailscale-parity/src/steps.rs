@@ -93,6 +93,7 @@ impl Run<'_> {
                 Ok(())
             }
             Step::Keep(k) => self.contract.keep(&k.label, &k.member),
+            Step::WatchHandlers(_) => Err("watch_handlers: this runner cannot read inside handlers yet".into()),
             Step::Expect(e) => self.expect(e),
         }
     }

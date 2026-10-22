@@ -18,12 +18,14 @@ use crate::script::{within_write_limit, Match, Script};
 
 mod check;
 pub(crate) mod files;
+mod handlers;
 mod kept;
 mod model;
 mod request;
 
 pub use check::check_value;
 use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub use handlers::HandlerCheck;
 pub use kept::{Keep, KeptCheck};
 pub use model::{role, ModelQuery, Role};
 pub use request::RequestParts;
@@ -110,6 +112,9 @@ pub enum Step {
     Mark(String),
     /// Stores a member's value under a label, for a `kept` expect.
     Keep(Keep),
+    /// From here on, the driver reads these members inside every counted
+    /// signal's handler, for a `handlers` expect.
+    WatchHandlers(Vec<String>),
     Expect(Box<Expect>),
 }
 
@@ -228,6 +233,8 @@ pub struct Expect {
     pub model: Option<ModelQuery>,
     /// Kept values differ pairwise, or one is still a member's.
     pub kept: Option<KeptCheck>,
+    /// What the watched members read inside the named signals' handlers.
+    pub handlers: Option<HandlerCheck>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -359,6 +366,7 @@ impl Scenario {
         self.validate_steps()?;
         self.validate_marks()?;
         kept::validate_keeps(&self.steps)?;
+        handlers::validate_handlers(&self.steps)?;
         self.validate_declarations(implementations)
     }
 
@@ -411,7 +419,12 @@ impl Scenario {
                 Step::Mark(label) if !marks.insert(label.as_str()) => {
                     return Err(format!("steps[{i}].mark: `{label}` twice"))
                 }
-                Step::Expect(e) => match e.signal.as_ref().and_then(|s| s.since.as_deref()) {
+                Step::Expect(e) => match e
+                    .signal
+                    .as_ref()
+                    .and_then(|s| s.since.as_deref())
+                    .or_else(|| e.handlers.as_ref().and_then(|h| h.since.as_deref()))
+                {
                     Some(label) if !marks.contains(label) => {
                         return Err(format!("steps[{i}].expect `{}`: since: no earlier mark `{label}`", e.id))
                     }

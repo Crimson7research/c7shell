@@ -65,7 +65,7 @@ fn it_rejects_a_kept_expect_with_too_few_labels_a_repeat_or_two_kinds() {
         keep,
         { "expect": { "id": "k", "kept": { "same": "a", "as": "peers" }, "signal": { "name": "stateChanged", "count": 0 } } }
     ])));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model and kept");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept and handlers");
 }
 
 #[test]
