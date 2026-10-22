@@ -382,6 +382,14 @@ fn the_members(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: writable, wrong-type"], read);
 }
 
+/// 22. The stub's Tailscale is one object per engine: a second component
+///     in the driver's engine sees the same one, a second engine another,
+///     and the driver still answers after that engine is gone.
+fn the_singleton(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/singleton.json");
+    verdict(failures, &r, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -405,6 +413,7 @@ fn parent() -> i32 {
     the_kept_values(&mut failures);
     the_handler_reads(&mut failures);
     the_members(&mut failures);
+    the_singleton(&mut failures);
     finish("stub_selftest", &failures)
 }
 

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "singleton",
+  "requirements": ["R-UI-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a singleton expect holds on the stub, whose pragma Singleton Tailscale is the same object to a second component of one engine and another object to a second engine with only the module directory on its import path"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "one-per-engine", "singleton": {} } },
+    { "expect": { "id": "still-loaded", "contract": { "state": 0 } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}
