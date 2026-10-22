@@ -332,6 +332,23 @@ fn the_string_matchers(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &wants, read);
 }
 
+/// 19. A keep step stores a member's value; kept values differing pairwise
+///     hold, a repeat is reported by label, and a kept object is the same
+///     as its member and no other.
+fn the_kept_values(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/kept-values.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("repeat") == Some(json!({ "w1": "set true", "w2": "set false", "w3": "set false" }))
+            && actual("not-same") == Some(json!(false))
+            && actual("other-model") == Some(json!(false))
+    };
+    verdict(failures, &r, true, &["fail as declared: not-same, other-model, repeat"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -352,6 +369,7 @@ fn parent() -> i32 {
     the_signal_wait_marks(&mut failures);
     the_model_reset_and_layout(&mut failures);
     the_string_matchers(&mut failures);
+    the_kept_values(&mut failures);
     finish("stub_selftest", &failures)
 }
 
