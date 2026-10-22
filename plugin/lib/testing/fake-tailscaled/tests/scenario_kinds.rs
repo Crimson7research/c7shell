@@ -126,3 +126,12 @@ fn it_accepts_a_model_as_its_row_count_and_rejects_another_count() {
     v["steps"][17]["expect"]["contract"] = json!({ "peers": { "rows": -1 } });
     assert_names(&rejected(v), "rows");
 }
+
+#[test]
+fn it_accepts_stopping_the_fake() {
+    let v = with_steps(json!([{ "fake": { "stop": {} } }]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 23);
+    assert_names(&rejected(with_steps(json!([{ "fake": { "stop": { "now": true } } }]))), "now");
+}
