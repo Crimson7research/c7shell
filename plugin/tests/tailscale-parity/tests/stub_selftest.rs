@@ -314,6 +314,24 @@ fn the_model_reset_and_layout(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: reset-twice"], read);
 }
 
+/// 18. A string matcher: `non_empty` and `contains` hold only for a string
+///     that is non-empty or holds the text, in a wait, an expect and an
+///     array; a failed one reports the value read.
+fn the_string_matchers(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/string-matchers.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("empty-is-not-non-empty") == Some(json!(""))
+            && actual("does-not-contain") == Some(json!("set true"))
+            && actual("not-a-string") == Some(json!(0))
+    };
+    let wants = ["fail as declared: does-not-contain, empty-is-not-non-empty, not-a-string"];
+    verdict(failures, &r, true, &wants, read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -333,6 +351,7 @@ fn parent() -> i32 {
     the_distinct_models(&mut failures);
     the_signal_wait_marks(&mut failures);
     the_model_reset_and_layout(&mut failures);
+    the_string_matchers(&mut failures);
     finish("stub_selftest", &failures)
 }
 

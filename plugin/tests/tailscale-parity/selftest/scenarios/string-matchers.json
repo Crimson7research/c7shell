@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "string-matchers",
+  "requirements": ["R-CONN-03"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: {\"non_empty\": true} holds for a non-empty string and {\"contains\": text} for a string containing it, in a wait, an expect and an array; neither holds for an empty string, a string without the text or a value that is not a string, and a failed one reports the value read"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "empty-is-not-non-empty", "contract": { "writeError": { "non_empty": true } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "contract": { "writeError": { "contains": "true" } } } },
+    { "expect": { "id": "non-empty", "contract": { "writeError": { "non_empty": true } } } },
+    { "expect": { "id": "contains", "contract": { "writeError": { "contains": "set" } } } },
+    { "call": { "name": "setIssues", "args": [["DNS is not working", ""]] } },
+    { "expect": { "id": "in-an-array", "contract": { "issues": [{ "contains": "DNS" }, ""] } } },
+    { "expect": { "id": "does-not-contain", "contract": { "writeError": { "contains": "false" } } } },
+    { "expect": { "id": "not-a-string", "contract": { "state": { "non_empty": true } } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "empty-is-not-non-empty", "actual": "" },
+    { "id": "does-not-contain", "actual": "set true" },
+    { "id": "not-a-string", "actual": 0 }
+  ], "reason": "self-test" } }
+}
