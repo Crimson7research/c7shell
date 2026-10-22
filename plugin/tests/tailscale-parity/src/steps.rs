@@ -29,7 +29,7 @@ fn wanted(e: &Expect) -> Value {
         return json!({ "signals": h.signals, "since": h.since, "values": h.values });
     }
     if let Some(a) = &e.assign {
-        return json!({ "assign": a.member, "value": a.value, "throws": true });
+        return json!({ "assign": a.member, "value": a.value, "threw": true, "read_only": true });
     }
     if let Some(types) = &e.member_types {
         return json!(types);
@@ -298,11 +298,11 @@ impl Run<'_> {
             let other = other?;
             (here && other == "distinct", json!({ "same_in_engine": here, "second_engine": other }))
         } else if let Some(a) = &e.assign {
-            let (threw, error) = self.contract.assign(&a.member, &a.value)?;
+            let (threw, read_only, error) = self.contract.assign(&a.member, &a.value)?;
             if let Some(error) = error {
                 println!("assigning {} threw: {error}", a.member);
             }
-            (threw, json!({ "threw": threw }))
+            (read_only, json!({ "threw": threw, "read_only": read_only }))
         } else if let Some(types) = &e.member_types {
             let mut read = serde_json::Map::new();
             for member in types.keys() {

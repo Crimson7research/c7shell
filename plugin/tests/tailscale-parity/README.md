@@ -260,12 +260,13 @@ label. A `kept` expect then compares kept values, with exactly one of:
 ```
 
 - `distinct` names two or more labels, and holds when no two of their
-  values are `===`. Its actual value is each kept value by label.
-- `same` with `as` holds when the kept value is `===` the member now. Its
-  actual value is that boolean.
+  values are the same. Its actual value is each kept value by label.
+- `same` with `as` holds when the kept value is the same as the member
+  now. Its actual value is that boolean.
 
-QML's `===` compares a string by value and an object, such as a model, by
-identity. Each label is kept once, and a `kept` expect names only labels
+A model is the same only as the same object (`===`). Anything else is
+compared by value, as the driver encodes it, because each read of a list
+or a date makes a new JS object. Each label is kept once, and a `kept` expect names only labels
 an earlier step kept, or the scenario is a format error.
 
 ### Reads inside handlers (#308)
@@ -298,14 +299,16 @@ only watched members.
 accepting, closes every client and removes its socket, so nothing is at
 the path. What it recorded before stays readable to `requests` and
 `request_parts` expects. A push after it reaches no client, which is an
-error. `selftest/scenarios-cpp/stop.json` is the worked example.
+error, and so is a second `stop`. `selftest/scenarios-cpp/stop.json` is
+the worked example.
 
 ### Assignment and member types (#308)
 
 An `assign` expect assigns a member from QML, the way
-`Tailscale.wantRunning = true` would, and holds when that throws. Its
-actual value is `{"threw": false}`; the log shows the error when it
-throws. Reads after it in the same step sequence see the state right
+`Tailscale.wantRunning = true` would, and holds when that throws because
+the member is read-only (the error says `read-only`). A value of the wrong
+type throws too, and does not count. Its actual value is
+`{"threw", "read_only"}`; the log shows the error when it throws. Reads after it in the same step sequence see the state right
 after the assignment, since the event loop runs only inside waits.
 
 ```json

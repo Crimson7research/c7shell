@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Assigns `value` to `member` from QML; holds when the assignment throws.
+/// Assigns `value` to `member` from QML; holds when the assignment throws
+/// because the member is read-only.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Assign {

@@ -90,6 +90,15 @@ QtObject {
         });
     }
 
+    // Whether two kept or read values are the same: a model by identity,
+    // anything else by value, since each read of a list or a date makes a
+    // new JS object.
+    function same(a, b) {
+        if (isModel(a) || isModel(b))
+            return a === b;
+        return JSON.stringify(encode(a)) === JSON.stringify(encode(b));
+    }
+
     function isModel(v) {
         return v !== null && typeof v === "object" && typeof v.rowCount === "function";
     }
@@ -171,12 +180,12 @@ QtObject {
             let distinct = true;
             c.labels.forEach(function (a, i) {
                 values[a] = encode(root.kept[a]);
-                c.labels.slice(i + 1).forEach(function (b) { distinct = distinct && root.kept[a] !== root.kept[b]; });
+                c.labels.slice(i + 1).forEach(function (b) { distinct = distinct && !root.same(root.kept[a], root.kept[b]); });
             });
             return { "distinct": distinct, "values": values };
         }
         case "kept_same":
-            return root.kept[c.label] === member(c.name);
+            return root.same(root.kept[c.label], member(c.name));
         case "watch_handlers":
             c.names.forEach(member);
             root.watched = c.names;
@@ -188,9 +197,11 @@ QtObject {
             try {
                 Tailscale[c.name] = c.value;
             } catch (e) {
-                return { "threw": true, "error": String(e) };
+                // Only a read-only member counts, not a value of the
+                // wrong type, which throws too.
+                return { "threw": true, "read_only": /read-only/.test(String(e)), "error": String(e) };
             }
-            return { "threw": false };
+            return { "threw": false, "read_only": false };
         }
         case "type": {
             const v = member(c.name);
@@ -205,10 +216,18 @@ QtObject {
         case "singleton_here": {
             root.savedName = Tailscale.objectName;
             Tailscale.objectName = "c7-harness-first-engine";
-            const o = Qt.createQmlObject("import QtQml; import C7; QtObject { property var t: Tailscale }", root);
-            const same = o.t === Tailscale;
-            o.destroy();
-            return same;
+            let o = null;
+            try {
+                o = Qt.createQmlObject("import QtQml; import C7; QtObject { property var t: Tailscale }", root);
+                return o.t === Tailscale;
+            } catch (e) {
+                // singleton_done is never sent after an error.
+                Tailscale.objectName = root.savedName;
+                throw e;
+            } finally {
+                if (o !== null)
+                    o.destroy();
+            }
         }
         case "singleton_done":
             Tailscale.objectName = root.savedName;

@@ -275,7 +275,8 @@ impl Fake {
         self.acceptor.lock().unwrap_or_else(|e| e.into_inner()).is_some()
     }
 
-    /// Why it is not listening, or None when it is.
+    /// Why it could not listen, or None when it bound its socket (a stopped
+    /// fake included).
     pub fn error(&self) -> Option<String> {
         self.error.clone()
     }

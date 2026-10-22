@@ -1,10 +1,10 @@
 //! The format's checks on values, waits and expectations, which need no Qt.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::{Expect, FakeWait};
+use super::{Expect, FakeWait, SignalWait, Step, Wait};
 
 /// `R-` + capital letters + `-` + two digits.
 pub(super) fn is_requirement_id(id: &str) -> bool {
@@ -110,6 +110,35 @@ pub(super) fn check_expect(e: &Expect) -> Result<(), String> {
     }
     if let Some(r) = &e.requests {
         r.matcher.validate()?;
+    }
+    Ok(())
+}
+
+/// Each mark is named once, and each `since` names an earlier mark.
+pub(super) fn validate_marks(steps: &[Step]) -> Result<(), String> {
+    let mut marks = BTreeSet::new();
+    for (i, step) in steps.iter().enumerate() {
+        match step {
+            Step::Mark(label) if label.trim().is_empty() => return Err(format!("steps[{i}].mark: empty")),
+            Step::Mark(label) if !marks.insert(label.as_str()) => {
+                return Err(format!("steps[{i}].mark: `{label}` twice"))
+            }
+            Step::Expect(e) => match e
+                .signal
+                .as_ref()
+                .and_then(|s| s.since.as_deref())
+                .or_else(|| e.handlers.as_ref().and_then(|h| h.since.as_deref()))
+            {
+                Some(label) if !marks.contains(label) => {
+                    return Err(format!("steps[{i}].expect `{}`: since: no earlier mark `{label}`", e.id))
+                }
+                _ => {}
+            },
+            Step::Wait(Wait::Signal(SignalWait { since: Some(label), .. })) if !marks.contains(label.as_str()) => {
+                return Err(format!("steps[{i}].wait: since: no earlier mark `{label}`"))
+            }
+            _ => {}
+        }
     }
     Ok(())
 }

@@ -157,12 +157,12 @@ impl Contract {
             .collect()
     }
 
-    /// Assigns `value` to member `name` from QML: whether that threw, and
-    /// with what.
-    pub fn assign(&self, name: &str, value: &Value) -> Result<(bool, Option<String>), String> {
+    /// Assigns `value` to member `name` from QML: whether that threw,
+    /// whether it threw because the member is read-only, and with what.
+    pub fn assign(&self, name: &str, value: &Value) -> Result<(bool, bool, Option<String>), String> {
         let v = self.request(json!({ "op": "assign", "name": name, "value": value }))?;
-        let threw = v.get("threw").and_then(Value::as_bool).ok_or_else(|| format!("assign answered {v}"))?;
-        Ok((threw, v.get("error").and_then(Value::as_str).map(str::to_string)))
+        let flag = |k: &str| v.get(k).and_then(Value::as_bool).ok_or_else(|| format!("assign answered {v}"));
+        Ok((flag("threw")?, flag("read_only")?, v.get("error").and_then(Value::as_str).map(str::to_string)))
     }
 
     /// The type member `name` reads as: number, string, boolean, date,
