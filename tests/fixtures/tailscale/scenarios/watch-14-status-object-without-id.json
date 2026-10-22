@@ -8,7 +8,7 @@
     "The status {\"BackendState\":\"Running\",\"ExitNodeStatus\":{\"Online\":true}} (R-PARSE-09's object with no ID) with prefs ExitNodeID nX1CNTRL reads, once Running is published, exitNodeActive true, exitNodeOnline true, and exitNodeId and exitNodeName exactly empty: the prefs id is not used, because ExitNodeStatus is an object"
   ],
   "deferred": [
-    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, ::doesNotReportBlockedWhileTheExitNodeAnswers, ::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved and ::reportsTheBlockedStateWhenTheExitNodeIsOffline"
+    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, tst_localapitailscalebackend.cpp::doesNotReportBlockedWhileTheExitNodeAnswers, tst_localapitailscalebackend.cpp::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved, tst_localapitailscalebackend.cpp::reportsTheBlockedStateWhenTheExitNodeIsOffline"
   ],
   "needs": [],
   "fake": { "rules": [

@@ -7,9 +7,6 @@
   "clauses": [
     "`Tailscale.wantRunning = true` fails; the assignment is synchronous, so right after it wantRunning reads the value it read before (false, from the served prefs) and wantRunningChanged has fired 0 times since just before the assignment"
   ],
-  "deferred": [
-    "the other 23 of #286's properties: R-UI-02's types, and phase3-only beyond wantRunning, which the acceptance names"
-  ],
   "needs": [],
   "fake": { "rules": [
     { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },

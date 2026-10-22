@@ -8,7 +8,7 @@
     "Once the backend is Running with exitNodeId empty and exitNodeActive false, setExitNode(nEwJFIats021CNTRL) returning is the barrier: right after it, before the event loop runs, exitNodeId is still empty, exitNodeActive still false, and no property change signal has fired since just before the call (each counted one: state, the exit-node five, writable, writeError, readError and the four switches). #286 meets these clauses of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "the confirmation pass after the PATCH's 200 (exitNodeId B's id, writeError `exit node was not applied`) and the spy that never sees the requested id: phase3-only, they need the idle barrier with paused time and R-WRITE-08's confirmation, which #286 lacks"
+    "the confirmation pass and the spy on `exitNodeIdChanged`: phase3-only, #286 runs no confirmation pass, so its values can only be read after the idle barrier"
   ],
   "needs": [],
   "fake": { "rules": [

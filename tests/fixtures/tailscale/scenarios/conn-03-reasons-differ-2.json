@@ -11,8 +11,8 @@
   ],
   "deferred": [
     "the never-answered staging: phase3-only, it advances paused time past an injected deadline",
-    "exitNodeBlocked unchanged, and the counts after the retry and client barriers: phase3-only, negatives and counts after the retry barrier",
-    "the same failure on /prefs: each staging here fails /status alone and answers /prefs, so the first failure, and with it the path its reason names, is the same in every run"
+    "`exitNodeBlocked` unchanged, and the counts after the retry and client barriers: phase3-only, negatives and counts after the retry barrier",
+    "the same failure on /prefs: each staging here fails /status alone and answers /prefs, so the first failure of the attempt, and the path its reason names, is the same in every run"
   ],
   "needs": [],
   "fake": { "rules": [

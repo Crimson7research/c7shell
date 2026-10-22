@@ -9,7 +9,7 @@
     "A setAcceptRoutes(true) answered 200 then gives writable true and an empty writeError, read once writableChanged has fired again; inside that handler writable reads true and writeError empty: the 200's own outcome stores both before either signal. Both writes are setAcceptRoutes(true), as #286 stages it, and /prefs keeps serving prefs.json"
   ],
   "deferred": [
-    "the exact counts of writableChanged and writeErrorChanged, the 500-after-403, dropped, fresh-500, two-writes and deadline runs: phase3-only, they need the client and read barriers, counts after them or paused time"
+    "the exact signal counts after the client and read barriers, and the deadline ending: cpp-suite, tst_localapitailscalebackend.cpp::aTransientFailureAfterARefusalDoesNotReviveTheControls, tst_localapitailscalebackend.cpp::keepsTheControlsLiveWhenAWriteFailsWithoutBeingRefused, tst_localapitailscalebackend.cpp::letsTheBusOverruleAnOptimisticWrite, tst_localapitailscalebackend.cpp::reportsThatItCannotWriteOnA403"
   ],
   "needs": [],
   "fake": { "rules": [

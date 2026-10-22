@@ -8,8 +8,7 @@
     "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push"
   ],
   "deferred": [
-    "false/true, the direct reads and the test-only fake backend: phase3-only, the shipped backend cannot produce false/true and the fake backend is the rewrite's",
-    "the metaobject having exactly one exitNodeBlocked: phase3-only, QML enumerates a name once whatever the metaobject holds"
+    "the direct reads and the test-only fake's false/true: cpp-suite, tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed, tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed_data"
   ],
   "needs": [],
   "fake": { "rules": [

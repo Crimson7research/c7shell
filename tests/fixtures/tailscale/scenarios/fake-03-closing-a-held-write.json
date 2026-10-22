@@ -8,7 +8,7 @@
     "The backend half: with a held PATCH on a backend that is Running, closing only that client sets writeError; once writeErrorChanged has fired and the client barrier holds at 1 (the watch), writable is true and state Running. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "state unchanged since the close, stateChanged 0 times since it, and the retry hook at 0: phase3-only, negatives after the read barrier and the retry hook"
+    "stateChanged 0 times since the close, state unchanged since it, and the retry hook at 0: phase3-only, negatives after the read barrier and the retry hook"
   ],
   "needs": [],
   "fake": { "rules": [

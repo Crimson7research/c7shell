@@ -9,7 +9,7 @@
     "Both are the same objects before and after an update: a notification brings the same peers with laptop offline in another tailnet, and once that tailnet is published peers and exitNodes are still the objects kept before it"
   ],
   "deferred": [
-    "both properties being CONSTANT: phase3-only, QML shows no property flags; the driver reads each model once, at load"
+    "both properties are constant: the CONSTANT flag is not reachable through QML: cpp-suite, tst_module.cpp::tailscaleSingletonLoadsAndStaysInNoState, tst_tailscalebackend.cpp::bothCollectionsAreStableRowModels"
   ],
   "needs": [],
   "fake": { "rules": [

@@ -8,7 +8,7 @@
     "From Running, with only the watch connected, the fake pushes `zz\\r\\n` on the chunked watch, a chunk-length line that is not hex: once readErrorChanged has fired since the push, readError is non-empty and contains zz, and state reads NoState"
   ],
   "deferred": [
-    "readErrorChanged exactly once and exactly one retry armed, after the retry barrier, and the clean-end contrast run: phase3-only, counts and negatives after the retry barrier"
+    "the change and retry counts, and the contrast run's negatives: phase3-only, they are read after the retry barrier; #286 has no test of them"
   ],
   "needs": [],
   "fake": { "rules": [

@@ -8,7 +8,7 @@
     "setWantRunning(true), called by name once the backend is Running, sends one PATCH the fake answers 200: its request line starts with `PATCH /localapi/v0/prefs HTTP/1.1` and its JSON body equals {\"WantRunning\": true, \"WantRunningSet\": true}, with Host and a Content-Length of the body's length"
   ],
   "deferred": [
-    "exactly one PATCH since the call, after the idle, read and fake barriers: phase3-only, an exact count after the barriers"
+    "exactly one PATCH since the call: cpp-suite, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling_data"
   ],
   "needs": [],
   "fake": { "rules": [

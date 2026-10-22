@@ -8,7 +8,7 @@
     "The backend's watch is recorded by the fake as `GET /localapi/v0/watch-ipn-bus?mask=18 HTTP/1.1` with the Host header: mask 18 is NotifyInitialState (2) plus NotifyNoPrivateKeys (16), so read as an integer it has bit 16 set and bit 1 (engine updates) clear"
   ],
   "deferred": [
-    "exactly one request after the read and fake barriers: cpp-suite, tst_localapiclient.cpp::emitsOneEventPerCompleteLine, ::endsTheWatchOnTheLastChunk, ::joinsAWatchLineSplitAcrossChunks, ::neverEmitsAPartialLine, ::waitsForAChunkSizeLineSplitAcrossReads and ::watchesWithoutTheEngineUpdateBitAndWithoutPrivateKeys"
+    "exactly one request after the read and fake barriers: cpp-suite, tst_localapiclient.cpp::emitsOneEventPerCompleteLine, tst_localapiclient.cpp::endsTheWatchOnTheLastChunk, tst_localapiclient.cpp::joinsAWatchLineSplitAcrossChunks, tst_localapiclient.cpp::neverEmitsAPartialLine, tst_localapiclient.cpp::waitsForAChunkSizeLineSplitAcrossReads, tst_localapiclient.cpp::watchesWithoutTheEngineUpdateBitAndWithoutPrivateKeys"
   ],
   "needs": [],
   "fake": { "rules": [

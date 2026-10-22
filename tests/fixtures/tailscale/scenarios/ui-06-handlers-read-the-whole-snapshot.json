@@ -8,7 +8,7 @@
     "From Running on the idle capture, a notification brings a status that changes state (to Starting), selfName (to renamed) and exitNodeOnline (to true) at once, with two peers of which one is an exit node. Inside every handler of stateChanged, selfNameChanged and exitNodeOnlineChanged since the push, all three already hold their new values, and peers and exitNodes already hold their new rows (2 and 1)"
   ],
   "deferred": [
-    "each signal's exact count after the idle barrier, the repeat that fires nothing, and exitNodeBlocked never shown true moving from idle to a reachable exit node: phase3-only, exact counts and negatives after the idle barrier"
+    "the exact signal counts after the idle barrier, and the repeated notification: cpp-suite, tst_localapitailscalebackend.cpp::everyExitNodeFieldIsStoredBeforeBlockedIsAnnounced"
   ],
   "needs": [],
   "fake": { "rules": [

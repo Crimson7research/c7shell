@@ -8,8 +8,7 @@
     "With 20 peers and Running, a PATCH answered 403 leaves state Running, 20 peers rows and readError empty, read once writeErrorChanged has fired and the client barrier holds at 1 (the PATCH connection closed, the watch left). #286 meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "no retry scheduled: phase3-only, the retry hook",
-    "the second run, whose reconnect re-arms writable before a held PATCH's 403: phase3-only, paused time and the retry barrier; R-WRITE-11's re-arm is the fix"
+    "\"no retry scheduled\", and the run with a held PATCH across a reconnect: phase3-only, it reads the retry hook and advances paused time"
   ],
   "needs": [],
   "fake": { "rules": [

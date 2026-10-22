@@ -8,7 +8,7 @@
     "With the backend Running on the idle capture, exitNodeActive reads false; the fake switches to the exit-node capture and pushes {\"Prefs\":{}}; once exitNodeActive is true, exitNodeName is pentest-exit-node. One /status is recorded before the push, so the exit-node reply is the notification's pass, not the opening one"
   ],
   "deferred": [
-    "the request counts since the push, after the fake barrier: cpp-suite, tst_localapitailscalebackend.cpp::republishesOnAWatchEvent and ::rereadsTheSuggestionOnANotification"
+    "the request counts since the push, after the fake barrier: cpp-suite, tst_localapitailscalebackend.cpp::republishesOnAWatchEvent, tst_localapitailscalebackend.cpp::rereadsTheSuggestionOnANotification"
   ],
   "needs": [],
   "fake": { "rules": [

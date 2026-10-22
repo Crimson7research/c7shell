@@ -8,7 +8,7 @@
     "With acceptDns true (prefs.json's CorpDNS), calling setAcceptDns(true) twice, the fake answering each PATCH 200, records two PATCHes, each with the body {\"CorpDNS\":true,\"CorpDNSSet\":true}: a repeat of a value already in effect is still sent"
   ],
   "deferred": [
-    "exactly two since the first call, after the idle, read and fake barriers, in call order: phase3-only, an exact count after the barriers; both bodies are equal, so their order shows in nothing a scenario reads"
+    "\"exactly two\" since the first call: phase3-only, an exact count after the barriers; #286 has no test of it"
   ],
   "needs": [],
   "fake": { "rules": [

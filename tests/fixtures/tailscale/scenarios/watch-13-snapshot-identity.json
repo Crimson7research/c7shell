@@ -8,9 +8,9 @@
     "The idle capture, served chunked, gives state Running, exactly 20 peers rows, selfName host-6, selfIp4 100.115.228.122, selfDnsName host-6.example-tailnet.ts.net and tailnet example.com, read once state Running is published. #286 already meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "the unknown BackendState clauses: watch-13-unknown-state-is-named",
-    "\"no armed reconnect\", the client counts, the change counts and the \"NoState\" run's negatives: phase3-only, the retry hook and negatives after the idle barrier",
-    "the QML half: the slot visible and dimmed, and ts-read-error equal to that reason: harness-on-cpp in #309"
+    "the QML half: the slot visible and dimmed, and `ts-read-error` equal to that reason: harness-on-cpp in #309",
+    "\"no armed reconnect\", the client counts, the change counts and the `\"NoState\"` run's negatives: phase3-only, the retry hook and negatives after the idle barrier",
+    "the unknown BackendState clauses: watch-13-unknown-state-is-named runs them"
   ],
   "needs": [],
   "fake": { "rules": [

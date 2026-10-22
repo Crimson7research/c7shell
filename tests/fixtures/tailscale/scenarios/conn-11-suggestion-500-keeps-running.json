@@ -8,8 +8,7 @@
     "On a fresh backend whose /suggest-exit-node answers 500 with {\"error\":\"no preferred DERP, try again later\"}, state reaches the served state, Running, and once it does readError and recommendedExitNodeId read empty: a failing suggestion is not a lost connection"
   ],
   "deferred": [
-    "no retry scheduled, and after 10 ms of paused time one GET of /status: phase3-only, the retry hook and paused time with an injected 1 ms base",
-    "the timeout staging: phase3-only, it advances paused time past an injected deadline"
+    "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the change and retry counts: cpp-suite, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
   ],
   "needs": [],
   "fake": { "rules": [

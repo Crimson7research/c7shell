@@ -9,8 +9,8 @@
     "Each of the 21 non-constant ones but issueCount has its own <name>Changed signal, callable from QML; issueCount is announced on issuesChanged (R-UI-11), and peers and exitNodes are constant. #286 meets the parity check, so the scenario is tagged parity"
   ],
   "deferred": [
-    "the exact-set check (the 24 plus the five contract additions, 29 in all): phase3-only, #286 lacks the additions",
-    "the notify signal being the same one #286 declares, beyond its name: phase3-only, QML shows no NOTIFY binding"
+    "the exact-set check of 29 names: phase3-only, it names the five contract additions #286 lacks",
+    "the same notify signal as #286: phase3-only, notify metadata is not reachable through QML"
   ],
   "needs": [],
   "fake": { "rules": [

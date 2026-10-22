@@ -8,8 +8,7 @@
     "With the backend Running, the fake is destroyed, closing every accepted connection, the watch included, and leaving nothing at the path: stateChanged fires and state reads NoState. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "no other change signal, the unchanged values, and the fresh-backend run: phase3-only, negatives and the retry curve after the retry barrier with paused time",
-    "the run from Running whose /status answers 500 once: phase3-only, it needs the retry and client barriers and paused time"
+    "no other change signal, the unchanged values, and the fresh-backend run: phase3-only, negatives after the retry barrier, and paused time"
   ],
   "needs": [],
   "fake": { "rules": [

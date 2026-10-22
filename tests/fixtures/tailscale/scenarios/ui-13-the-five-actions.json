@@ -9,9 +9,8 @@
     "Each is callable by name with an argument of its type: the five calls send five PATCHes, which the fake records. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "the exact set of seven, with login() and setAdvertiseExitNode(bool): phase3-only, #286 lacks the two",
-    "the signatures' parameter types: phase3-only, QML shows no parameter types",
-    "the calls recorded by the test-only fake backend: phase3-only, that backend is the rewrite's (R-UI-14)"
+    "the exact set of seven, and `login()` and `setAdvertiseExitNode(bool)`: phase3-only, they name the two invokables #286 lacks",
+    "the test-only fake's recorded calls: phase3-only, the test-only fake is not in the shipped module"
   ],
   "needs": [],
   "fake": { "rules": [

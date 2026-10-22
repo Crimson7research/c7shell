@@ -8,8 +8,7 @@
     "With the fake Running, setWantRunning(false) sends {\"WantRunning\":false,\"WantRunningSet\":true}. The fake answers 200 and from then on reports WantRunning false and BackendState Stopped, and notifies; once state reads Stopped, wantRunning is false and writeError empty. #286 meets these clauses of the fix requirement (its writeError is empty after any 200), so the scenario is tagged parity"
   ],
   "deferred": [
-    "the toggle enabled and unchecked, and toggling sending {\"WantRunning\":true,\"WantRunningSet\":true}: the view half, #309",
-    "writeError empty because R-WRITE-08's confirmation finds the write applied: phase3-only, #286 has no confirmation pass"
+    "the toggle enabled and unchecked, and toggling sending the opposite body: harness-on-cpp in #309"
   ],
   "needs": [],
   "fake": { "rules": [

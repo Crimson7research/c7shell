@@ -9,9 +9,9 @@
     "The fake then serves Running again and pushes {\"Prefs\":{}}: once state reads Running, readError is empty"
   ],
   "deferred": [
-    "the first-status Weird run: phase3-only, state stays NoState, so its reads need the idle barrier",
-    "\"no armed reconnect\", the client counts, the change counts and the \"NoState\" run's negatives: phase3-only, the retry hook and negatives after the idle barrier",
-    "the QML half: the slot visible and dimmed, and ts-read-error equal to that reason: harness-on-cpp in #309"
+    "the QML half: the slot visible and dimmed, and `ts-read-error` equal to that reason: harness-on-cpp in #309",
+    "\"no armed reconnect\", the client counts, the change counts and the `\"NoState\"` run's negatives: phase3-only, the retry hook and negatives after the idle barrier",
+    "the first status that is Weird: state stays NoState there, so no positive wait sees that snapshot on #286, which never changes readError for it; with the counts it is read after the idle barrier in Phase 3"
   ],
   "needs": [],
   "fake": { "rules": [

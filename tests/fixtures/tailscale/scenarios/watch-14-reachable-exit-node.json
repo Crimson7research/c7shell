@@ -8,7 +8,7 @@
     "The reachable capture, read once its snapshot is published (state Running): exitNodeActive true, exitNodeOnline true, exitNodeBlocked false and exitNodeId the peer's id, nEwJFIats021CNTRL"
   ],
   "deferred": [
-    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, ::doesNotReportBlockedWhileTheExitNodeAnswers, ::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved and ::reportsTheBlockedStateWhenTheExitNodeIsOffline"
+    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, tst_localapitailscalebackend.cpp::doesNotReportBlockedWhileTheExitNodeAnswers, tst_localapitailscalebackend.cpp::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved, tst_localapitailscalebackend.cpp::reportsTheBlockedStateWhenTheExitNodeIsOffline"
   ],
   "needs": [],
   "fake": { "rules": [

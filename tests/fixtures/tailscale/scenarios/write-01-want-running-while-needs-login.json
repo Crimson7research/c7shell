@@ -7,6 +7,9 @@
   "clauses": [
     "wantRunning is what tailscaled was told: with WantRunning true and BackendState NeedsLogin, once state reads NeedsLogin, wantRunning reads true"
   ],
+  "deferred": [
+    "each of the four signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::followsTheBusWhenASwitchPrefChanges, tst_localapitailscalebackend.cpp::publishesTheSwitchPrefsFromTheSamePrefsReadItAlreadyMakes"
+  ],
   "needs": [],
   "fake": { "rules": [
     { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },

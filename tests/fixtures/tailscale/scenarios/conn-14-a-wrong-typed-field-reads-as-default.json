@@ -8,8 +8,7 @@
     "A known field of another type reads as its default: from Running on the idle status with prefs {\"WantRunning\":true,\"RouteAll\":true,\"CorpDNS\":true}, the fake answers /prefs with {\"WantRunning\":true,\"RouteAll\":\"yes\",\"CorpDNS\":1,\"ExitNodeID\":5} and pushes {\"Prefs\":{}}; once acceptRoutes reads false, acceptDns is false, exitNodeId empty, exitNodeActive false, wantRunning true and state Running. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
-    "a /prefs body of x or []: phase3-only, its readError, NoState and one armed retry are read after the retry barrier",
-    "readError empty and no retry armed after the idle barrier: phase3-only"
+    "the not-an-object clauses and \"no retry is armed\": phase3-only, they are read after the retry barrier"
   ],
   "needs": [],
   "fake": { "rules": [

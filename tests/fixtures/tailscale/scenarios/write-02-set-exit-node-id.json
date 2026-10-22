@@ -9,7 +9,8 @@
     "R-WRITE-03: given pentest-exit-node's id nEwJFIats021CNTRL and IPv4 100.124.183.145, the body has ExitNodeID equal to the id and ExitNodeIDSet true, and, being exactly those two keys, no ExitNodeIP or ExitNodeIPSet key and not the IPv4"
   ],
   "deferred": [
-    "exactly one PATCH since the call, after the idle, read and fake barriers: phase3-only, an exact count after the barriers"
+    "R-WRITE-02: exactly one PATCH since the call: cpp-suite, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling_data",
+    "R-WRITE-03: exactly one PATCH since the call: cpp-suite, tst_localapitailscalebackend.cpp::selectsAnExitNodeByIdNotByIp"
   ],
   "needs": [],
   "fake": { "rules": [

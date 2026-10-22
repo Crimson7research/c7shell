@@ -8,7 +8,7 @@
     "The backend is Running on the idle capture. The fake switches to a Stopped status of another tailnet and self with no peers, holds the next /prefs and pushes a notification; once the fake holds that /prefs it releases it with all four switches flipped. Then every property the new snapshot changes reads its new value: state Stopped, tailnet, selfName, selfIp4, selfIp6, selfDnsName, wantRunning, acceptRoutes, acceptDns and exitNodeAllowLANAccess, and both models empty"
   ],
   "deferred": [
-    "while /prefs is held no change signal fired and each property reads its old value: phase3-only, a negative read at the read barrier",
+    "while `/prefs` is held no change signal fired and each property reads its old value: phase3-only, a negative read at the read barrier",
     "each change signal fired exactly once: phase3-only, an exact count after the idle barrier"
   ],
   "needs": [],
