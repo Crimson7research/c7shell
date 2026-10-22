@@ -366,6 +366,22 @@ fn the_handler_reads(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: half-update, never-fired"], read);
 }
 
+/// 21. Assigning a read-only member from QML throws and a writable one does
+///     not; each member reads as its type, and a wrong one reports the
+///     types read.
+fn the_members(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/members.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("writable") == Some(json!({ "threw": false }))
+            && actual("wrong-type") == Some(json!({ "state": "number", "peers": "model" }))
+    };
+    verdict(failures, &r, true, &["fail as declared: writable, wrong-type"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -388,6 +404,7 @@ fn parent() -> i32 {
     the_string_matchers(&mut failures);
     the_kept_values(&mut failures);
     the_handler_reads(&mut failures);
+    the_members(&mut failures);
     finish("stub_selftest", &failures)
 }
 
