@@ -65,7 +65,7 @@ fn it_rejects_a_kept_expect_with_too_few_labels_a_repeat_or_two_kinds() {
         keep,
         { "expect": { "id": "k", "kept": { "same": "a", "as": "peers" }, "signal": { "name": "stateChanged", "count": 0 } } }
     ])));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn it_rejects_an_assign_without_a_member_and_a_type_it_does_not_know() {
     assert_names(&e, "member_types.state: `enum` is not one of number, string, boolean, date, array, model, function");
     let e = rejected(with_steps(json!([{ "expect": { "id": "two", "assign": { "member": "state", "value": 1 },
                                                      "member_types": { "state": "number" } } }])));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 #[test]

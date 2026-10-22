@@ -244,6 +244,9 @@ pub struct Expect {
     pub assign: Option<Assign>,
     /// Each member reads as its type.
     pub member_types: Option<BTreeMap<String, String>>,
+    /// `Tailscale` is one object per engine: the same one again in this
+    /// engine, another in a second engine.
+    pub singleton: Option<Empty>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

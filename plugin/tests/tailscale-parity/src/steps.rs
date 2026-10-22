@@ -288,6 +288,8 @@ impl Run<'_> {
             self.kept(k)?
         } else if let Some(h) = &e.handlers {
             self.handlers(h)?
+        } else if e.singleton.is_some() {
+            return Err(format!("expect `{}`: this runner cannot open a second engine yet", e.id));
         } else if let Some(a) = &e.assign {
             let (threw, error) = self.contract.assign(&a.member, &a.value)?;
             if let Some(error) = error {

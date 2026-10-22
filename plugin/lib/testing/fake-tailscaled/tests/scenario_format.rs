@@ -449,7 +449,7 @@ fn it_accepts_undefined_only_as_true() {
 fn it_rejects_an_expect_with_a_model_and_another_kind() {
     let e = rejected(with_steps(json!([{ "expect": { "id": "two", "model": { "name": "peers", "count": 0 },
                                                        "signal": { "name": "stateChanged", "count": 0 } } }])));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 /// Writes `value` as `<root>/scenarios/<stem>.json`, so `{"file": ...}`
@@ -542,7 +542,7 @@ fn it_rejects_request_parts_with_a_bad_match_an_empty_header_name_or_another_kin
         json!([{ "expect": { "id": "two", "requests": { "match": { "method": "GET", "target": "/a" }, "count": 1 },
         "request_parts": { "match": { "method": "GET", "target": "/a" }, "starts_with": "GET " } } }]),
     ));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 #[test]

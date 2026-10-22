@@ -74,11 +74,12 @@ pub(super) fn check_expect(e: &Expect) -> Result<(), String> {
         e.handlers.is_some(),
         e.assign.is_some(),
         e.member_types.is_some(),
+        e.singleton.is_some(),
     ];
     if kinds.iter().filter(|&&k| k).count() != 1 {
         return Err(
-            "give exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign \
-             and member_types"
+            "give exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, \
+             member_types and singleton"
                 .into(),
         );
     }
