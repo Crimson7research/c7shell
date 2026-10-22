@@ -104,6 +104,13 @@ fn a_served_change(failures: &mut Vec<String>, imp: &Implementation) {
     verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
 }
 
+/// 7. A stop fake op takes tailscaled away: #286 reads `NoState`, and
+///    what the fake recorded before stays readable.
+fn a_stopped_fake(failures: &mut Vec<String>, imp: &Implementation) {
+    let r = runner::run_one(imp, CPP_ONLY, &selftest("scenarios-cpp/stop.json"), &[]);
+    verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
+}
+
 /// 6. Corpus cases made into scenarios: one that #286 meets, and one whose
 ///    member, row count and row fail with the values #286 publishes. An
 ///    empty corpus is an error, not a pass.
@@ -142,6 +149,7 @@ fn parent() -> i32 {
             the_request_parts(&mut failures, &imp);
             a_served_change(&mut failures, &imp);
             the_corpus(&mut failures, &imp);
+            a_stopped_fake(&mut failures, &imp);
         }
     }
     finish("harness_selftest", &failures)

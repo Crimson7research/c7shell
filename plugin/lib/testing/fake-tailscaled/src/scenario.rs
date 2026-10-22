@@ -177,6 +177,9 @@ pub enum FakeOp {
     CompleteHeld(ReplySpec),
     Resume(String),
     CloseClient(ClientSelector),
+    /// Stops the fake: every client closed and nothing at the socket path,
+    /// its records kept.
+    Stop(Empty),
 }
 
 /// Which client a `close_client` closes.

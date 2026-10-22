@@ -292,6 +292,14 @@ with the values it read of those named, or `{"signal", "fired": 0}`. A
 scenario watches once, before any `handlers` expect, and an expect names
 only watched members.
 
+### Stopping the fake (#308)
+
+`{"fake": {"stop": {}}}` takes tailscaled away mid-scenario: the fake stops
+accepting, closes every client and removes its socket, so nothing is at
+the path. What it recorded before stays readable to `requests` and
+`request_parts` expects. A push after it reaches no client, which is an
+error. `selftest/scenarios-cpp/stop.json` is the worked example.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

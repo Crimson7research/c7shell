@@ -169,6 +169,7 @@ impl Run<'_> {
                 reached("complete_held", self.fake.complete_held(&reply.encode(false)?.bytes))?
             }
             FakeOp::Resume(label) => reached("resume", self.fake.resume(label))?,
+            FakeOp::Stop(_) => self.fake.stop(),
             FakeOp::CloseClient(sel) => {
                 let id = match sel {
                     ClientSelector::Holding(b) => self.fake.client_holding(&b.0),

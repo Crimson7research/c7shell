@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "stop",
+  "requirements": ["R-CONN-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a stop fake op takes tailscaled away mid-scenario, so #286 reads NoState, and the requests recorded before it stay readable"],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/two-peers.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "fake": { "stop": {} } },
+    { "wait": { "contract": { "state": { "enum": "NoState" } } } },
+    { "expect": { "id": "watch-recorded", "requests": { "match": { "method": "GET", "path": "/localapi/v0/watch-ipn-bus" }, "count": 1 } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" } }
+}
