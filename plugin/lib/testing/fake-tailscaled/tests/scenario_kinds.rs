@@ -135,3 +135,31 @@ fn it_accepts_stopping_the_fake() {
     assert_eq!(s.steps.len(), 23);
     assert_names(&rejected(with_steps(json!([{ "fake": { "stop": { "now": true } } }]))), "now");
 }
+
+#[test]
+fn it_accepts_assign_and_member_types_expects() {
+    let v = with_steps(json!([
+        { "expect": { "id": "read-only", "assign": { "member": "wantRunning", "value": true } } },
+        { "expect": { "id": "types", "member_types": {
+            "state": "number", "selfName": "string", "keyExpiry": "date", "exitNodeActive": "boolean",
+            "issues": "array", "peers": "model", "setExitNode": "function" } } }
+    ]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 24);
+}
+
+#[test]
+fn it_rejects_an_assign_without_a_member_and_a_type_it_does_not_know() {
+    let e = rejected(with_steps(json!([{ "expect": { "id": "a", "assign": { "member": "", "value": 1 } } }])));
+    assert_names(&e, "steps[22].expect `a`: assign: empty member");
+    let e = rejected(with_steps(json!([{ "expect": { "id": "a", "assign": { "member": "state" } } }])));
+    assert_names(&e, "value");
+    let e = rejected(with_steps(json!([{ "expect": { "id": "t", "member_types": {} } }])));
+    assert_names(&e, "steps[22].expect `t`: member_types: empty");
+    let e = rejected(with_steps(json!([{ "expect": { "id": "t", "member_types": { "state": "enum" } } }])));
+    assert_names(&e, "member_types.state: `enum` is not one of number, string, boolean, date, array, model, function");
+    let e = rejected(with_steps(json!([{ "expect": { "id": "two", "assign": { "member": "state", "value": 1 },
+                                                     "member_types": { "state": "number" } } }])));
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign and member_types");
+}
