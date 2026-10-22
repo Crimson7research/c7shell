@@ -89,6 +89,7 @@ impl Run<'_> {
                 self.marks.insert(label.clone(), self.contract.signal_counts()?);
                 Ok(())
             }
+            Step::Keep(k) => Err(format!("keep `{}`: this runner cannot keep values yet", k.label)),
             Step::Expect(e) => self.expect(e),
         }
     }

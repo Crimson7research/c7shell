@@ -68,12 +68,16 @@ pub(super) fn check_expect(e: &Expect) -> Result<(), String> {
         e.request_parts.is_some(),
         e.requests.is_some(),
         e.model.is_some(),
+        e.kept.is_some(),
     ];
     if kinds.iter().filter(|&&k| k).count() != 1 {
-        return Err("give exactly one of contract, signal, request, request_parts, requests and model".into());
+        return Err("give exactly one of contract, signal, request, request_parts, requests, model and kept".into());
     }
     if let Some(q) = &e.model {
         q.validate().map_err(|m| format!("model: {m}"))?;
+    }
+    if let Some(k) = &e.kept {
+        k.validate().map_err(|m| format!("kept: {m}"))?;
     }
     if let Some(values) = &e.contract {
         check_values(values).map_err(|m| format!("contract.{m}"))?;

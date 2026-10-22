@@ -18,11 +18,13 @@ use crate::script::{within_write_limit, Match, Script};
 
 mod check;
 pub(crate) mod files;
+mod kept;
 mod model;
 mod request;
 
 pub use check::check_value;
 use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub use kept::{Keep, KeptCheck};
 pub use model::{role, ModelQuery, Role};
 pub use request::RequestParts;
 
@@ -106,6 +108,8 @@ pub enum Step {
     /// Records every counted signal under this label, for a signal
     /// expectation's `since`.
     Mark(String),
+    /// Stores a member's value under a label, for a `kept` expect.
+    Keep(Keep),
     Expect(Box<Expect>),
 }
 
@@ -222,6 +226,8 @@ pub struct Expect {
     pub requests: Option<RequestCount>,
     /// The model query holds.
     pub model: Option<ModelQuery>,
+    /// Kept values differ pairwise, or one is still a member's.
+    pub kept: Option<KeptCheck>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -352,6 +358,7 @@ impl Scenario {
         self.fake.validate().map_err(|e| format!("fake.{e}"))?;
         self.validate_steps()?;
         self.validate_marks()?;
+        kept::validate_keeps(&self.steps)?;
         self.validate_declarations(implementations)
     }
 
