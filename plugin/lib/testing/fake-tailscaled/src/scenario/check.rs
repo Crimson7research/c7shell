@@ -72,14 +72,25 @@ pub(super) fn check_expect(e: &Expect) -> Result<(), String> {
         e.model.is_some(),
         e.kept.is_some(),
         e.handlers.is_some(),
+        e.assign.is_some(),
+        e.member_types.is_some(),
     ];
     if kinds.iter().filter(|&&k| k).count() != 1 {
         return Err(
-            "give exactly one of contract, signal, request, request_parts, requests, model, kept and handlers".into()
+            "give exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign \
+             and member_types"
+                .into(),
         );
     }
     if let Some(q) = &e.model {
         q.validate().map_err(|m| format!("model: {m}"))?;
+    }
+    if let Some(a) = &e.assign {
+        a.validate().map_err(|m| format!("assign: {m}"))?;
+    }
+    if let Some(types) = &e.member_types {
+        super::members::check_member_types(types)
+            .map_err(|m| format!("member_types{}{m}", if m.starts_with("empty") { ": " } else { "." }))?;
     }
     if let Some(h) = &e.handlers {
         h.validate().map_err(|m| format!("handlers: {m}"))?;

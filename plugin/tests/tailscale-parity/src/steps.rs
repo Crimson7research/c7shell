@@ -282,6 +282,8 @@ impl Run<'_> {
             self.kept(k)?
         } else if let Some(h) = &e.handlers {
             self.handlers(h)?
+        } else if e.assign.is_some() || e.member_types.is_some() {
+            return Err(format!("expect `{}`: this runner cannot assign or read member types yet", e.id));
         } else {
             return Err(format!("expect `{}` has no kind", e.id));
         };

@@ -20,6 +20,7 @@ mod check;
 pub(crate) mod files;
 mod handlers;
 mod kept;
+mod members;
 mod model;
 mod request;
 
@@ -27,6 +28,7 @@ pub use check::check_value;
 use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
 pub use handlers::HandlerCheck;
 pub use kept::{Keep, KeptCheck};
+pub use members::{Assign, MEMBER_TYPES};
 pub use model::{role, ModelQuery, Role};
 pub use request::RequestParts;
 
@@ -238,6 +240,10 @@ pub struct Expect {
     pub kept: Option<KeptCheck>,
     /// What the watched members read inside the named signals' handlers.
     pub handlers: Option<HandlerCheck>,
+    /// Assigning the member from QML throws.
+    pub assign: Option<Assign>,
+    /// Each member reads as its type.
+    pub member_types: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
