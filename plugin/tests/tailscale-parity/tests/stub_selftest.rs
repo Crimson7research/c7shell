@@ -315,8 +315,8 @@ fn the_model_reset_and_layout(failures: &mut Vec<String>) {
 }
 
 /// 18. A string matcher: `non_empty` and `contains` hold only for a string
-///     that is non-empty or holds the text, in a wait, an expect and an
-///     array; a failed one reports the value read.
+///     that is non-empty or holds the text, in a wait, an expect, an array
+///     and a model role; a failed one reports the value read.
 fn the_string_matchers(failures: &mut Vec<String>) {
     let r = run_stub("scenarios/string-matchers.json");
     let read = |o: &Outcome| {
