@@ -67,3 +67,62 @@ fn it_rejects_a_kept_expect_with_too_few_labels_a_repeat_or_two_kinds() {
     ])));
     assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model and kept");
 }
+
+#[test]
+fn it_accepts_watched_handlers_and_handler_expects() {
+    let v = with_steps(json!([
+        { "watch_handlers": ["state", "readError", "peers"] },
+        { "mark": "before" },
+        { "expect": { "id": "inside", "handlers": { "signals": ["stateChanged", "readErrorChanged"], "since": "before",
+                      "values": { "state": { "enum": "NoState" }, "readError": { "non_empty": true }, "peers": { "rows": 20 } } } } },
+        { "expect": { "id": "from-the-watch", "handlers": { "signals": ["stateChanged"], "values": { "state": 5 } } } }
+    ]));
+    let dir = TestDir::new();
+    let s = load(&dir, "full", &v).unwrap();
+    assert_eq!(s.steps.len(), 26);
+}
+
+#[test]
+fn it_rejects_a_handler_watch_that_is_empty_repeats_a_member_or_comes_twice() {
+    let e = rejected(with_steps(json!([{ "watch_handlers": [] }])));
+    assert_names(&e, "steps[22].watch_handlers: empty");
+    let e = rejected(with_steps(json!([{ "watch_handlers": ["state", "state"] }])));
+    assert_names(&e, "steps[22].watch_handlers: `state` twice");
+    let e = rejected(with_steps(json!([{ "watch_handlers": ["state"] }, { "watch_handlers": ["readError"] }])));
+    assert_names(&e, "steps[23].watch_handlers: a scenario watches handlers once");
+}
+
+#[test]
+fn it_rejects_a_handler_expect_without_a_watch_of_its_members() {
+    let inside = |values: serde_json::Value| json!({ "expect": { "id": "inside", "handlers": { "signals": ["stateChanged"], "values": values } } });
+    let e = rejected(with_steps(json!([inside(json!({ "state": 0 })), { "watch_handlers": ["state"] }])));
+    assert_names(&e, "steps[22].expect `inside`: handlers: no earlier watch_handlers");
+    let e = rejected(with_steps(json!([{ "watch_handlers": ["state"] }, inside(json!({ "readError": "" }))])));
+    assert_names(&e, "steps[23].expect `inside`: handlers: `readError` is not watched");
+}
+
+#[test]
+fn it_rejects_a_handler_expect_with_no_signals_no_values_or_an_unknown_mark() {
+    let watch = json!({ "watch_handlers": ["state"] });
+    let inside =
+        |handlers: serde_json::Value| with_steps(json!([watch, { "expect": { "id": "h", "handlers": handlers } }]));
+    let e = rejected(inside(json!({ "signals": [], "values": { "state": 0 } })));
+    assert_names(&e, "steps[23].expect `h`: handlers: signals: empty");
+    let e = rejected(inside(json!({ "signals": ["stateChanged"], "values": {} })));
+    assert_names(&e, "handlers: values: empty");
+    let e = rejected(inside(json!({ "signals": ["stateChanged"], "values": { "state": { "regex": "x" } } })));
+    assert_names(&e, "handlers: values.state");
+    let e = rejected(inside(json!({ "signals": ["stateChanged"], "since": "later", "values": { "state": 0 } })));
+    assert_names(&e, "no earlier mark `later`");
+}
+
+#[test]
+fn it_accepts_a_model_as_its_row_count_and_rejects_another_count() {
+    let mut v = support::scenario::full();
+    v["steps"][17]["expect"]["contract"] = json!({ "peers": { "rows": 2 } });
+    let dir = TestDir::new();
+    load(&dir, "full", &v).unwrap();
+    let mut v = support::scenario::full();
+    v["steps"][17]["expect"]["contract"] = json!({ "peers": { "rows": -1 } });
+    assert_names(&rejected(v), "rows");
+}
