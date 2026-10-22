@@ -344,15 +344,16 @@ fn tests_by_requirement() -> (BTreeMap<String, BTreeSet<String>>, BTreeMap<Strin
     (scenarios, corpus)
 }
 
-/// Table C lists every R-HTTP, R-PARSE and R-GROUP requirement once, in
-/// order, with its evidence class and exactly the scenarios and corpus
+/// Table C lists every requirement of the areas #307 and #308 run (R-HTTP,
+/// R-PARSE, R-GROUP, R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC and R-BOOT) once,
+/// in order, with its evidence class and exactly the scenarios and corpus
 /// cases that name it.
 #[test]
-fn table_c_lists_the_harness_tests_of_each_http_parse_and_group_requirement() {
+fn table_c_lists_the_harness_tests_of_each_requirement_of_its_areas() {
     let ev = loaded();
     let (scenarios, corpus) = tests_by_requirement();
     let empty = BTreeSet::new();
-    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-"];
+    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-", "R-WATCH-", "R-CONN-", "R-WRITE-", "R-UI-", "R-SEC-", "R-BOOT-"];
     let want: Vec<evidence::HarnessRow> = ev
         .requirements
         .iter()
