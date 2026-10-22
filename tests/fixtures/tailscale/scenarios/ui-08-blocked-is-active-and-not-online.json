@@ -5,7 +5,8 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push"
+    "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push",
+    "The singleton QML sees has one exitNodeBlocked, reading a boolean: QML enumerates a member name once, so through QML exactly one is the same as one present"
   ],
   "deferred": [
     "the direct reads and the test-only fake's false/true: cpp-suite, tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed, tst_tailscalebackend.cpp::exitNodeBlockedIsFailClosed_data"
@@ -31,6 +32,7 @@
     { "start": {} },
     { "wait": { "contract": { "state": { "enum": "Running" } } } },
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "one-exit-node-blocked", "member_types": { "exitNodeBlocked": "boolean" } } },
     { "watch_handlers": ["exitNodeBlocked", "exitNodeActive", "exitNodeOnline"] },
     { "expect": { "id": "idle-false-false", "contract": { "exitNodeActive": false, "exitNodeOnline": false, "exitNodeBlocked": false } } },
     { "mark": "before-reachable" },
