@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 use cxx_qt_lib::QGuiApplication;
-use fake_tailscaled::scenario::{ClientSelector, Expect, Failing, FakeOp, KeptCheck, Step, Wait};
+use fake_tailscaled::scenario::{ClientSelector, Expect, Failing, FakeOp, HandlerCheck, KeptCheck, Step, Wait};
 use fake_tailscaled::{Bytes, Fake, Match};
 use serde_json::{json, Value};
 
@@ -24,6 +24,9 @@ fn wanted(e: &Expect) -> Value {
     }
     if let Some(k) = &e.kept {
         return json!({ "distinct": k.distinct, "same": k.same, "as": k.as_member });
+    }
+    if let Some(h) = &e.handlers {
+        return json!({ "signals": h.signals, "since": h.since, "values": h.values });
     }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
@@ -43,6 +46,8 @@ pub(crate) struct Run<'a> {
     pub(crate) failing: Vec<Failing>,
     /// Each mark's label and every counted signal's count at that step.
     pub(crate) marks: BTreeMap<String, BTreeMap<String, u64>>,
+    /// Each mark's label and how many handler firings were read by then.
+    pub(crate) mark_firings: BTreeMap<String, usize>,
 }
 
 impl Run<'_> {
@@ -90,10 +95,11 @@ impl Run<'_> {
             Step::AdvanceMs(_) => Err("advance_ms needs the clock, which this implementation lacks".into()),
             Step::Mark(label) => {
                 self.marks.insert(label.clone(), self.contract.signal_counts()?);
+                self.mark_firings.insert(label.clone(), self.contract.firing_count()?);
                 Ok(())
             }
             Step::Keep(k) => self.contract.keep(&k.label, &k.member),
-            Step::WatchHandlers(_) => Err("watch_handlers: this runner cannot read inside handlers yet".into()),
+            Step::WatchHandlers(names) => self.contract.watch_handlers(names),
             Step::Expect(e) => self.expect(e),
         }
     }
@@ -218,6 +224,37 @@ impl Run<'_> {
         }
     }
 
+    /// A handlers expect: every firing of each named signal since the mark,
+    /// or since the watch, read the values, and each fired. The actual
+    /// value is the first firing that read otherwise, with the values it
+    /// read of those named, or a signal that never fired.
+    fn handlers(&self, h: &HandlerCheck) -> Result<(bool, Value), String> {
+        let from = match &h.since {
+            Some(label) => *self.mark_firings.get(label).ok_or_else(|| format!("no mark `{label}` was reached"))?,
+            None => 0,
+        };
+        let firings = self.contract.firings(from)?;
+        let mut wanted = BTreeMap::new();
+        for (member, v) in &h.values {
+            wanted.insert(member.as_str(), self.contract.resolve(v)?);
+        }
+        for signal in &h.signals {
+            let mut fired = 0;
+            for (_, values) in firings.iter().filter(|(s, _)| s == signal) {
+                fired += 1;
+                let read: serde_json::Map<String, Value> =
+                    wanted.keys().map(|m| (m.to_string(), values.get(*m).cloned().unwrap_or(Value::Null))).collect();
+                if !wanted.iter().all(|(m, want)| contract::matches(&read[*m], want)) {
+                    return Ok((false, json!({ "signal": signal, "values": read })));
+                }
+            }
+            if fired == 0 {
+                return Ok((false, json!({ "signal": signal, "fired": 0 })));
+            }
+        }
+        Ok((true, Value::Null))
+    }
+
     fn expect(&mut self, e: &Expect) -> Result<(), String> {
         let (ok, actual) = if let Some(values) = &e.contract {
             let mut ok = true;
@@ -242,6 +279,8 @@ impl Run<'_> {
             model::read(&self.contract, q)?
         } else if let Some(k) = &e.kept {
             self.kept(k)?
+        } else if let Some(h) = &e.handlers {
+            self.handlers(h)?
         } else {
             return Err(format!("expect `{}` has no kind", e.id));
         };

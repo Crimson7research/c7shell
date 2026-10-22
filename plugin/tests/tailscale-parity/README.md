@@ -268,6 +268,30 @@ QML's `===` compares a string by value and an object, such as a model, by
 identity. Each label is kept once, and a `kept` expect names only labels
 an earlier step kept, or the scenario is a format error.
 
+### Reads inside handlers (#308)
+
+A `watch_handlers` step names members the driver reads inside the
+handler of every signal it counts, from then on; each firing is logged
+with what it read. A `handlers` expect checks the log:
+
+```json
+{ "watch_handlers": ["state", "readError", "peers"] },
+{ "mark": "before-push" },
+{ "fake": { "push_watch_line": "{\"State\":6}" } },
+{ "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "before-push" } } },
+{ "expect": { "id": "whole-snapshot", "handlers": {
+  "signals": ["stateChanged", "readErrorChanged"], "since": "before-push",
+  "values": { "state": { "enum": "NoState" }, "readError": { "non_empty": true }, "peers": { "rows": 20 } } } } }
+```
+
+It holds when each named signal fired at least once since the mark (or
+since the watch, without `since`) and every one of those firings read
+the values, matchers included. A model reads as `{"rows": n}`. Its actual
+value is the first firing that read otherwise, as `{"signal", "values"}`
+with the values it read of those named, or `{"signal", "fired": 0}`. A
+scenario watches once, before any `handlers` expect, and an expect names
+only watched members.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

@@ -31,6 +31,11 @@ QtObject {
     // Keep label -> the member's value when it was kept.
     property var kept: ({})
 
+    // The members read inside every counted signal's handler, and each
+    // firing read since, in order.
+    property var watched: []
+    property var firings: []
+
     // Model member name -> a DelegateModel over it. QAbstractItemModel's
     // roleNames() is not invokable from QML, so a role named in a scenario
     // is read the way a view reads it: through the delegate model's item
@@ -71,7 +76,15 @@ QtObject {
 
     function count(name, s) {
         root.counts[name] = 0;
-        s.connect(function () { root.counts[name] += 1; });
+        s.connect(function () {
+            root.counts[name] += 1;
+            if (root.watched.length === 0)
+                return;
+            const values = {};
+            for (const m of root.watched)
+                values[m] = encode(Tailscale[m]);
+            root.firings.push({ "signal": name, "values": values });
+        });
     }
 
     function isModel(v) {
@@ -161,6 +174,12 @@ QtObject {
         }
         case "kept_same":
             return root.kept[c.label] === member(c.name);
+        case "watch_handlers":
+            c.names.forEach(member);
+            root.watched = c.names;
+            return null;
+        case "firings":
+            return c.from === undefined ? root.firings.length : root.firings.slice(c.from);
         case "members": {
             const names = [];
             for (const k in Tailscale)

@@ -133,6 +133,30 @@ impl Contract {
         v.as_bool().ok_or_else(|| format!("kept_same of {label} and {name} is {v}"))
     }
 
+    /// From now on, the driver reads members `names` inside every counted
+    /// signal's handler.
+    pub fn watch_handlers(&self, names: &[String]) -> Result<(), String> {
+        self.request(json!({ "op": "watch_handlers", "names": names })).map(drop)
+    }
+
+    /// How many handler firings the driver has read.
+    pub fn firing_count(&self) -> Result<usize, String> {
+        let v = self.request(json!({ "op": "firings" }))?;
+        v.as_u64().map(|n| n as usize).ok_or_else(|| format!("the firing count is {v}"))
+    }
+
+    /// Each firing read from index `from` on, as `(signal, values)`.
+    pub fn firings(&self, from: usize) -> Result<Vec<(String, Value)>, String> {
+        let v = self.request(json!({ "op": "firings", "from": from }))?;
+        let list = v.as_array().ok_or_else(|| format!("the firings are {v}"))?;
+        list.iter()
+            .map(|f| match (f.get("signal").and_then(Value::as_str), f.get("values")) {
+                (Some(s), Some(values)) => Ok((s.to_string(), values.clone())),
+                _ => Err(format!("a firing reads {f}")),
+            })
+            .collect()
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;
