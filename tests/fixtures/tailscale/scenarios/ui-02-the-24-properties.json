@@ -6,7 +6,7 @@
   "evidence": "harness-on-cpp",
   "clauses": [
     "The parity check: #286's 24 names are among the members QML enumerates on Tailscale, each reading the stated type once Running is published: state and issueCount numbers (QML reads an enum and an int alike), the six identity strings and the exit-node id and name strings, keyExpiry a date, the bools, issues an array, peers and exitNodes models, recommendedExitNodeId, writeError and readError strings",
-    "Each of the 21 non-constant ones but issueCount has its own <name>Changed signal, callable from QML; issueCount is announced on issuesChanged (R-UI-11), and peers and exitNodes are constant. #286 meets the parity check, so the scenario is tagged parity"
+    "Each of the 21 non-constant ones but issueCount has its own <name>Changed signal, callable from QML (QML reads a signal and a method alike); issueCount is announced on issuesChanged (R-UI-11), and peers and exitNodes are constant. #286 meets the parity check, so the scenario is tagged parity"
   ],
   "deferred": [
     "the exact-set check of 29 names: phase3-only, it names the five contract additions #286 lacks",

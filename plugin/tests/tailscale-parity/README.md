@@ -320,9 +320,11 @@ after the assignment, since the event loop runs only inside waits.
 
 A `member_types` expect reads each named member and holds when each reads
 as its type: `number`, `string`, `boolean`, `date`, `array`, `model` or
-`function`. Its actual value is the type each read as. QML reads an enum
-and an int both as `number`, and shows no method's parameter types, so a
-`function` says only that the name is callable.
+`function`. Its actual value is the type each read as. A signal reads as
+`function` too: QML gives a method the same `connect` a signal has, so
+the two cannot be told apart. QML reads an enum and an int both as
+`number`, and shows no method's parameter types, so a `function` says
+only that the name is callable.
 
 ### One singleton per engine (#308)
 
@@ -332,13 +334,15 @@ second component in its own engine, which must resolve the same object.
 Then `qml/second-engine.qml` loads in a second engine with only the
 module directory on its import path; it exits with a code saying whether
 its `Tailscale` is no object, the driver's named one or another one.
-That engine is destroyed, and the name given back, before the expect
-ends. It holds for the same object in one engine and another object in
+A `Tailscale` with no members, such as a type name with no instance,
+is no object. That engine is destroyed, and the name given back, before
+the expect ends. It holds for the same object in one engine and another object in
 the second. Its actual value is `{"same_in_engine", "second_engine"}`.
 
 A second #286 singleton is a second backend: while its engine lives it
 connects to the fake as the first does, so a scenario with this expect
-counts no requests after it.
+counts no requests after it, and a `singleton` expect must be the
+scenario's last step.
 
 ### A served change
 

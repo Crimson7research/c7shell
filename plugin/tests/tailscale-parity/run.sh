@@ -22,5 +22,8 @@ qml=$("$here/build-reference.sh" | tail -1)
 cd "$here/../.."
 # shellcheck source=../../../tests/fixtures/cargo-env.sh
 . "$here/../../../tests/fixtures/cargo-env.sh"
+# Every scenario and case: a C7_SCENARIOS filter left exported would run a
+# subset and still report success.
+unset C7_SCENARIOS
 C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_REPEAT=$repeat cargo test --locked -q -p tailscale-parity --test scenarios
 C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_REPEAT=$repeat cargo test --locked -q -p tailscale-parity --test corpus

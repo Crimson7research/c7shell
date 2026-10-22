@@ -390,15 +390,14 @@ fn the_members(failures: &mut Vec<String>) {
         actual("writable") == Some(json!({ "threw": false, "read_only": false }))
             && actual("wrong-type") == Some(json!({ "threw": true, "read_only": false }))
             && actual("wrong-member-type") == Some(json!({ "state": "number", "peers": "model" }))
-            && actual("method-is-no-signal") == Some(json!({ "setAcceptRoutes": "function" }))
     };
-    let wants = ["fail as declared: method-is-no-signal, writable, wrong-member-type, wrong-type"];
+    let wants = ["fail as declared: writable, wrong-member-type, wrong-type"];
     verdict(failures, &r, true, &wants, read);
 }
 
 /// 22. The stub's Tailscale is one object per engine: a second component
-///     in the driver's engine sees the same one, a second engine another,
-///     and the driver still answers after that engine is gone. A Tailscale
+///     in the driver's engine sees the same one, and a second engine
+///     another. A Tailscale
 ///     the second engine reads as the driver's fails the check.
 fn the_singleton(failures: &mut Vec<String>) {
     let r = run_stub("scenarios/singleton.json");

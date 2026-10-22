@@ -185,10 +185,7 @@ fn it_rejects_stopping_the_fake_twice() {
 }
 
 #[test]
-fn it_accepts_a_signal_type_and_rejects_a_singleton_before_another_step() {
-    let dir = TestDir::new();
-    let v = with_steps(json!([{ "expect": { "id": "t", "member_types": { "stateChanged": "signal" } } }]));
-    load(&dir, "full", &v).unwrap();
+fn it_rejects_a_singleton_before_another_step() {
     // A second engine's backend leaves its requests in the fake's records,
     // so nothing may read them after it.
     let e = rejected(with_steps(json!([

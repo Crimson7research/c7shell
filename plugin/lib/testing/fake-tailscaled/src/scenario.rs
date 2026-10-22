@@ -397,6 +397,9 @@ impl Scenario {
                     return Err(at("fake.stop: the fake is already stopped".into()))
                 }
                 Step::Fake(FakeOp::Stop(_)) => stopped = true,
+                Step::Expect(e) if e.singleton.is_some() && i + 1 < self.steps.len() => {
+                    return Err(at(format!("expect `{}`: singleton must be the last step", e.id)))
+                }
                 Step::Wait(Wait::Contract(values)) => {
                     check_values(values).map_err(|e| at(format!("wait.contract.{e}")))?
                 }

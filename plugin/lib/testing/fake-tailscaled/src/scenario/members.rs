@@ -25,7 +25,8 @@ impl Assign {
 }
 
 /// The types a member can read as from QML. An enum and an int both read
-/// as `number`, and a method's parameter types are not visible.
+/// as `number`, and a method's parameter types are not visible. A signal
+/// reads as `function` too: QML gives a method the same `connect`.
 pub const MEMBER_TYPES: &[&str] = &["number", "string", "boolean", "date", "array", "model", "function"];
 
 /// Each member reads as its type.

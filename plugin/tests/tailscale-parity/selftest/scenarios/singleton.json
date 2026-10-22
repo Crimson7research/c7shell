@@ -9,8 +9,7 @@
   "fake": { "rules": [] },
   "steps": [
     { "start": {} },
-    { "expect": { "id": "one-per-engine", "singleton": {} } },
-    { "expect": { "id": "still-loaded", "contract": { "state": 0 } } }
+    { "expect": { "id": "one-per-engine", "singleton": {} } }
   ],
   "on": { "stub": { "result": "pass" } }
 }

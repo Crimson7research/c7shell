@@ -61,7 +61,9 @@ if [[ ! -f $qml/C7/qmldir ]]; then
   exit 0
 fi
 # in_reference CMD... -- in_plugin, with the reference chosen.
-in_reference() { in_plugin env C7_IMPL=cpp-286 C7_QML_DIR="$qml" "$@"; }
+# C7_SCENARIOS is unset: a filter left exported while debugging would let
+# the gate pass on a subset of the scenarios and cases.
+in_reference() { in_plugin env -u C7_SCENARIOS C7_IMPL=cpp-286 C7_QML_DIR="$qml" "$@"; }
 
 # 2. the harness self-tests against the reference ------------------------------
 run_logged 'the harness self-tests' in_reference cargo test --locked -q -p tailscale-parity --test harness_selftest

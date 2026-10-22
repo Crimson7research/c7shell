@@ -166,7 +166,8 @@ impl Contract {
     }
 
     /// The type member `name` reads as: number, string, boolean, date,
-    /// array, model, function, or what `typeof` says of anything else.
+    /// array, model, function (a method or a signal), or what `typeof` says
+    /// of anything else.
     pub fn member_type(&self, name: &str) -> Result<String, String> {
         let v = self.request(json!({ "op": "type", "name": name }))?;
         v.as_str().map(str::to_string).ok_or_else(|| format!("the type of {name} is {v}"))
