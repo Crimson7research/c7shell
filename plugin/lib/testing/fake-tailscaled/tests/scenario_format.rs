@@ -702,3 +702,28 @@ fn it_rejects_a_signal_wait_since_no_earlier_mark() {
     assert_names(&e, "steps[22].wait");
     assert_names(&e, "no earlier mark `later`");
 }
+
+#[test]
+fn it_accepts_a_string_matcher_in_a_wait_and_an_expect() {
+    let mut v = full();
+    v["steps"][2]["wait"]["contract"] = json!({ "readError": { "non_empty": true } });
+    v["steps"][17]["expect"]["contract"] =
+        json!({ "writeError": { "contains": "403" }, "issues": [{ "contains": "DNS" }] });
+    let dir = TestDir::new();
+    load(&dir, "full", &v).unwrap();
+}
+
+#[test]
+fn it_rejects_a_string_matcher_it_cannot_apply() {
+    for (matcher, named) in [
+        (json!({ "non_empty": false }), "non_empty"),
+        (json!({ "contains": 403 }), "contains"),
+        (json!({ "contains": "" }), "contains"),
+    ] {
+        let mut v = full();
+        v["steps"][17]["expect"]["contract"] = json!({ "writeError": matcher });
+        let e = rejected(v);
+        assert_names(&e, "steps[17].expect `error`: contract.writeError");
+        assert_names(&e, named);
+    }
+}
