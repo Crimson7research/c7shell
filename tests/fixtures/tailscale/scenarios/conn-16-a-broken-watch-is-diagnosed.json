@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "conn-16-a-broken-watch-is-diagnosed",
+  "requirements": ["R-CONN-16"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From Running, with only the watch connected, the fake pushes `zz\\r\\n` on the chunked watch, a chunk-length line that is not hex: once readErrorChanged has fired since the push, readError is non-empty and contains zz, and state reads NoState"
+  ],
+  "deferred": [
+    "readErrorChanged exactly once and exactly one retry armed, after the retry barrier, and the clean-end contrast run: phase3-only, counts and negatives after the retry barrier"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "mark": "before-push" },
+    { "fake": { "push_chunk": "zz\r\n" } },
+    { "wait": { "signal": { "name": "readErrorChanged", "at_least": 1, "since": "before-push" } } },
+    { "expect": { "id": "names-the-bad-length", "contract": { "readError": { "contains": "zz" } } } },
+    { "expect": { "id": "lost", "contract": { "state": { "enum": "NoState" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

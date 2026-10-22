@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "conn-14-a-wrong-typed-field-reads-as-default",
+  "requirements": ["R-CONN-14"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A known field of another type reads as its default: from Running on the idle status with prefs {\"WantRunning\":true,\"RouteAll\":true,\"CorpDNS\":true}, the fake answers /prefs with {\"WantRunning\":true,\"RouteAll\":\"yes\",\"CorpDNS\":1,\"ExitNodeID\":5} and pushes {\"Prefs\":{}}; once acceptRoutes reads false, acceptDns is false, exitNodeId empty, exitNodeActive false, wantRunning true and state Running. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "a /prefs body of x or []: phase3-only, its readError, NoState and one armed retry are read after the retry barrier",
+    "readError empty and no retry armed after the idle barrier: phase3-only"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true, "RouteAll": true, "CorpDNS": true } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true, "RouteAll": "yes", "CorpDNS": 1, "ExitNodeID": 5 } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "switches-on", "precondition": true, "contract": { "acceptRoutes": true, "acceptDns": true } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "acceptRoutes": false } } },
+    { "expect": { "id": "defaults", "contract": {
+      "acceptDns": false, "exitNodeId": "", "exitNodeActive": false, "wantRunning": true, "state": { "enum": "Running" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

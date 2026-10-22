@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "id": "conn-11-failures-clear-the-suggestion",
+  "requirements": ["R-CONN-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From a published recommendedExitNodeId nEwJFIats021CNTRL (suggest-exit-node.json), a 404, a 500 with a body and an empty 200 on /suggest-exit-node, each after a push, clear it: once it reads empty, state reads Running and readError empty. Each staging is one pass, so recommendedExitNodeIdChanged fired exactly once since its push; a further push between them serves the suggestion again"
+  ],
+  "deferred": [
+    "the retry hook reading 0 retries armed since the push, and the timeout run: phase3-only, the retry hook and paused time"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/suggest-exit-node.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 404, "reason": "Not Found", "body": "" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/suggest-exit-node.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 500, "reason": "Internal Server Error", "body": { "json": { "error": "no preferred DERP, try again later" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/suggest-exit-node.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": "" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "contract": { "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
+    { "mark": "before-404" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "" } } },
+    { "expect": { "id": "404-is-not-a-loss", "contract": { "state": { "enum": "Running" }, "readError": "" } } },
+    { "expect": { "id": "404-announced-once", "signal": { "name": "recommendedExitNodeIdChanged", "count": 1, "since": "before-404" } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
+    { "mark": "before-500" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "" } } },
+    { "expect": { "id": "500-is-not-a-loss", "contract": { "state": { "enum": "Running" }, "readError": "" } } },
+    { "expect": { "id": "500-announced-once", "signal": { "name": "recommendedExitNodeIdChanged", "count": 1, "since": "before-500" } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
+    { "mark": "before-empty-200" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "recommendedExitNodeId": "" } } },
+    { "expect": { "id": "empty-200-is-not-a-loss", "contract": { "state": { "enum": "Running" }, "readError": "" } } },
+    { "expect": { "id": "empty-200-announced-once", "signal": { "name": "recommendedExitNodeIdChanged", "count": 1, "since": "before-empty-200" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

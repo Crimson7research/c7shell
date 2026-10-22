@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "id": "conn-11-suggestion-500-keeps-running",
+  "requirements": ["R-CONN-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "On a fresh backend whose /suggest-exit-node answers 500 with {\"error\":\"no preferred DERP, try again later\"}, state reaches the served state, Running, and once it does readError and recommendedExitNodeId read empty: a failing suggestion is not a lost connection"
+  ],
+  "deferred": [
+    "no retry scheduled, and after 10 ms of paused time one GET of /status: phase3-only, the retry hook and paused time with an injected 1 ms base",
+    "the timeout staging: phase3-only, it advances paused time past an injected deadline"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 500, "reason": "Internal Server Error", "body": { "json": { "error": "no preferred DERP, try again later" } } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "not-a-loss", "contract": { "readError": "", "recommendedExitNodeId": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
