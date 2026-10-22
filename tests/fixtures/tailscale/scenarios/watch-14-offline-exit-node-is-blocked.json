@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "id": "watch-14-offline-exit-node-is-blocked",
+  "requirements": ["R-WATCH-14"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The offline capture, read once its snapshot is published (state Running): exitNodeBlocked true, exitNodeActive true, exitNodeOnline false and exitNodeName pentest-exit-node"
+  ],
+  "deferred": [
+    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, ::doesNotReportBlockedWhileTheExitNodeAnswers, ::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved and ::reportsTheBlockedStateWhenTheExitNodeIsOffline"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-exitnode-offline.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "exit-node", "contract": { "exitNodeBlocked": true, "exitNodeActive": true, "exitNodeOnline": false, "exitNodeName": "pentest-exit-node" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "id": "watch-11-status-and-prefs-publish-together",
+  "requirements": ["R-WATCH-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The backend is Running on the idle capture. The fake switches to a Stopped status of another tailnet and self with no peers, holds the next /prefs and pushes a notification; once the fake holds that /prefs it releases it with all four switches flipped. Then every property the new snapshot changes reads its new value: state Stopped, tailnet, selfName, selfIp4, selfIp6, selfDnsName, wantRunning, acceptRoutes, acceptDns and exitNodeAllowLANAccess, and both models empty"
+  ],
+  "deferred": [
+    "while /prefs is held no change signal fired and each property reads its old value: phase3-only, a negative read at the read barrier",
+    "each change signal fired exactly once: phase3-only, an exact count after the idle barrier"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {
+        "BackendState": "Stopped",
+        "CurrentTailnet": { "Name": "other.example" },
+        "Self": { "ID": "nOTHER1CNTRL", "HostName": "other", "DNSName": "other.other-tailnet.ts.net.",
+                  "TailscaleIPs": ["100.64.9.9", "fd7a:115c:a1e0::9"], "Online": true },
+        "Peer": {} } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "model": { "name": "peers", "count": 20 } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "idle-snapshot", "precondition": true, "contract": {
+      "tailnet": "example.com", "selfName": "host-6", "wantRunning": true, "acceptRoutes": false,
+      "acceptDns": true, "exitNodeAllowLANAccess": false } } },
+    { "fake": { "hold_next": "/localapi/v0/prefs " } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "fake": { "held": 1 } } },
+    { "fake": { "complete_held": { "status": 200, "body": { "json": {
+      "WantRunning": false, "RouteAll": true, "CorpDNS": false, "ExitNodeID": "", "ExitNodeAllowLANAccess": true } } } } },
+    { "wait": { "contract": { "state": { "enum": "Stopped" } } } },
+    { "expect": { "id": "whole-new-snapshot", "contract": {
+      "tailnet": "other.example", "selfName": "other", "selfIp4": "100.64.9.9", "selfIp6": "fd7a:115c:a1e0::9",
+      "selfDnsName": "other.other-tailnet.ts.net", "wantRunning": false, "acceptRoutes": true, "acceptDns": false,
+      "exitNodeAllowLANAccess": true, "peers": { "rows": 0 }, "exitNodes": { "rows": 0 } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

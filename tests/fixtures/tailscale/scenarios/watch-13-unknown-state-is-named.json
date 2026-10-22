@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "id": "watch-13-unknown-state-is-named",
+  "requirements": ["R-WATCH-13"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A backend that reached Running and then reads a status with BackendState Weird publishes state NoState, and once stateChanged has fired since the notification, readError equals exactly `tailscaled reported an unknown BackendState \"Weird\"`",
+    "The fake then serves Running again and pushes {\"Prefs\":{}}: once state reads Running, readError is empty"
+  ],
+  "deferred": [
+    "the first-status Weird run: phase3-only, state stays NoState, so its reads need the idle barrier",
+    "\"no armed reconnect\", the client counts, the change counts and the \"NoState\" run's negatives: phase3-only, the retry hook and negatives after the idle barrier",
+    "the QML half: the slot visible and dimmed, and ts-read-error equal to that reason: harness-on-cpp in #309"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": { "BackendState": "Weird" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "weird-not-served-yet", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/status" }, "count": 1 } } },
+    { "mark": "before-weird" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "before-weird" } } },
+    { "expect": { "id": "no-state", "contract": { "state": { "enum": "NoState" } } } },
+    { "expect": { "id": "unknown-state-named",
+      "contract": { "readError": "tailscaled reported an unknown BackendState \"Weird\"" } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "cleared-by-running", "contract": { "readError": "" } } }
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [ { "id": "unknown-state-named", "actual": "" } ],
+      "reason": "#286 maps a BackendState it does not know to NoState and names nothing (plugin/src/backends/tailscale/LocalApiTailscaleBackend.cpp:41-55), so readError stays empty and the bar slot hides as if Tailscale were absent (decision 23)" },
+    "rust": { "result": "pass" }
+  }
+}

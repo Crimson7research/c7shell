@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "watch-08-a-notification-starts-a-pass",
+  "requirements": ["R-WATCH-08"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With the backend Running on the idle capture, exitNodeActive reads false; the fake switches to the exit-node capture and pushes {\"Prefs\":{}}; once exitNodeActive is true, exitNodeName is pentest-exit-node. One /status is recorded before the push, so the exit-node reply is the notification's pass, not the opening one"
+  ],
+  "deferred": [
+    "the request counts since the push, after the fake barrier: cpp-suite, tst_localapitailscalebackend.cpp::republishesOnAWatchEvent and ::rereadsTheSuggestionOnANotification"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-exitnode.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "idle-has-no-exit-node", "precondition": true, "contract": { "exitNodeActive": false } } },
+    { "expect": { "id": "one-pass-so-far", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/status" }, "count": 1 } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "exitNodeActive": true } } },
+    { "expect": { "id": "exit-node-from-the-reply", "contract": { "exitNodeName": "pentest-exit-node" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
