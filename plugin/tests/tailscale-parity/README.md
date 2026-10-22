@@ -321,6 +321,22 @@ as its type: `number`, `string`, `boolean`, `date`, `array`, `model` or
 and an int both as `number`, and shows no method's parameter types, so a
 `function` says only that the name is callable.
 
+### One singleton per engine (#308)
+
+`{"expect": {"id": ..., "singleton": {}}}` checks R-UI-01's identity
+clauses. The driver names its `Tailscale` (`objectName`) and creates a
+second component in its own engine, which must resolve the same object.
+Then `qml/second-engine.qml` loads in a second engine with only the
+module directory on its import path; it exits with a code saying whether
+its `Tailscale` is no object, the driver's named one or another one.
+That engine is destroyed, and the name given back, before the expect
+ends. It holds for the same object in one engine and another object in
+the second. Its actual value is `{"same_in_engine", "second_engine"}`.
+
+A second #286 singleton is a second backend: while its engine lives it
+connects to the fake as the first does, so a scenario with this expect
+counts no requests after it.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

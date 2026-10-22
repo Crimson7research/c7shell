@@ -36,6 +36,9 @@ QtObject {
     property var watched: []
     property var firings: []
 
+    // Tailscale's objectName before singleton_here named it.
+    property string savedName: ""
+
     // Model member name -> a DelegateModel over it. QAbstractItemModel's
     // roleNames() is not invokable from QML, so a role named in a scenario
     // is read the way a view reads it: through the delegate model's item
@@ -199,6 +202,17 @@ QtObject {
                 return "array";
             return v === null ? "null" : typeof v;
         }
+        case "singleton_here": {
+            root.savedName = Tailscale.objectName;
+            Tailscale.objectName = "c7-harness-first-engine";
+            const o = Qt.createQmlObject("import QtQml; import C7; QtObject { property var t: Tailscale }", root);
+            const same = o.t === Tailscale;
+            o.destroy();
+            return same;
+        }
+        case "singleton_done":
+            Tailscale.objectName = root.savedName;
+            return null;
         case "members": {
             const names = [];
             for (const k in Tailscale)

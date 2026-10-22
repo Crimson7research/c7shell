@@ -34,6 +34,9 @@ fn wanted(e: &Expect) -> Value {
     if let Some(types) = &e.member_types {
         return json!(types);
     }
+    if e.singleton.is_some() {
+        return json!({ "same_in_engine": true, "second_engine": "distinct" });
+    }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
         (_, Some(s), ..) => json!({ "signal": s.name, "count": s.count, "since": s.since }),
@@ -289,7 +292,11 @@ impl Run<'_> {
         } else if let Some(h) = &e.handlers {
             self.handlers(h)?
         } else if e.singleton.is_some() {
-            return Err(format!("expect `{}`: this runner cannot open a second engine yet", e.id));
+            let here = self.contract.singleton_here()?;
+            let other = crate::second_engine(self.app, self.qml);
+            self.contract.singleton_done()?;
+            let other = other?;
+            (here && other == "distinct", json!({ "same_in_engine": here, "second_engine": other }))
         } else if let Some(a) = &e.assign {
             let (threw, error) = self.contract.assign(&a.member, &a.value)?;
             if let Some(error) = error {

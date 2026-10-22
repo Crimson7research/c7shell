@@ -172,6 +172,18 @@ impl Contract {
         v.as_str().map(str::to_string).ok_or_else(|| format!("the type of {name} is {v}"))
     }
 
+    /// Names `Tailscale` for a second engine to recognise, and says whether
+    /// a second component of the driver's engine resolves the same object.
+    pub fn singleton_here(&self) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "singleton_here" }))?;
+        v.as_bool().ok_or_else(|| format!("singleton_here answered {v}"))
+    }
+
+    /// Gives `Tailscale` back the name it had before [`Contract::singleton_here`].
+    pub fn singleton_done(&self) -> Result<(), String> {
+        self.request(json!({ "op": "singleton_done" })).map(drop)
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;
