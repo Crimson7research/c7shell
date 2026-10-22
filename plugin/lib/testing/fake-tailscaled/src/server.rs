@@ -240,7 +240,7 @@ pub struct Fake {
     error: Option<String>,
     inode: Option<u64>,
     shared: Arc<Shared>,
-    acceptor: Option<JoinHandle<()>>,
+    acceptor: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Fake {
@@ -258,12 +258,13 @@ impl Fake {
             closing: AtomicBool::new(false),
             readers: Mutex::new(Vec::new()),
         });
-        let mut fake = Fake { path, error: None, inode: None, shared, acceptor: None };
+        let mut fake = Fake { path, error: None, inode: None, shared, acceptor: Mutex::new(None) };
         match bind(&fake.path) {
             Ok((listener, inode)) => {
                 fake.inode = Some(inode);
                 let shared = fake.shared.clone();
-                fake.acceptor = Some(std::thread::spawn(move || accept_loop(listener, shared)));
+                *fake.acceptor.get_mut().unwrap_or_else(|e| e.into_inner()) =
+                    Some(std::thread::spawn(move || accept_loop(listener, shared)));
             }
             Err(e) => fake.error = Some(e),
         }
@@ -271,7 +272,7 @@ impl Fake {
     }
 
     pub fn is_listening(&self) -> bool {
-        self.acceptor.is_some()
+        self.acceptor.lock().unwrap_or_else(|e| e.into_inner()).is_some()
     }
 
     /// Why it is not listening, or None when it is.
@@ -448,10 +449,17 @@ impl Fake {
 }
 
 impl Drop for Fake {
-    /// Stops accepting, disconnects every client and removes the socket it
-    /// bound, if the path still holds that socket.
     fn drop(&mut self) {
-        let Some(acceptor) = self.acceptor.take() else { return };
+        self.stop();
+    }
+}
+
+impl Fake {
+    /// Stops accepting, disconnects every client and removes the socket it
+    /// bound, if the path still holds that socket: tailscaled went away.
+    /// What it recorded stays readable. Stopping again does nothing.
+    pub fn stop(&self) {
+        let Some(acceptor) = self.acceptor.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
         self.shared.closing.store(true, Ordering::SeqCst);
         // Wake the blocking accept, but only through this fake's own socket:
         // a path that is gone or now holds another socket cannot reach it,

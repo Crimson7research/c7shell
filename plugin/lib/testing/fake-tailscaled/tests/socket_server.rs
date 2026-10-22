@@ -651,3 +651,23 @@ fn r_fake_01_reads_content_length_in_any_case() {
     assert_eq!(requests[0].recorded, b"PATCH /p HTTP/1.1\r\ncontent-length: 2\r\n\r\n{}");
     assert_eq!(requests[1].recorded, b"GET /q HTTP/1.1");
 }
+
+#[test]
+fn stopping_a_fake_disconnects_its_clients_and_removes_the_socket_but_keeps_its_records() {
+    let dir = TestDir::new();
+    let path = dir.socket();
+    let fake = Fake::start(&path);
+    let mut client = Client::connect(&path);
+    client.write(b"j/clients");
+    wait_requests(&fake, 1);
+    fake.stop();
+    assert_eq!(client.read_until_closed(), b"");
+    assert!(fs::symlink_metadata(&path).is_err(), "the socket file is still there");
+    assert!(!fake.is_listening());
+    assert_eq!(fake.connected_count(), 0);
+    assert_eq!(recorded(&fake), [b"j/clients".to_vec()]);
+    // Stopping twice, and dropping after a stop, change nothing.
+    fake.stop();
+    drop(fake);
+    assert!(fs::symlink_metadata(&path).is_err());
+}
