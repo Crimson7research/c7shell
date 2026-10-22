@@ -6,7 +6,7 @@
   "evidence": "harness-on-cpp",
   "clauses": [
     "From Running, a write answered 403 gives writable false and a writeError containing 403, read once writableChanged has fired; inside writableChanged, writable already reads false and the new writeError is readable",
-    "A setAcceptRoutes(true) answered 200 then gives writable true and an empty writeError, read once writableChanged has fired again; inside that handler writable reads true and writeError empty: the 200's own outcome stores both before either signal. Both writes are setAcceptRoutes(true), as #286 stages it, and /prefs keeps serving prefs.json"
+    "A setAcceptRoutes(true) answered 200 with prefs-patched.json then gives writable true, read once writableChanged has fired again; inside that handler writable reads true and writeError empty: the 200's own outcome stores both before either signal. Both writes are setAcceptRoutes(true), as #286 stages it, and /prefs keeps serving prefs.json. writeError after the handler is R-WRITE-08's, whose confirmation pass may set it, so it is not read"
   ],
   "deferred": [
     "the exact signal counts after the client and read barriers, and the deadline ending: cpp-suite, tst_localapitailscalebackend.cpp::aTransientFailureAfterARefusalDoesNotReviveTheControls, tst_localapitailscalebackend.cpp::keepsTheControlsLiveWhenAWriteFailsWithoutBeingRefused, tst_localapitailscalebackend.cpp::letsTheBusOverruleAnOptimisticWrite, tst_localapitailscalebackend.cpp::reportsThatItCannotWriteOnA403"
@@ -22,7 +22,7 @@
     { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "times": 1,
       "reply": { "status": 403, "reason": "Forbidden", "body": "prefs write access denied\n" } },
     { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
-      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+      "reply": { "status": 200, "body": { "file": "captures/prefs-patched.json" } } },
     { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
       "reply": { "status": 200, "body": { "json": {} } } }
   ] },
@@ -40,7 +40,7 @@
     { "mark": "before-200" },
     { "call": { "name": "setAcceptRoutes", "args": [true] } },
     { "wait": { "signal": { "name": "writableChanged", "at_least": 1, "since": "before-200" } } },
-    { "expect": { "id": "restored", "contract": { "writable": true, "writeError": "" } } },
+    { "expect": { "id": "restored", "contract": { "writable": true } } },
     { "expect": { "id": "restored-inside-the-handler", "handlers": { "signals": ["writableChanged"], "since": "before-200",
       "values": { "writable": true, "writeError": "" } } } }
   ],

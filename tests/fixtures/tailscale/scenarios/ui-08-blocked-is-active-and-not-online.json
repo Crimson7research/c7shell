@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push",
+    "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push. Other signals' handlers are not read: which of them fire depends on the captures, and a handlers expect needs each signal it names to fire",
     "The singleton QML sees has one exitNodeBlocked, reading a boolean: QML enumerates a member name once, so through QML exactly one is the same as one present"
   ],
   "deferred": [

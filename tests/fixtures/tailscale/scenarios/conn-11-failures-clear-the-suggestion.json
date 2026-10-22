@@ -8,7 +8,7 @@
     "From a published recommendedExitNodeId nEwJFIats021CNTRL (suggest-exit-node.json), a 404, a 500 with a body and an empty 200 on /suggest-exit-node, each after a push, clear it: once it reads empty, state reads Running and readError empty. Each staging is one pass, so recommendedExitNodeIdChanged fired exactly once since its push; a further push between them serves the suggestion again"
   ],
   "deferred": [
-    "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the change and retry counts: cpp-suite, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
+    "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the retry counts: cpp-suite, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
   ],
   "needs": [],
   "fake": { "rules": [

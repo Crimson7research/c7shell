@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "Once the backend is Running with exitNodeId empty and exitNodeActive false, setExitNode(nEwJFIats021CNTRL) returning is the barrier: right after it, before the event loop runs, exitNodeId is still empty, exitNodeActive still false, and no property change signal has fired since just before the call (each counted one: state, the exit-node five, writable, writeError, readError and the four switches). #286 meets these clauses of the fix requirement, so the scenario is tagged parity"
+    "Once the backend is Running with exitNodeId empty and exitNodeActive false, setExitNode(nEwJFIats021CNTRL) returning is the barrier: right after it, before the event loop runs, exitNodeId is still empty, exitNodeActive still false, and no property change signal has fired since just before the call (each of the 21 property change signals, and every row signal of peers and exitNodes). #286 meets these clauses of the fix requirement, so the scenario is tagged parity"
   ],
   "deferred": [
     "the confirmation pass and the spy on `exitNodeIdChanged`: phase3-only, #286 runs no confirmation pass, so its values can only be read after the idle barrier"
@@ -43,7 +43,27 @@
     { "expect": { "id": "no-wantRunning-signal", "signal": { "name": "wantRunningChanged", "count": 0, "since": "before-call" } } },
     { "expect": { "id": "no-acceptRoutes-signal", "signal": { "name": "acceptRoutesChanged", "count": 0, "since": "before-call" } } },
     { "expect": { "id": "no-acceptDns-signal", "signal": { "name": "acceptDnsChanged", "count": 0, "since": "before-call" } } },
-    { "expect": { "id": "no-exitNodeAllowLANAccess-signal", "signal": { "name": "exitNodeAllowLANAccessChanged", "count": 0, "since": "before-call" } } }
+    { "expect": { "id": "no-exitNodeAllowLANAccess-signal", "signal": { "name": "exitNodeAllowLANAccessChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-selfName-signal", "signal": { "name": "selfNameChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-selfIp4-signal", "signal": { "name": "selfIp4Changed", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-selfIp6-signal", "signal": { "name": "selfIp6Changed", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-selfDnsName-signal", "signal": { "name": "selfDnsNameChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-tailnet-signal", "signal": { "name": "tailnetChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-keyExpiry-signal", "signal": { "name": "keyExpiryChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-issues-signal", "signal": { "name": "issuesChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-recommendedExitNodeId-signal", "signal": { "name": "recommendedExitNodeIdChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-rowsInserted-signal", "signal": { "name": "peers.rowsInserted", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-rowsRemoved-signal", "signal": { "name": "peers.rowsRemoved", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-rowsMoved-signal", "signal": { "name": "peers.rowsMoved", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-modelReset-signal", "signal": { "name": "peers.modelReset", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-data-signal", "signal": { "name": "peers.dataChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-peers-layout-signal", "signal": { "name": "peers.layoutChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-rowsInserted-signal", "signal": { "name": "exitNodes.rowsInserted", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-rowsRemoved-signal", "signal": { "name": "exitNodes.rowsRemoved", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-rowsMoved-signal", "signal": { "name": "exitNodes.rowsMoved", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-modelReset-signal", "signal": { "name": "exitNodes.modelReset", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-data-signal", "signal": { "name": "exitNodes.dataChanged", "count": 0, "since": "before-call" } } },
+    { "expect": { "id": "no-exitNodes-layout-signal", "signal": { "name": "exitNodes.layoutChanged", "count": 0, "since": "before-call" } } }
   ],
   "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
 }

@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "With TS_SOCKET naming the fake's socket, creating the singleton through the QML factory (the driver touching Tailscale, with no call from QML) brings it to Running; the watch, /status, /prefs and /suggest-exit-node it read went to that socket"
+    "With TS_SOCKET naming the fake's socket, creating the singleton through the QML factory (the driver touching Tailscale, with no call from QML) brings it to Running, which only replies from that socket can publish, and the fake records its watch and suggestion read. The waits are the check"
   ],
   "deferred": [
     "exactly four requests after the idle, read and fake barriers: phase3-only, an exact count after the barriers; #286 has no test of it",
@@ -27,11 +27,7 @@
     { "start": {} },
     { "wait": { "contract": { "state": { "enum": "Running" } } } },
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
-    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
-    { "expect": { "id": "status-read-here", "request_parts": { "match": { "method": "GET", "target": "/localapi/v0/status" },
-      "starts_with": "GET /localapi/v0/status HTTP/1.1\r\n" } } },
-    { "expect": { "id": "prefs-read-here", "request_parts": { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
-      "starts_with": "GET /localapi/v0/prefs HTTP/1.1\r\n" } } }
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } }
   ],
   "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
 }

@@ -5,7 +5,7 @@
   "tag": "fix",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "A backend that reached Running and then reads a status with BackendState Weird publishes state NoState, and once stateChanged has fired since the notification, readError equals exactly `tailscaled reported an unknown BackendState \"Weird\"`",
+    "A backend that reached Running and then reads a status with BackendState Weird publishes state NoState, and once stateChanged has fired since the notification, readError equals exactly `tailscaled reported an unknown BackendState \"Weird\"`; inside that stateChanged handler readError already reads it, so state and readError are one snapshot",
     "The fake then serves Running again and pushes {\"Prefs\":{}}: once state reads Running, readError is empty"
   ],
   "deferred": [
@@ -34,19 +34,25 @@
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
     { "expect": { "id": "weird-not-served-yet", "precondition": true,
       "requests": { "match": { "method": "GET", "target": "/localapi/v0/status" }, "count": 1 } } },
+    { "watch_handlers": ["readError"] },
     { "mark": "before-weird" },
     { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
     { "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "before-weird" } } },
     { "expect": { "id": "no-state", "contract": { "state": { "enum": "NoState" } } } },
     { "expect": { "id": "unknown-state-named",
       "contract": { "readError": "tailscaled reported an unknown BackendState \"Weird\"" } } },
+    { "expect": { "id": "named-in-the-same-snapshot", "handlers": { "signals": ["stateChanged"], "since": "before-weird",
+      "values": { "readError": "tailscaled reported an unknown BackendState \"Weird\"" } } } },
     { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
     { "wait": { "contract": { "state": { "enum": "Running" } } } },
     { "expect": { "id": "cleared-by-running", "contract": { "readError": "" } } }
   ],
   "on": {
     "cpp-286": { "result": "fail",
-      "failing": [ { "id": "unknown-state-named", "actual": "" } ],
+      "failing": [
+        { "id": "unknown-state-named", "actual": "" },
+        { "id": "named-in-the-same-snapshot", "actual": { "signal": "stateChanged", "values": { "readError": "" } } }
+      ],
       "reason": "#286 maps a BackendState it does not know to NoState and names nothing (plugin/src/backends/tailscale/LocalApiTailscaleBackend.cpp:41-55), so readError stays empty and the bar slot hides as if Tailscale were absent (decision 23)" },
     "rust": { "result": "pass" }
   }

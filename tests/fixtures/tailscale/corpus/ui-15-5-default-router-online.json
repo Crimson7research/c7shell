@@ -9,7 +9,8 @@
     "The backend half, staging 5 of the table: captures/status-exitnode.json reads state Running, issueCount 0 (issues empty), exitNodeActive true, exitNodeOnline true, exitNodeBlocked false and exitNodeName pentest-exit-node. The prefs are {\"WantRunning\":true} rather than {}: the corpus runner waits for wantRunning, and no value in the table reads it"
   ],
   "deferred": [
-    "the view half: the slot's colours, outline, badge and dot for each staging, #309's"
+    "the view half: the slot's colours, outline, badge and dot for each staging, #309's",
+    "prefs {} as R-UI-15 stages each run: the corpus runner waits for wantRunning to read true, so these cases serve {\"WantRunning\":true}; no value in the table reads it"
   ],
   "status": {
     "file": "captures/status-exitnode.json"

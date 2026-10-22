@@ -5,7 +5,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "On a fresh backend whose /suggest-exit-node answers 500 with {\"error\":\"no preferred DERP, try again later\"}, state reaches the served state, Running, and once it does readError and recommendedExitNodeId read empty: a failing suggestion is not a lost connection"
+    "On a fresh backend whose /suggest-exit-node answers 500 with {\"error\":\"no preferred DERP, try again later\"}, state reaches the served state, Running: a failing suggestion does not keep the backend from it. The wait is the check: the suggestion is handled apart from the snapshot, so a read after it could precede the failure; conn-11-failures-clear-the-suggestion pins that the failure is not a loss"
   ],
   "deferred": [
     "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the change and retry counts: cpp-suite, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
@@ -24,8 +24,7 @@
   "steps": [
     { "start": {} },
     { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
-    { "wait": { "contract": { "state": { "enum": "Running" } } } },
-    { "expect": { "id": "not-a-loss", "contract": { "readError": "", "recommendedExitNodeId": "" } } }
+    { "wait": { "contract": { "state": { "enum": "Running" } } } }
   ],
   "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
 }
