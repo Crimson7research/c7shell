@@ -36,6 +36,15 @@ fn child_probe() -> i32 {
     i32::from(!ok)
 }
 
+/// Child: a second engine over a C7 whose Tailscale is a type with no
+/// instance reads "no object", not another object.
+fn child_second_engine_no_object() -> i32 {
+    let app = headless_app();
+    let got = tailscale_parity::second_engine(&app, &selftest("qml-tailscale-type"));
+    println!("SECOND-ENGINE {got:?}");
+    i32::from(got != Ok("no object"))
+}
+
 /// Child: the driver over the C7 in `selftest/<dir>` must fail to load
 /// with `want` in the reason, reported at once, not waited out.
 fn child_load_fails(dir: &str, want: &str) -> i32 {
@@ -381,8 +390,10 @@ fn the_members(failures: &mut Vec<String>) {
         actual("writable") == Some(json!({ "threw": false, "read_only": false }))
             && actual("wrong-type") == Some(json!({ "threw": true, "read_only": false }))
             && actual("wrong-member-type") == Some(json!({ "state": "number", "peers": "model" }))
+            && actual("method-is-no-signal") == Some(json!({ "setAcceptRoutes": "function" }))
     };
-    verdict(failures, &r, true, &["fail as declared: writable, wrong-member-type, wrong-type"], read);
+    let wants = ["fail as declared: method-is-no-signal, writable, wrong-member-type, wrong-type"];
+    verdict(failures, &r, true, &wants, read);
 }
 
 /// 22. The stub's Tailscale is one object per engine: a second component
@@ -399,6 +410,9 @@ fn the_singleton(failures: &mut Vec<String>) {
     let same = json!({ "same_in_engine": true, "second_engine": "same" });
     let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == same);
     verdict(failures, &r, true, &["fail as declared: one-per-engine"], read);
+    // A Tailscale that is a type with no instance is no object, not another.
+    let out = spawn_child("second-engine-no-object", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
+    check(failures, out.status.success(), "a second engine whose Tailscale has no instance reads no object");
 }
 
 fn parent() -> i32 {
@@ -433,6 +447,7 @@ fn main() {
         Some("probe") => child_probe(),
         Some("no-tailscale") => child_load_fails("qml-no-tailscale", "Tailscale is not defined"),
         Some("tailscale-type") => child_load_fails("qml-tailscale-type", "no backend object"),
+        Some("second-engine-no-object") => child_second_engine_no_object(),
         Some("scenario") => runner::child_main(),
         Some(other) => panic!("unknown child {other}"),
         None => parent(),
