@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "id": "ui-01-one-tailscale-per-engine",
+  "requirements": ["R-UI-01"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With only the module directory on the import path, resolving Tailscale from C7 returns a non-null object; resolving it again in a second component of the same engine returns the same object, and a second engine, with only the module directory on its import path, gets a different one"
+  ],
+  "deferred": [
+    "the metaobject inheriting the contract type: phase3-only, QML does not show a C++ class hierarchy",
+    "C7/qmldir under the module directory: the runner checks it before any scenario (implementation.rs)"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "one-per-engine", "singleton": {} } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

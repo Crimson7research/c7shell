@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "id": "ui-15-1-plain",
+  "requirements": [
+    "R-UI-15"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "The backend half, staging 1 of the table: captures/status-idle.json reads state Running, issueCount 0 (issues empty), exitNodeActive false, exitNodeOnline false, exitNodeBlocked false and exitNodeName empty. The prefs are {\"WantRunning\":true} rather than {}: the corpus runner waits for wantRunning, and no value in the table reads it"
+  ],
+  "deferred": [
+    "the view half: the slot's colours, outline, badge and dot for each staging, #309's"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "prefs": {
+    "json": {
+      "WantRunning": true
+    }
+  },
+  "expect": {
+    "contract": {
+      "state": {
+        "enum": "Running"
+      },
+      "issueCount": 0,
+      "issues": [],
+      "exitNodeActive": false,
+      "exitNodeOnline": false,
+      "exitNodeBlocked": false,
+      "exitNodeName": ""
+    }
+  },
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

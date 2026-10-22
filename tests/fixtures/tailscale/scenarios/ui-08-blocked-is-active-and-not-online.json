@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "id": "ui-08-blocked-is-active-and-not-online",
+  "requirements": ["R-UI-08"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "On the shipped backend, driven from the fake through the three reachable combinations of exitNodeActive and exitNodeOnline (idle false/false, status-exitnode.json true/true, status-exitnode-offline.json true/false, then idle again), exitNodeBlocked equals exitNodeActive && !exitNodeOnline in every handler of every exit-node change signal that fired since each push"
+  ],
+  "deferred": [
+    "false/true, the direct reads and the test-only fake backend: phase3-only, the shipped backend cannot produce false/true and the fake backend is the rewrite's",
+    "the metaobject having exactly one exitNodeBlocked: phase3-only, QML enumerates a name once whatever the metaobject holds"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-exitnode.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-exitnode-offline.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "watch_handlers": ["exitNodeBlocked", "exitNodeActive", "exitNodeOnline"] },
+    { "expect": { "id": "idle-false-false", "contract": { "exitNodeActive": false, "exitNodeOnline": false, "exitNodeBlocked": false } } },
+    { "mark": "before-reachable" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "exitNodeActive": true, "exitNodeOnline": true } } },
+    { "expect": { "id": "reachable-blocked-in-every-handler", "handlers": { "signals": ["exitNodeActiveChanged", "exitNodeOnlineChanged", "exitNodeBlockedChanged", "exitNodeIdChanged", "exitNodeNameChanged"], "since": "before-reachable",
+      "values": { "exitNodeActive": true, "exitNodeOnline": true, "exitNodeBlocked": false } } } },
+    { "mark": "before-offline" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "exitNodeActive": true, "exitNodeOnline": false } } },
+    { "expect": { "id": "offline-blocked-in-every-handler", "handlers": { "signals": ["exitNodeOnlineChanged", "exitNodeBlockedChanged"], "since": "before-offline",
+      "values": { "exitNodeActive": true, "exitNodeOnline": false, "exitNodeBlocked": true } } } },
+    { "mark": "before-idle-again" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "exitNodeActive": false, "exitNodeOnline": false } } },
+    { "expect": { "id": "idle-again-blocked-in-every-handler", "handlers": { "signals": ["exitNodeActiveChanged", "exitNodeBlockedChanged", "exitNodeIdChanged", "exitNodeNameChanged"], "since": "before-idle-again",
+      "values": { "exitNodeActive": false, "exitNodeOnline": false, "exitNodeBlocked": false } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

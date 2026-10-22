@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "id": "ui-10-exit-node-selected-by-id",
+  "requirements": ["R-UI-10"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With the status whose two exit rows share the hostname relay and which has no ExitNodeStatus, and prefs ExitNodeID nDEF456CNTRL: once Running is published, exitNodeId is exactly nDEF456CNTRL, exitNodes has exactly 2 rows, and exactly one of them has nodeId nDEF456CNTRL: row 0 is relay's nABC123CNTRL and row 1 relay-1's nDEF456CNTRL, named by DNS label"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "Peer": {"k1": {"ID": "nABC123CNTRL", "HostName": "relay", "DNSName": "relay.example.ts.net.", "ExitNodeOption": true}, "k2": {"ID": "nDEF456CNTRL", "HostName": "relay", "DNSName": "relay-1.example.ts.net.", "ExitNodeOption": true}}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": {"WantRunning": true, "ExitNodeID": "nDEF456CNTRL"} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "selected", "contract": { "exitNodeId": "nDEF456CNTRL" } } },
+    { "expect": { "id": "two-rows", "model": { "name": "exitNodes", "count": 2 } } },
+    { "expect": { "id": "first-row", "model": { "name": "exitNodes", "row": 0, "values": { "nodeId": "nABC123CNTRL" } } } },
+    { "expect": { "id": "second-row", "model": { "name": "exitNodes", "row": 1, "values": { "nodeId": "nDEF456CNTRL" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

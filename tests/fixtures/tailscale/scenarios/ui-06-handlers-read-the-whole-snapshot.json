@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "id": "ui-06-handlers-read-the-whole-snapshot",
+  "requirements": ["R-UI-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From Running on the idle capture, a notification brings a status that changes state (to Starting), selfName (to renamed) and exitNodeOnline (to true) at once, with two peers of which one is an exit node. Inside every handler of stateChanged, selfNameChanged and exitNodeOnlineChanged since the push, all three already hold their new values, and peers and exitNodes already hold their new rows (2 and 1)"
+  ],
+  "deferred": [
+    "each signal's exact count after the idle barrier, the repeat that fires nothing, and exitNodeBlocked never shown true moving from idle to a reachable exit node: phase3-only, exact counts and negatives after the idle barrier"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Starting", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF2CNTRL", "HostName": "renamed", "DNSName": "renamed.example-tailnet.ts.net.", "TailscaleIPs": ["100.64.0.7"], "Online": true}, "Peer": {"nodekey:exit": {"ID": "nEXIT1CNTRL", "HostName": "exit", "DNSName": "exit.example-tailnet.ts.net.", "TailscaleIPs": ["100.64.0.8"], "Online": true, "ExitNodeOption": true}, "nodekey:peer": {"ID": "nPEER2CNTRL", "HostName": "peer", "DNSName": "peer.example-tailnet.ts.net.", "TailscaleIPs": ["100.64.0.9"], "Online": true}}, "ExitNodeStatus": {"ID": "nEXIT1CNTRL", "Online": true, "TailscaleIPs": ["100.64.0.8/32"]}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "model": { "name": "peers", "count": 20 } } },
+    { "expect": { "id": "one-pass-so-far", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/status" }, "count": 1 } } },
+    { "watch_handlers": ["state", "selfName", "exitNodeOnline", "peers", "exitNodes"] },
+    { "mark": "before-push" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "state": { "enum": "Starting" } } } },
+    { "expect": { "id": "whole-snapshot-in-every-handler", "handlers": {
+      "signals": ["stateChanged", "selfNameChanged", "exitNodeOnlineChanged"], "since": "before-push",
+      "values": { "state": { "enum": "Starting" }, "selfName": "renamed", "exitNodeOnline": true,
+                  "peers": { "rows": 2 }, "exitNodes": { "rows": 1 } } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "id": "ui-02-the-24-properties",
+  "requirements": ["R-UI-02"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The parity check: #286's 24 names are among the members QML enumerates on Tailscale, each reading the stated type once Running is published: state and issueCount numbers (QML reads an enum and an int alike), the six identity strings and the exit-node id and name strings, keyExpiry a date, the bools, issues an array, peers and exitNodes models, recommendedExitNodeId, writeError and readError strings",
+    "Each of the 21 non-constant ones but issueCount has its own <name>Changed signal, callable from QML; issueCount is announced on issuesChanged (R-UI-11), and peers and exitNodes are constant. #286 meets the parity check, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the exact-set check (the 24 plus the five contract additions, 29 in all): phase3-only, #286 lacks the additions",
+    "the notify signal being the same one #286 declares, beyond its name: phase3-only, QML shows no NOTIFY binding"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "types", "member_types": { "state": "number", "selfName": "string", "selfIp4": "string", "selfIp6": "string", "selfDnsName": "string", "tailnet": "string", "keyExpiry": "date", "exitNodeActive": "boolean", "exitNodeId": "string", "exitNodeName": "string", "exitNodeOnline": "boolean", "exitNodeBlocked": "boolean", "issues": "array", "issueCount": "number", "peers": "model", "exitNodes": "model", "recommendedExitNodeId": "string", "writable": "boolean", "writeError": "string", "readError": "string", "wantRunning": "boolean", "exitNodeAllowLANAccess": "boolean", "acceptRoutes": "boolean", "acceptDns": "boolean" } } },
+    { "expect": { "id": "notify-signals", "member_types": { "stateChanged": "function", "selfNameChanged": "function", "selfIp4Changed": "function", "selfIp6Changed": "function", "selfDnsNameChanged": "function", "tailnetChanged": "function", "keyExpiryChanged": "function", "exitNodeActiveChanged": "function", "exitNodeIdChanged": "function", "exitNodeNameChanged": "function", "exitNodeOnlineChanged": "function", "exitNodeBlockedChanged": "function", "issuesChanged": "function", "recommendedExitNodeIdChanged": "function", "writableChanged": "function", "writeErrorChanged": "function", "readErrorChanged": "function", "wantRunningChanged": "function", "exitNodeAllowLANAccessChanged": "function", "acceptRoutesChanged": "function", "acceptDnsChanged": "function" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

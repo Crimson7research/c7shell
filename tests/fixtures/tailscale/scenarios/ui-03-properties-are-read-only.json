@@ -1,0 +1,34 @@
+{
+  "format": 1,
+  "id": "ui-03-properties-are-read-only",
+  "requirements": ["R-UI-03"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "`Tailscale.wantRunning = true` fails; the assignment is synchronous, so right after it wantRunning reads the value it read before (false, from the served prefs) and wantRunningChanged has fired 0 times since just before the assignment"
+  ],
+  "deferred": [
+    "the other 23 of #286's properties: R-UI-02's types, and phase3-only beyond wantRunning, which the acceptance names"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": false } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "not-running-wanted", "precondition": true, "contract": { "wantRunning": false } } },
+    { "mark": "before-assign" },
+    { "expect": { "id": "assignment-fails", "assign": { "member": "wantRunning", "value": true } } },
+    { "expect": { "id": "value-kept", "contract": { "wantRunning": false } } },
+    { "expect": { "id": "nothing-announced", "signal": { "name": "wantRunningChanged", "count": 0, "since": "before-assign" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

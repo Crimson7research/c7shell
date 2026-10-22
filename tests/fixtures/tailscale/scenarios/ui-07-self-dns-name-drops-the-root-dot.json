@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "id": "ui-07-self-dns-name-drops-the-root-dot",
+  "requirements": ["R-UI-07"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Self DNSName `laptop.example-tailnet.ts.net.` reads `laptop.example-tailnet.ts.net`; the same name without the dot reads the same; `.` reads as the empty string. Each status carries its own tailnet name, so each is read once that tailnet is published"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "CurrentTailnet": {"Name": "dotted.example"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "laptop", "DNSName": "laptop.example-tailnet.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true}, "Peer": {}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "CurrentTailnet": {"Name": "undotted.example"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "laptop", "DNSName": "laptop.example-tailnet.ts.net", "TailscaleIPs": ["100.64.0.1"], "Online": true}, "Peer": {}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "CurrentTailnet": {"Name": "root.example"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "laptop", "DNSName": ".", "TailscaleIPs": ["100.64.0.1"], "Online": true}, "Peer": {}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "tailnet": "dotted.example" } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "dot-dropped", "contract": { "selfDnsName": "laptop.example-tailnet.ts.net" } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "tailnet": "undotted.example" } } },
+    { "expect": { "id": "no-dot-kept", "contract": { "selfDnsName": "laptop.example-tailnet.ts.net" } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "tailnet": "root.example" } } },
+    { "expect": { "id": "root-only-is-empty", "contract": { "selfDnsName": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}
