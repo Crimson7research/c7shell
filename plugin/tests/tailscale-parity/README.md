@@ -247,6 +247,27 @@ exists or names a word:
 (text not empty) for a string holding `text`. Neither holds for a value
 that is not a string. A failed one reports the value read.
 
+### Kept values (#308)
+
+A `keep` step stores a member's current value in the driver under a
+label. A `kept` expect then compares kept values, with exactly one of:
+
+```json
+{ "keep": { "label": "first-403", "member": "readError" } },
+{ "keep": { "label": "peers-before", "member": "peers" } },
+{ "expect": { "id": "reasons-differ", "kept": { "distinct": ["first-403", "first-garbage"] } } },
+{ "expect": { "id": "same-model", "kept": { "same": "peers-before", "as": "peers" } } }
+```
+
+- `distinct` names two or more labels, and holds when no two of their
+  values are `===`. Its actual value is each kept value by label.
+- `same` with `as` holds when the kept value is `===` the member now. Its
+  actual value is that boolean.
+
+QML's `===` compares a string by value and an object, such as a model, by
+identity. Each label is kept once, and a `kept` expect names only labels
+an earlier step kept, or the scenario is a format error.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule

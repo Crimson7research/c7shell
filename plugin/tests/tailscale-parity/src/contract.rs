@@ -112,6 +112,27 @@ impl Contract {
         v.as_bool().ok_or_else(|| format!("distinct of {name} and {other} is {v}"))
     }
 
+    /// Stores member `name`'s value in the driver under `label`.
+    pub fn keep(&self, label: &str, name: &str) -> Result<(), String> {
+        self.request(json!({ "op": "keep", "label": label, "name": name })).map(drop)
+    }
+
+    /// Whether the values kept under `labels` differ pairwise, and each
+    /// value by label.
+    pub fn kept_distinct(&self, labels: &[String]) -> Result<(bool, Value), String> {
+        let v = self.request(json!({ "op": "kept_distinct", "labels": labels }))?;
+        match (v.get("distinct").and_then(Value::as_bool), v.get("values")) {
+            (Some(d), Some(values)) => Ok((d, values.clone())),
+            _ => Err(format!("kept_distinct answered {v}")),
+        }
+    }
+
+    /// Whether the value kept under `label` is still member `name`'s.
+    pub fn kept_same(&self, label: &str, name: &str) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "kept_same", "label": label, "name": name }))?;
+        v.as_bool().ok_or_else(|| format!("kept_same of {label} and {name} is {v}"))
+    }
+
     /// Every member name QML enumerates on `Tailscale`.
     pub fn members(&self) -> Result<Vec<String>, String> {
         let v = self.request(json!({ "op": "members" }))?;

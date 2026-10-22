@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 use cxx_qt_lib::QGuiApplication;
-use fake_tailscaled::scenario::{ClientSelector, Expect, Failing, FakeOp, Step, Wait};
+use fake_tailscaled::scenario::{ClientSelector, Expect, Failing, FakeOp, KeptCheck, Step, Wait};
 use fake_tailscaled::{Bytes, Fake, Match};
 use serde_json::{json, Value};
 
@@ -21,6 +21,9 @@ fn wanted(e: &Expect) -> Value {
     }
     if let Some(r) = &e.request_parts {
         return json!({ "starts_with": r.starts_with, "headers": r.headers, "body_json": r.body_json });
+    }
+    if let Some(k) = &e.kept {
+        return json!({ "distinct": k.distinct, "same": k.same, "as": k.as_member });
     }
     match (&e.contract, &e.signal, &e.request, &e.requests) {
         (Some(values), ..) => json!(values),
@@ -89,7 +92,7 @@ impl Run<'_> {
                 self.marks.insert(label.clone(), self.contract.signal_counts()?);
                 Ok(())
             }
-            Step::Keep(k) => Err(format!("keep `{}`: this runner cannot keep values yet", k.label)),
+            Step::Keep(k) => self.contract.keep(&k.label, &k.member),
             Step::Expect(e) => self.expect(e),
         }
     }
@@ -204,6 +207,16 @@ impl Run<'_> {
         }
     }
 
+    /// A kept expect: whether it holds, and the kept values by label for
+    /// `distinct` or whether they are the same for `same`.
+    fn kept(&self, k: &KeptCheck) -> Result<(bool, Value), String> {
+        match (&k.distinct, &k.same, &k.as_member) {
+            (Some(labels), ..) => self.contract.kept_distinct(labels),
+            (None, Some(label), Some(member)) => self.contract.kept_same(label, member).map(|s| (s, json!(s))),
+            _ => Err("a kept expect with neither distinct nor same with as".into()),
+        }
+    }
+
     fn expect(&mut self, e: &Expect) -> Result<(), String> {
         let (ok, actual) = if let Some(values) = &e.contract {
             let mut ok = true;
@@ -226,6 +239,8 @@ impl Run<'_> {
             (n == r.count, json!(n))
         } else if let Some(q) = &e.model {
             model::read(&self.contract, q)?
+        } else if let Some(k) = &e.kept {
+            self.kept(k)?
         } else {
             return Err(format!("expect `{}` has no kind", e.id));
         };

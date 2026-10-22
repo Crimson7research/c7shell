@@ -11,7 +11,11 @@
 // {"op": "has_children", "name", "row"} and {"op": "data", "name", "row",
 // "role"} (row null for the root; role a name or "#<number>"), and
 // {"op": "distinct", "name", "other"}, whether two model members are
-// different objects.
+// different objects; {"op": "keep", "label", "name"} stores a member's
+// value, {"op": "kept_distinct", "labels"} says whether the kept values
+// differ pairwise, with each by label, and {"op": "kept_same", "label",
+// "name"} whether a kept value is still the member's (`===`: a string by
+// value, an object by identity).
 // The answer is {"value": ...} or {"error": "..."}.
 import QtQml
 import QtQml.Models
@@ -23,6 +27,9 @@ QtObject {
 
     // Signal name -> times fired since the driver loaded.
     property var counts: ({})
+
+    // Keep label -> the member's value when it was kept.
+    property var kept: ({})
 
     // Model member name -> a DelegateModel over it. QAbstractItemModel's
     // roleNames() is not invokable from QML, so a role named in a scenario
@@ -140,6 +147,20 @@ QtObject {
             return data(c.name, c.row, c.role);
         case "distinct":
             return model(c.name) !== model(c.other);
+        case "keep":
+            root.kept[c.label] = member(c.name);
+            return null;
+        case "kept_distinct": {
+            const values = {};
+            let distinct = true;
+            c.labels.forEach(function (a, i) {
+                values[a] = encode(root.kept[a]);
+                c.labels.slice(i + 1).forEach(function (b) { distinct = distinct && root.kept[a] !== root.kept[b]; });
+            });
+            return { "distinct": distinct, "values": values };
+        }
+        case "kept_same":
+            return root.kept[c.label] === member(c.name);
         case "members": {
             const names = [];
             for (const k in Tailscale)
