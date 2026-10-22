@@ -11,6 +11,24 @@ use serde_json::{json, Value};
 
 use crate::probe;
 
+/// Whether `got`, as the driver read it, matches the resolved scenario
+/// value `want`: `{"non_empty": true}` a non-empty string,
+/// `{"contains": text}` a string holding `text`, an array element by
+/// element, anything else by equality.
+pub fn matches(got: &Value, want: &Value) -> bool {
+    match (got, want) {
+        (Value::Array(g), Value::Array(w)) => g.len() == w.len() && g.iter().zip(w).all(|(g, w)| matches(g, w)),
+        (_, Value::Object(m)) if m.len() == 1 && (m.contains_key("non_empty") || m.contains_key("contains")) => {
+            let Some(text) = got.as_str() else { return false };
+            match m.get("contains").and_then(Value::as_str) {
+                Some(part) => text.contains(part),
+                None => !text.is_empty(),
+            }
+        }
+        _ => got == want,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Contract;
 

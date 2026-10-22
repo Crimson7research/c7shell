@@ -10,7 +10,7 @@ use fake_tailscaled::scenario::{ClientSelector, Expect, Failing, FakeOp, Step, W
 use fake_tailscaled::{Bytes, Fake, Match};
 use serde_json::{json, Value};
 
-use crate::contract::Contract;
+use crate::contract::{self, Contract};
 use crate::model;
 use crate::{load_driver, wait_until, Loaded};
 
@@ -106,7 +106,7 @@ impl Run<'_> {
                 let reached = self.wait(&what.join(", "), || {
                     for (member, _, want) in &wanted {
                         let got = self.contract.read(member)?;
-                        let equal = got == *want;
+                        let equal = contract::matches(&got, want);
                         last.insert(member.clone(), got);
                         if !equal {
                             return Ok(false);
@@ -209,7 +209,7 @@ impl Run<'_> {
             let mut actual = serde_json::Map::new();
             for (member, v) in values {
                 let got = self.contract.read(member)?;
-                ok &= got == self.contract.resolve(v)?;
+                ok &= contract::matches(&got, &self.contract.resolve(v)?);
                 actual.insert(member.clone(), got);
             }
             (ok, model::one_or_all(actual))
