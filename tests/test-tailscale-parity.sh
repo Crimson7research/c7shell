@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# The Tailscale parity harness passes its self-tests, and every scenario
-# matches its declaration on #286's C7 at a38dbca in 50 consecutive runs.
+# The Tailscale parity harness passes its self-tests, and every scenario and
+# view test matches its declaration on #286 at a38dbca in 50 consecutive
+# runs.
 # Run it directly: tests/test-tailscale-parity.sh
 #
 # Checks, in order:
 #   1. the harness self-tests that need no reference pass: stub_selftest
 #      against the QML-only stub C7, view_selftest against the stub views
-#   2. the harness self-tests against the reference (harness_selftest) pass
-#   3. every scenario under tests/fixtures/tailscale/scenarios/ matches its
+#   2. every view test under tests/fixtures/tailscale/views/ matches its
+#      cpp-286 declaration on #286's views, 50 consecutive runs
+#   3. the harness self-tests against the reference (harness_selftest) pass
+#   4. every scenario under tests/fixtures/tailscale/scenarios/ matches its
 #      cpp-286 declaration, 50 consecutive runs
-#   4. every parser corpus case under tests/fixtures/tailscale/corpus/
+#   5. every parser corpus case under tests/fixtures/tailscale/corpus/
 #      matches its cpp-286 declaration, 50 consecutive runs
-# The reference build is not something the suite makes: it is
+# The reference is not something the suite makes: it is
 # plugin/tests/tailscale-parity/build-reference.sh's output, read from
-# C7_QML_DIR or that script's cache. Skips, with the reason, without cargo;
-# skips checks 2 to 4 when C7_QML_DIR is unset and the cache holds no build,
-# and fails when C7_QML_DIR is set but holds no C7/qmldir.
+# C7_VIEWS_DIR and C7_QML_DIR or that script's cache. Skips, with the
+# reason, without cargo; skips check 2 when C7_VIEWS_DIR is unset and the
+# cache holds no views, and checks 3 to 5 when C7_QML_DIR is unset and the
+# cache holds no build; fails when either is set but holds no reference.
 # tests/test-fake-tailscaled.sh compiles the harness either way.
 set -euo pipefail
 shopt -s inherit_errexit
@@ -53,6 +57,21 @@ echo "PASS: the harness self-tests that need no reference pass on the stub"
 
 sha=a38dbcae841a1134514f68cba8f5b98d4efddb68
 cache=${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference}/$sha
+
+# 2. the view tests, 50 consecutive runs ---------------------------------------
+views=${C7_VIEWS_DIR:-$cache/tree/quickshell/c7shell}
+if [[ -f $views/Modules/Popovers/TailscalePopover.qml ]]; then
+  # C7_SCENARIOS is unset, as for the scenarios below.
+  run_logged 'the view tests, 50 runs' in_plugin env -u C7_SCENARIOS C7_IMPL=cpp-286 C7_VIEWS_DIR="$views" \
+    C7_REPEAT=50 cargo test --locked -q -p tailscale-parity --test views
+  grep -qE '^[0-9]+ view tests matched their declarations on cpp-286 in 50 runs$' "$log" \
+    || { cat "$log" >&2; fail "the view tests run did not report 50 matching runs"; }
+  echo "PASS: $(grep -E 'view tests matched' "$log")"
+else
+  [[ -z ${C7_VIEWS_DIR:-} ]] || fail "C7_VIEWS_DIR=$C7_VIEWS_DIR holds no Modules/Popovers/TailscalePopover.qml"
+  echo "SKIP: no reference views at $views (run plugin/tests/tailscale-parity/build-reference.sh --views)"
+fi
+
 qml=${C7_QML_DIR:-$cache/out/qml}
 if [[ ! -f $qml/C7/qmldir ]]; then
   # A directory named on purpose that holds no C7 is a mistake, not a
@@ -66,18 +85,18 @@ fi
 # the gate pass on a subset of the scenarios and cases.
 in_reference() { in_plugin env -u C7_SCENARIOS C7_IMPL=cpp-286 C7_QML_DIR="$qml" "$@"; }
 
-# 2. the harness self-tests against the reference ------------------------------
+# 3. the harness self-tests against the reference ------------------------------
 run_logged 'the harness self-tests' in_reference cargo test --locked -q -p tailscale-parity --test harness_selftest
 echo "PASS: the harness self-tests pass against $qml"
 
-# 3. the scenarios, 50 consecutive runs ----------------------------------------
+# 4. the scenarios, 50 consecutive runs ----------------------------------------
 run_logged 'the scenarios, 50 runs' in_reference env C7_REPEAT=50 \
   cargo test --locked -q -p tailscale-parity --test scenarios
 grep -qE '^[0-9]+ scenarios matched their declarations on cpp-286 in 50 runs$' "$log" \
   || { cat "$log" >&2; fail "the scenarios run did not report 50 matching runs"; }
 echo "PASS: $(grep -E 'scenarios matched' "$log")"
 
-# 4. the parser corpus, 50 consecutive runs -------------------------------------
+# 5. the parser corpus, 50 consecutive runs -------------------------------------
 run_logged 'the corpus, 50 runs' in_reference env C7_REPEAT=50 \
   cargo test --locked -q -p tailscale-parity --test corpus
 grep -qE '^[0-9]+ corpus cases matched their declarations on cpp-286 in 50 runs$' "$log" \

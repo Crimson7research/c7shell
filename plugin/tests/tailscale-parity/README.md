@@ -39,17 +39,20 @@ An earlier version registered a git worktree at
 
 `run.sh` is not part of `for t in tests/*.sh`: the reference build is not
 something the suite makes. `tests/test-tailscale-parity.sh` always runs
-`stub_selftest`, the harness self-tests that need only the QML-only stub C7.
-It runs `harness_selftest` and 50 runs of the scenarios when the reference
-build is already in the cache, and skips them with the reason when it is
-not. A `C7_QML_DIR` that holds no `C7/qmldir` is a failure, never a skip.
+`stub_selftest` and `view_selftest`, the harness self-tests that need only
+the QML-only stub C7 and the stub views. It runs 50 runs of the view tests
+when #286's views are already extracted in the cache, and
+`harness_selftest` and 50 runs of the scenarios and the corpus when the
+reference build is, and skips each with the reason when it is not. A
+`C7_VIEWS_DIR` or `C7_QML_DIR` that holds no reference is a failure, never a
+skip.
 The parallel stress is run by hand until a later PR wires the reference
 build into the suite.
 
 ## Run
 
 ```sh
-plugin/tests/tailscale-parity/run.sh               # every scenario once against cpp-286
+plugin/tests/tailscale-parity/run.sh               # every scenario, case and view test once against cpp-286
 plugin/tests/tailscale-parity/run.sh --repeat 50   # 50 consecutive runs of each
 
 qml=$(plugin/tests/tailscale-parity/build-reference.sh | tail -1)
