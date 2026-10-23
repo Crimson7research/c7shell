@@ -15,7 +15,7 @@ and the shell draws all of them with the same 280px panel
 Protocol with the shell: NDJSON, one object per line, events on stdout and
 commands on stdin. Services/AuthService.qml is the only reader.
 
-  out {"ev":"ready","polkit":BOOL,"askpass":PATH,"user":NAME}
+  out {"ev":"ready","polkit":BOOL,"askpass":PATH|"","user":NAME}  "" = no socket served
   out {"ev":"request","id":ID,"kind":"polkit"|"sudo",...}   a prompt to draw
   out {"ev":"active","id":ID}                               it is now the head
   out {"ev":"prompt","id":ID,"text":T,"echo":BOOL}          PAM wants an answer
@@ -73,6 +73,9 @@ AGENT_PATH = "/io/crimson7/c7shell/PolkitAgent"
 # polkit's own agents retry three times before handing the failure back to the
 # caller; the design's "n of 3" counter is this number.
 MAX_TRIES = 3
+# How often a daemon that found the askpass socket held by another checks
+# whether that one has gone, so it can serve the socket itself.
+ASKPASS_RETRY_SECS = 2
 
 AGENT_XML = """
 <node>
@@ -554,9 +557,22 @@ class Daemon:
         # A second daemon -- a second shell, or a stray restart -- must not take
         # the socket over: the first one's callers would be stranded, and the
         # socket the first removes on the way out would then be this one's.
+        # It takes the socket over once the first one has gone: a restarted
+        # shell's daemon can start while the old one is still on its way out.
         if self._askpass_answered():
-            log(f"another c7-authd is already serving {self.sock_path}; serving no askpass")
+            log(f"another c7-authd is already serving {self.sock_path}; serving no askpass while it does")
+            GLib.timeout_add_seconds(ASKPASS_RETRY_SECS, self._retry_askpass)
             return
+        self._bind_askpass()
+
+    def _retry_askpass(self):
+        if self._askpass_answered():
+            return True
+        self._bind_askpass()
+        log(f"serving askpass at {self.sock_path}: the daemon that held it has gone")
+        return False
+
+    def _bind_askpass(self):
         try:
             os.unlink(self.sock_path)
         except FileNotFoundError:
@@ -647,9 +663,6 @@ class Daemon:
         """The caller said nothing more after its request, so the socket turning
         readable means it hung up. Anything it does send is read and dropped,
         or the watch would fire on the same bytes forever."""
-        if req.conn is None or req.closed:
-            req.conn_watch = None
-            return False
         if not cond & (GLib.IOCondition.HUP | GLib.IOCondition.ERR):
             try:
                 if req.conn.recv(4096, socket.MSG_DONTWAIT):

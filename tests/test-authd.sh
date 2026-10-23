@@ -16,8 +16,11 @@ authd=$here/../bin/c7-authd
 askpass=$here/../bin/c7-askpass
 tmp=$(mktemp -d)
 daemon_pid=''
+helper_pids=()   # anything else started in the background, blocked or not
 cleanup() {
   [[ -n $daemon_pid ]] && kill "$daemon_pid" 2>/dev/null
+  # Most have exited already; under set -e a failed kill would end the trap.
+  ((${#helper_pids[@]})) && kill "${helper_pids[@]}" 2>/dev/null || true
   rm -rf -- "$tmp"
 }
 trap cleanup EXIT
@@ -192,7 +195,9 @@ $(cat "$tmp/nosock.err")"
 # behind it. Request ids count up from r1, so the next one is known ahead.
 next_id() { echo "r$(($(grep -c '"ev":"request"' "$out") + 1))"; }
 caller() { C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- & }
-hang_up() { pkill -P "$1" 2>/dev/null; kill "$1" 2>/dev/null; wait "$1" 2>/dev/null || true; }
+# Either may already be gone -- the fake sudo exits as soon as its child does.
+hang_up() { pkill -P "$1" 2>/dev/null || true; kill "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
+fds_before=$(ls "/proc/$daemon_pid/fd" | wc -l)
 head_id=$(next_id); caller; head_pid=$!
 wait_for "\"ev\":\"active\",\"id\":\"$head_id\"" 'the first caller to become active'
 queued_id=$(next_id); caller; queued_pid=$!
@@ -217,6 +222,7 @@ wait "$last_pid" 2>/dev/null || true
 # Anything a caller sends after its request is not it leaving: the request
 # stays open and still gets its answer.
 mkfifo "$tmp/go" "$tmp/sent"
+chatty_id=$(next_id)
 python3 - "$sock" "$tmp/go" "$tmp/sent" > "$tmp/chatty.out" 9>&- <<'PY' &
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -228,7 +234,7 @@ open(sys.argv[3], "w").write("sent\n")   # ...and hears when the bytes are out
 print(json.loads(s.makefile().readline()).get("secret", ""))
 PY
 chatty_pid=$!
-chatty_id=$(next_id)
+helper_pids+=("$chatty_pid")
 wait_for "\"ev\":\"active\",\"id\":\"$chatty_id\"" 'a caller that keeps talking to become active'
 echo go > "$tmp/go"
 read -r _ < "$tmp/sent"
@@ -237,6 +243,10 @@ wait "$chatty_pid" || true
 [[ $(cat "$tmp/chatty.out") == hunter3 ]] \
   || fail "bytes after a request were taken for the caller leaving:
 $(cat "$out")"
+# Every caller above is gone, so every socket the daemon held for them is
+# closed: a hang-up must not leak the caller's socket.
+(($(ls "/proc/$daemon_pid/fd" | wc -l) == fds_before)) \
+  || fail "the daemon holds $(($(ls "/proc/$daemon_pid/fd" | wc -l) - fds_before)) more fds than before its callers came and went"
 
 # --- 6c. a second daemon leaves the first one's socket alone -------------
 # A second shell, or a stray restart, starts another c7-authd. Taking over the
@@ -257,6 +267,26 @@ grep -q 'already serving' "$tmp/second.err" \
 "$authd" --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null 9>&-
 grep -q '"askpass":""' "$tmp/noaskpass.out" \
   || fail "--no-askpass still named a socket: $(cat "$tmp/noaskpass.out")"
+
+# A second daemon takes the socket over once the first one is gone: a restarted
+# shell's daemon can start while the old one is still on its way out.
+mkfifo "$tmp/first.cmds" "$tmp/later.cmds"
+"$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/first.cmds" > "$tmp/first.out" 2>/dev/null 9>&- &
+first_pid=$!; helper_pids+=("$first_pid")
+exec 7> "$tmp/first.cmds"
+for ((i = 0; i < 100; i++)); do [[ -S $tmp/handover.sock ]] && break; sleep 0.05; done
+"$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- 7>&- &
+later_pid=$!; helper_pids+=("$later_pid")
+exec 6> "$tmp/later.cmds"
+for ((i = 0; i < 100; i++)); do grep -q 'already serving' "$tmp/later.err" && break; sleep 0.05; done
+exec 7>&-        # the first daemon's shell goes away, and the daemon with it
+for ((i = 0; i < 200; i++)); do grep -q 'serving askpass at' "$tmp/later.err" && break; sleep 0.05; done
+grep -q 'serving askpass at' "$tmp/later.err" && [[ -S $tmp/handover.sock ]] \
+  || fail "the second daemon never took the socket over from one that exited:
+$(cat "$tmp/later.err")"
+exec 6>&-
+wait "$later_pid" 2>/dev/null || true
+[[ ! -e $tmp/handover.sock ]] || fail 'a daemon that took a socket over left it behind on exit'
 
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"
@@ -395,4 +425,8 @@ lid_shut_on_dock = False
 print("race ok")
 PY
 
+# Nothing above may have thrown inside the daemon: PyGObject prints an
+# exception in a callback and carries on, so only stderr shows it.
+grep -q Traceback "$err" && fail "the daemon raised an exception:
+$(cat "$err")"
 echo 'PASS: c7-authd / c7-askpass'
