@@ -10,7 +10,9 @@ and the shell draws all of them with the same 280px panel
              through the shell instead of through hyprpolkitagent's dialog.
   sudo    -- `sudo -A` runs bin/c7-askpass, which connects to the unix socket
              below; the prompt it raises is the same panel with the command
-             and the asking process named.
+             and the asking process named. A caller sends one request line
+             and then only reads: closing its end, or shutting down its
+             writing half, withdraws the request.
 
 Protocol with the shell: NDJSON, one object per line, events on stdout and
 commands on stdin. Services/AuthService.qml is the only reader.
@@ -541,15 +543,20 @@ class Daemon:
 
     # --------------------------------------------------------------- askpass --
     def _askpass_answered(self):
-        """Whether a daemon is listening on sock_path. A socket file nobody
-        answers is a stale one, left by a daemon that died."""
+        """Whether a daemon is listening on sock_path. Only a refused connect,
+        or no file at all, means nobody is: a socket left by a daemon that
+        died. A full backlog -- a daemon alive but not accepting, stalled or
+        stopped -- is a listener, and so is anything else that is not a clean
+        refusal. Non-blocking, so the probe never stalls this main loop."""
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        probe.settimeout(1)
+        probe.setblocking(False)
         try:
             probe.connect(self.sock_path)
             return True
-        except OSError:
+        except (ConnectionRefusedError, FileNotFoundError):
             return False
+        except OSError:
+            return True
         finally:
             probe.close()
 
@@ -568,7 +575,13 @@ class Daemon:
     def _retry_askpass(self):
         if self._askpass_answered():
             return True
-        self._bind_askpass()
+        try:
+            self._bind_askpass()
+        except OSError as err:
+            # Another waiting daemon got there first, or the path is in the
+            # way: keep checking rather than give up on askpass for good.
+            log(f"cannot serve askpass at {self.sock_path} yet: {err}")
+            return True
         log(f"serving askpass at {self.sock_path}: the daemon that held it has gone")
         return False
 

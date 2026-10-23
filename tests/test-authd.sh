@@ -56,6 +56,13 @@ stderr:
 $(cat "$err")"
 }
 
+# wait_for for any file and any test: polls until the check passes.
+wait_until() {
+  local label=$1 i; shift
+  for ((i = 0; i < 200; i++)); do "$@" && return 0; sleep 0.05; done
+  fail "timed out waiting for $label"
+}
+
 event_id() {
   # The id of the first event matching the pattern.
   grep -m1 -- "$1" "$out" | sed 's/.*"id":"\([^"]*\)".*/\1/'
@@ -243,6 +250,28 @@ wait "$chatty_pid" || true
 [[ $(cat "$tmp/chatty.out") == hunter3 ]] \
   || fail "bytes after a request were taken for the caller leaving:
 $(cat "$out")"
+# A caller that talked first and then hangs up still takes its prompt with it.
+talker_id=$(next_id)
+python3 - "$sock" "$tmp/go2" "$tmp/sent2" 9>&- <<'PY' &
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sys.argv[1])
+s.sendall(json.dumps({"prompt": "Password:", "command": "talker"}).encode() + b"\n")
+open(sys.argv[2]).read()
+s.sendall(b"more\n")
+open(sys.argv[3], "w").write("sent\n")
+open(sys.argv[2]).read()          # the test has seen the bytes land; now leave
+s.close()
+PY
+talker_pid=$!; helper_pids+=("$talker_pid")
+mkfifo "$tmp/go2" "$tmp/sent2"
+wait_for "\"ev\":\"active\",\"id\":\"$talker_id\"" 'a talking caller to become active'
+echo go > "$tmp/go2"
+read -r _ < "$tmp/sent2"
+echo go > "$tmp/go2"
+wait "$talker_pid" || true
+wait_for "\"ev\":\"close\",\"id\":\"$talker_id\",\"ok\":false" 'a caller that talked and then hung up to close'
+
 # Every caller above is gone, so every socket the daemon held for them is
 # closed: a hang-up must not leak the caller's socket.
 (($(ls "/proc/$daemon_pid/fd" | wc -l) == fds_before)) \
@@ -274,19 +303,43 @@ mkfifo "$tmp/first.cmds" "$tmp/later.cmds"
 "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/first.cmds" > "$tmp/first.out" 2>/dev/null 9>&- &
 first_pid=$!; helper_pids+=("$first_pid")
 exec 7> "$tmp/first.cmds"
-for ((i = 0; i < 100; i++)); do [[ -S $tmp/handover.sock ]] && break; sleep 0.05; done
+wait_until 'the first daemon to bind its socket' test -S "$tmp/handover.sock"
 "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- 7>&- &
 later_pid=$!; helper_pids+=("$later_pid")
 exec 6> "$tmp/later.cmds"
-for ((i = 0; i < 100; i++)); do grep -q 'already serving' "$tmp/later.err" && break; sleep 0.05; done
+wait_until 'the later daemon to find the socket held' grep -q 'already serving' "$tmp/later.err"
 exec 7>&-        # the first daemon's shell goes away, and the daemon with it
-for ((i = 0; i < 200; i++)); do grep -q 'serving askpass at' "$tmp/later.err" && break; sleep 0.05; done
-grep -q 'serving askpass at' "$tmp/later.err" && [[ -S $tmp/handover.sock ]] \
-  || fail "the second daemon never took the socket over from one that exited:
-$(cat "$tmp/later.err")"
+wait_until "the later daemon to take the socket over: $(cat "$tmp/later.err")" \
+  grep -q 'serving askpass at' "$tmp/later.err"
+[[ -S $tmp/handover.sock ]] || fail "the later daemon said it took the socket over, but there is none"
 exec 6>&-
 wait "$later_pid" 2>/dev/null || true
 [[ ! -e $tmp/handover.sock ]] || fail 'a daemon that took a socket over left it behind on exit'
+
+# A daemon that is alive but not accepting -- stalled, or stopped in a debugger
+# -- still holds the socket. Its backlog fills and a connect would block; that
+# is a listener, not a stale file.
+python3 - "$tmp/busy.sock" "$tmp/busy.ready" 9>&- <<'PY' &
+import os, signal, socket, sys
+srv = socket.socket(socket.AF_UNIX); srv.bind(sys.argv[1]); srv.listen(0)
+held = []
+while True:                       # fill the backlog until a connect would block
+    c = socket.socket(socket.AF_UNIX); c.setblocking(False)
+    try:
+        c.connect(sys.argv[1]); held.append(c)
+    except BlockingIOError:
+        break
+open(sys.argv[2], "w").close()
+signal.pause()
+PY
+busy_pid=$!; helper_pids+=("$busy_pid")
+wait_until 'the busy listener to fill its backlog' test -e "$tmp/busy.ready"
+ino=$(stat -c %i "$tmp/busy.sock")
+"$authd" --no-polkit --socket "$tmp/busy.sock" < /dev/null > "$tmp/busy.out" 2> "$tmp/busy.err" 9>&-
+[[ $(stat -c %i "$tmp/busy.sock") == "$ino" ]] \
+  || fail "a listener with a full backlog was taken for a stale socket: $(cat "$tmp/busy.err")"
+grep -q 'already serving' "$tmp/busy.err" || fail "a busy listener was not named: $(cat "$tmp/busy.err")"
+kill "$busy_pid" 2>/dev/null || true
 
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"
