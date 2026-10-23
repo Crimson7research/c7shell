@@ -66,6 +66,7 @@ rc_files=("${ZDOTDIR:-$HOME}/.zshrc" "$HOME/.bashrc")
 # parts is the user's and stays. The command ships in the package, so it has
 # to run before `pacman -R c7shell`.
 sudo_marker='# c7shell: sudo asks through polkit (run0)'
+bottomup_marker='# c7shell: BottomUp (paru lists AUR search results first)'
 
 # would <dry-run verb> <done verb> -- the verb for a report line.
 would() { if ((dry)); then printf 'would %s' "$1"; else printf '%s' "$2"; fi; }
@@ -169,6 +170,7 @@ report_leftovers() {
   local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=() rest=() b part
   grep -qsx 'PrivilegeElevationCommand=run0' "$au" && left+=("PrivilegeElevationCommand=run0 in $au")
   grep -qsE '^[[:space:]]*Sudo[[:space:]]*=[[:space:]]*run0' "$pc" && left+=("Sudo = run0 in $pc")
+  grep -qsxF "$bottomup_marker" "$pc" && left+=("the BottomUp block c7shell-setup added to $pc")
   grep -qs 'C7Shell' "$conf/kdeglobals" && left+=("the C7Shell colours in $conf/kdeglobals")
   # Each file named only while it holds a key the export sets.
   for b in "$conf/kcminputrc:^cursorTheme=" \
@@ -355,6 +357,28 @@ fi
 printf 'creating %s   (drop executable scripts here to get launcher rows)\n' "$data/scripts"
 run mkdir -p -- "$data/scripts"
 
+# conf_access <file> -- prints "read" if setup cannot read <file>, "write" if
+# it cannot create or append to it, and nothing if it can. A user config setup
+# cannot read is one it cannot check, so every run would append the same lines
+# again. One it cannot write -- read-only, as in a dotfiles store, a symlink to
+# nothing yet, a directory, or not there yet where setup cannot create it --
+# would stop setup before the rc files and the manifest. Either way setup adds
+# nothing to it; it names one it cannot write only when it lacks a line setup
+# adds.
+conf_access() {
+  local f=$1 base
+  if [[ -e $f && ! -r $f ]]; then echo read; return; fi
+  # The nearest path on the way that is there already, dangling symlinks
+  # included: anything but a directory setup can write into and search is in
+  # the way.
+  base=$(dirname -- "$f")
+  while [[ ! -e $base && ! -L $base && $base != / ]]; do base=$(dirname -- "$base"); done
+  if [[ -L $f && ! -e $f ]] || [[ -e $f && ! ( -f $f && -w $f ) ]] \
+     || [[ ! -e $f && ! ( -d $base && -w $base && -x $base ) ]]; then
+    echo write
+  fi
+}
+
 # arch-update elevates with sudo unless told otherwise, and a terminal sudo
 # asks on the terminal. run0 asks polkit, so `arch-update` gets the shell's own
 # prompt -- fingerprint, and a password field that is live at once. The file is
@@ -362,7 +386,14 @@ run mkdir -p -- "$data/scripts"
 # elevation command nobody chose: an explicit PrivilegeElevationCommand, even
 # sudo, is left exactly as it is.
 au=$conf/arch-update/arch-update.conf
-if ! grep -qs '^[[:space:]]*PrivilegeElevationCommand=' "$au"; then
+au_access=$(conf_access "$au")
+if [[ $au_access == read ]]; then
+  printf 'c7shell-setup: cannot read %s, so its PrivilegeElevationCommand is left as it is\n' "$au" >&2
+elif grep -qs '^[[:space:]]*PrivilegeElevationCommand=' "$au"; then
+  :
+elif [[ $au_access == write ]]; then
+  printf 'c7shell-setup: cannot write %s, so its PrivilegeElevationCommand is left as it is\n' "$au" >&2
+else
   printf 'setting PrivilegeElevationCommand=run0 in %s   (arch-update prompts through polkit)\n' "$au"
   run mkdir -p -- "$(dirname -- "$au")"
   if ((dry)); then
@@ -375,17 +406,61 @@ fi
 # paru the same way: its [bin] Sudo is what `paru -Syu` runs pacman through.
 # paru reads ~/.config/paru/paru.conf INSTEAD of /etc/paru.conf, not on top of
 # it, so a new user file starts as a copy of the system one -- otherwise the
-# options there (Devel, BottomUp, ...) would silently stop applying.
+# options there (Devel, Provides, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
-if command -v paru >/dev/null && ! grep -qs '^[[:space:]]*Sudo[[:space:]]*=' "$pc"; then
+pc_dir=$(dirname -- "$pc")
+paru_sysconf=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
+paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
+# has_bottomup <file> -- whether paru reads BottomUp from <file>: a bare
+# BottomUp, or BottomUp = <value>, inside an [options] section.
+has_bottomup() {
+  awk '/^[[:space:]]*\[/ { opts = /^[[:space:]]*\[options\][[:space:]]*$/; next }
+       opts && /^[[:space:]]*BottomUp[[:space:]]*(=.*)?$/ { found = 1 }
+       END { exit !found }' "$1" 2>/dev/null
+}
+# paru's Sudo and BottomUp go in only where setup can read and write the file
+# (conf_access, above).
+paru=0
+if command -v paru >/dev/null; then
+  case $(conf_access "$pc") in
+    read) printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2 ;;
+    write)
+      grep -qs "$paru_sudo_re" "$pc" && has_bottomup "$pc" \
+        || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2 ;;
+    *) paru=1 ;;
+  esac
+fi
+if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   printf 'setting Sudo = run0 in %s   (paru prompts through polkit)\n' "$pc"
-  run mkdir -p -- "$(dirname -- "$pc")"
+  run mkdir -p -- "$pc_dir"
   if ((dry)); then
     printf '  would: append [bin] Sudo = run0 to %s\n' "$pc"
   else
-    [[ -e $pc || ! -r ${C7SHELL_PARU_SYSCONF:-/etc/paru.conf} ]] \
-      || cp -- "${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}" "$pc"
+    # cat, not cp: the new file is the user's, writable, whatever the mode of
+    # the system file.
+    [[ -e $pc || ! -r $paru_sysconf ]] || cat -- "$paru_sysconf" > "$pc"
     printf '\n[bin]\nSudo = run0\n' >> "$pc"
+  fi
+fi
+
+# BottomUp prints `paru <term>` search results bottom to top, the AUR's first
+# (paru.conf(5)). paru ships /etc/paru.conf with #BottomUp commented out, so
+# the copy above and any user file without the option get it here. Only a line
+# paru reads as BottomUp -- bare or with "= <value>" -- counts as set: a
+# commented one is paru's own default, and paru rejects a comment after an
+# option. paru reads a second [options] section as more options. The marker
+# line above it is how --uninstall tells this BottomUp from one the user set.
+# paru has no setting that turns BottomUp off (TopDown is not an option, and
+# BottomUp = false still turns it on), so a user file without the block gets
+# it again on every run. A dry run made no copy, so it asks the system file.
+pc_src=$pc
+((dry)) && [[ ! -e $pc ]] && pc_src=$paru_sysconf
+if ((paru)) && ! has_bottomup "$pc_src"; then
+  printf 'setting BottomUp in %s   (paru lists AUR search results first)\n' "$pc"
+  if ((dry)); then
+    printf '  would: append [options] BottomUp to %s\n' "$pc"
+  else
+    printf '\n%s\n[options]\nBottomUp\n' "$bottomup_marker" >> "$pc"
   fi
 fi
 

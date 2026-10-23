@@ -6,6 +6,8 @@ set -euo pipefail
 . "$(dirname -- "$0")/fixtures/harness.sh"
 setup=$here/../bin/c7shell-setup
 mktmp
+# A setup run that stops this test outside a check still names the line.
+trap 'printf "FAIL: line %s: %s exited non-zero\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 export C7SHELL_SHARE=$tmp/share
 export XDG_CONFIG_HOME=$tmp/conf
@@ -21,6 +23,18 @@ export C7SHELL_STATE=$tmp/state
 export XDG_STATE_HOME=$tmp/xdg-state
 export XDG_DATA_HOME=$tmp/data
 export HOME=$tmp/home
+# Never the host's /etc/paru.conf: the paru checks below name their own.
+export C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf
+# Nor the host's paru: every command on PATH but paru. The paru checks below
+# put a fake one in front.
+no_paru=$tmp/no-paru-bin; mkdir -p "$no_paru"
+IFS=: read -ra dirs <<<"$PATH"
+for d in "${dirs[@]}"; do
+  for f in "$d"/*; do
+    [[ ${f##*/} == paru || -e $no_paru/${f##*/} || ! -x $f ]] || ln -s -- "$f" "$no_paru/"
+  done
+done
+export PATH=$no_paru
 mkdir -p "$HOME"
 mkdir -p "$C7SHELL_SHARE"/{hypr,quickshell/c7shell,xdg-desktop-portal}
 echo v1 > "$C7SHELL_SHARE/hypr/hyprland.lua"
@@ -59,6 +73,26 @@ grep -qx 'PrivilegeElevationCommand=doas' "$au" && ! grep -q run0 "$au" \
 printf '#PrivilegeElevationCommand=sudo\n' > "$au"
 "$setup" >/dev/null 2>&1 || true
 grep -qx 'PrivilegeElevationCommand=run0' "$au" || fail "a commented-out default was taken as a choice:\n$(cat "$au")"
+# An arch-update.conf setup cannot read or write is named and left alone, and
+# setup carries on; a read-only one that already has the line is not named.
+if ((EUID != 0)); then
+  for case in '200:#AURHelper=paru:cannot read' '444:#AURHelper=paru:cannot write' '444:PrivilegeElevationCommand=doas:'; do
+    IFS=: read -r mode body says <<<"$case"
+    for how in '' --dry-run; do
+      printf '%s\n' "$body" > "$au"; chmod "$mode" "$au"
+      out=$("$setup" $how 2>&1) || true
+      chmod 600 "$au"
+      [[ $(cat "$au") == "$body" ]] || fail "setup $how changed a mode $mode arch-update.conf:\n$(cat "$au")"
+      if [[ -n $says ]]; then
+        grep -qF "$says $au" <<<"$out" || fail "setup $how did not say '$says' for a mode $mode arch-update.conf:\n$out"
+      else
+        grep -qF "$au" <<<"$out" && fail "setup $how spoke about a read-only arch-update.conf it had nothing to add to:\n$out"
+      fi
+      grep -qF 'Permission denied' <<<"$out" && fail "setup $how stopped on a mode $mode arch-update.conf:\n$out"
+    done
+  done
+  printf 'PrivilegeElevationCommand=run0\n' > "$au"
+fi
 
 # sudo: one guarded source line per existing rc file, never twice, and no rc
 # file created for a shell the user does not use
@@ -72,20 +106,194 @@ grep -qx '# mine' "$HOME/.zshrc" || fail 'adding the sudo line lost what was in 
 # paru: its Sudo goes through run0 too, and a new user paru.conf keeps the
 # system file's options, since paru reads one or the other, never both
 pc=$XDG_CONFIG_HOME/paru/paru.conf
-# The runs above may have found a real paru on this machine's PATH.
-rm -rf -- "$XDG_CONFIG_HOME/paru"
 sysconf=$tmp/etc-paru.conf
-printf '[options]\nC7TestMarker\n' > "$sysconf"
+# As paru ships it (paru.conf at v2.1.0): BottomUp is there, commented out.
+printf '[options]\nC7TestMarker\n#BottomUp\n' > "$sysconf"
+bottomup_marker='# c7shell: BottomUp (paru lists AUR search results first)'
 paru_bin=$tmp/paru-bin
 mkdir -p "$paru_bin"; printf '#!/bin/sh\n' > "$paru_bin/paru"; chmod +x "$paru_bin/paru"
-PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+# Without paru, setup writes no paru.conf.
+out=$(C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+[[ ! -e $XDG_CONFIG_HOME/paru ]] || fail "setup wrote a paru config without paru:\n$(ls -R "$XDG_CONFIG_HOME/paru")"
+grep -qF 'paru.conf' <<<"$out" && fail "setup tried to write a paru config without paru:\n$out"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+grep -qF "setting BottomUp in $pc" <<<"$out" || fail "setup added BottomUp without saying so:\n$out"
 grep -qx 'Sudo = run0' "$pc" || fail "paru was not pointed at run0:\n$(cat "$pc" 2>&1)"
 grep -qx 'C7TestMarker' "$pc" || fail "the new paru.conf dropped the system file's options:\n$(cat "$pc")"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 (($(grep -c '^Sudo' "$pc") == 1)) || fail "a rerun added a second paru Sudo line:\n$(cat "$pc")"
+# BottomUp lists AUR search results first. paru ships it commented out, so the
+# copy of the system file gets it, once, where paru reads it as an option.
+(($(grep -cx 'BottomUp' "$pc") == 1)) || fail "paru.conf lacks BottomUp, or has it twice:\n$(cat "$pc")"
+[[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc") == '[options]' ]] \
+  || fail "BottomUp is outside [options]:\n$(cat "$pc")"
+grep -qxF "$bottomup_marker" "$pc" \
+  || fail "the BottomUp setup added carries no marker:\n$(cat "$pc")"
+# A longer word is some other option, not BottomUp.
+printf '[options]\nBottomUpX\n#BottomUp_old\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'BottomUp' "$pc" || fail "BottomUpX was taken for BottomUp:\n$(cat "$pc")"
+# Only a line paru reads as BottomUp counts as set. Commented out is paru's
+# own default, and paru rejects a comment after an option.
+for line in '#BottomUp' '  # BottomUp' 'BottomUp # mine'; do
+  printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
+  PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+  (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "'$line' was taken for a BottomUp that is set:\n$(cat "$pc")"
+done
+# paru reads a header with blanks around it as that section.
+printf '  [options]  \nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+(($(grep -c BottomUp "$pc") == 1)) || fail "BottomUp under '  [options]  ' was not taken as set:\n$(cat "$pc")"
+printf '[options]\nDevel\n  [bin]  \nBottomUp\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+(($(grep -cx BottomUp "$pc") == 2)) || fail "'  [bin]  ' did not end the [options] section:\n$(cat "$pc")"
+# BottomUp is an [options] key; under [bin] paru rejects it.
+printf '[bin]\nBottomUp\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+[[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc" | sort -u) == $'[bin]\n[options]' ]] \
+  || fail "a BottomUp under [bin] was taken for one that is set:\n$(cat "$pc")"
+for line in '  BottomUp' 'BottomUp=true'; do
+  printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
+  PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+  [[ $(grep -c BottomUp "$pc") == 1 ]] || fail "BottomUp was added beside '$line':\n$(cat "$pc")"
+done
+# A user file whose last line has no newline still gets each appended line on
+# a line of its own.
+printf '[options]\nDevel' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'Devel' "$pc" && grep -qx 'Sudo = run0' "$pc" \
+  || fail "the Sudo append ran into a last line with no newline:\n$(cat "$pc")"
+printf '[bin]\nSudo = doas' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'Sudo = doas' "$pc" \
+  && grep -qxF "$bottomup_marker" "$pc" \
+  || fail "the BottomUp append ran into a last line with no newline:\n$(cat "$pc")"
+# paru also takes `BottomUp = <value>`, and that is a choice already made.
+printf '[options]\nBottomUp = true\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+[[ $(grep BottomUp "$pc") == 'BottomUp = true' ]] \
+  || fail "BottomUp was added beside a BottomUp = line:\n$(cat "$pc")"
+# A dry run names the BottomUp it would add and writes nothing; with no user
+# file yet it asks the system file, which the real run copies first.
+printf '[bin]\nSudo = doas\n' > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+[[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "--dry-run wrote paru.conf:\n$(cat "$pc")"
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" || fail "--dry-run did not name the BottomUp it would add:\n$out"
+# An existing user file is what paru reads, whatever the system file says.
+printf '[options]\nBottomUp\n' > "$tmp/bottomup-paru.conf"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
+  || fail "--dry-run asked the system file about a user file that lacks BottomUp:\n$out"
+# An empty user file is still the one paru reads.
+: > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
+  || fail "--dry-run asked the system file about an empty user file:\n$out"
+printf '[options]\nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the user file has:\n$out"
+rm -f -- "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the system file already has:\n$out"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
+  || fail "--dry-run did not name the BottomUp a copy of the system file lacks:\n$out"
+# With no system file either, the real run appends to a new file, and the dry
+# run says it would.
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
+  || fail "--dry-run did not name the BottomUp a new paru.conf gets:\n$out"
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -q run0 "$pc" && fail "a paru Sudo the user chose was overwritten:\n$(cat "$pc")"
+# A paru.conf setup cannot read is one it cannot check, so it adds nothing.
+if ((EUID != 0)); then
+  printf '[options]\nDevel\n' > "$pc"; chmod 200 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  [[ $(cat "$pc") == $'[options]\nDevel' ]] || fail "setup appended to a paru.conf it cannot read:\n$(cat "$pc")"
+  grep -qF "cannot read $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+  chmod 200 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "cannot read $pc" <<<"$out" || fail "--dry-run did not say it would skip an unreadable paru.conf:\n$out"
+  grep -F "would: append" <<<"$out" | grep -qF "$pc" \
+    && fail "--dry-run would append to an unreadable paru.conf:\n$out"
+  # Read-only, as in a dotfiles store: setup says so and carries on, where an
+  # append would stop it before the rc files and the manifest.
+  printf '[bin]\nSudo = doas\n' > "$pc"; chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "setup changed a read-only paru.conf:\n$(cat "$pc")"
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru.conf:\n$out"
+  grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru.conf:\n$out"
+  # A dry run says what the real run would: that it skips the file.
+  chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "cannot write $pc" <<<"$out" || fail "--dry-run did not say it would skip a read-only paru.conf:\n$out"
+  grep -F "would: append" <<<"$out" | grep -qF "$pc" \
+    && fail "--dry-run would append to a read-only paru.conf:\n$out"
+  # A read-only file that already has both needs nothing, so nothing is said.
+  printf '[options]\nBottomUp\n[bin]\nSudo = run0\n' > "$pc"; chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "$pc" <<<"$out" && fail "setup spoke about a read-only paru.conf it had nothing to add to:\n$out"
+fi
+# A dangling symlink, such as one into a dotfiles tree not checked out yet, is
+# a file setup cannot write: it says so and carries on.
+rm -f -- "$pc"; ln -s -- "$tmp/no-such-dotfile" "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+[[ -L $pc && ! -e $pc ]] || fail "setup wrote through a dangling paru.conf symlink"
+grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a dangling paru.conf symlink:\n$out"
+grep -qF 'dangling' <<<"$out" && fail "setup stopped on a dangling paru.conf symlink:\n$out"
+rm -f -- "$pc"
+# So is a paru.conf that does not exist yet in a directory setup cannot write
+# into: read-only (555), or writable but not searchable (200).
+if ((EUID != 0)); then
+  for mode in 555 200; do
+    chmod "$mode" "$(dirname -- "$pc")"
+    out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+    chmod 755 "$(dirname -- "$pc")"
+    [[ ! -e $pc ]] || fail "setup wrote a paru.conf into a mode $mode directory"
+    grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a mode $mode paru directory:\n$out"
+    grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a mode $mode paru directory:\n$out"
+  done
+  # And one whose directory is not there yet, under a read-only ~/.config.
+  rmdir -- "$(dirname -- "$pc")"; chmod 555 "$XDG_CONFIG_HOME"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 755 "$XDG_CONFIG_HOME"
+  [[ ! -e $(dirname -- "$pc") ]] || fail "setup made a paru directory under a read-only ~/.config"
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a paru.conf under a read-only ~/.config:\n$out"
+  grep -qE 'paru.*(Permission denied|cannot create)' <<<"$out" \
+    && fail "setup stopped on a paru.conf under a read-only ~/.config:\n$out"
+  mkdir -p -- "$(dirname -- "$pc")"
+fi
+# Nor where ~/.config/paru is in the way: a dangling symlink to a dotfiles
+# directory not checked out yet, or a plain file (mode 755, so only "is it a
+# directory" tells it apart).
+for kind in symlink file dir; do
+  rm -rf -- "$(dirname -- "$pc")"
+  case $kind in
+    symlink) ln -s -- "$tmp/no-such-dotfiles" "$(dirname -- "$pc")" ;;
+    file) : > "$(dirname -- "$pc")"; chmod 755 "$(dirname -- "$pc")" ;;
+    dir) mkdir -p -- "$pc" ;;  # paru.conf itself is the directory
+  esac
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a paru.conf behind a $kind:\n$out"
+  grep -qE 'cannot create|File exists|Not a directory|Is a directory' <<<"$out" \
+    && fail "setup stopped on a paru.conf behind a $kind:\n$out"
+done
+rm -rf -- "$(dirname -- "$pc")"; mkdir -p -- "$(dirname -- "$pc")"
+# A new user file is setup's to append to, even when the system file it copies
+# is read-only.
+if ((EUID != 0)); then
+  rm -f -- "$pc"; cp -- "$sysconf" "$tmp/ro-paru.conf"; chmod 444 "$tmp/ro-paru.conf"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/ro-paru.conf "$setup" 2>&1) || true
+  grep -qx 'Sudo = run0' "$pc" && grep -qx 'BottomUp' "$pc" \
+    || fail "a copy of a read-only system paru.conf did not get Sudo and BottomUp:\n$out\n$(cat "$pc" 2>&1)"
+  rm -f -- "$pc"
+fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
 [[ $(cat "$XDG_CONFIG_HOME/xdg-desktop-portal/hyprland-portals.conf") == v1 ]] || fail 'portal config not installed'
@@ -248,7 +456,9 @@ echo edited > "$un/conf/quickshell/c7shell/shell.qml"
 # Beside an edited file, a .new is what the user was told to merge.
 echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
 mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
-printf '[bin]\nSudo = run0\n' > "$un/conf/paru/paru.conf.keep"
+# PATH has no paru, so setup wrote no paru.conf here; this is the one it would.
+mkdir -p "$un/conf/paru"
+printf '[bin]\nSudo = run0\n\n%s\n[options]\nBottomUp\n' "$bottomup_marker" > "$un/conf/paru/paru.conf"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
 # What the shell itself writes, and what an upgrade backs up per file: in no
@@ -262,14 +472,17 @@ printf '[Settings]\ngtk-font-name=Sans 10\n' > "$un/conf/gtk-4.0/settings.ini"
 mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
 ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
 
-# setup writes paru.conf only where paru is installed; this test must not
-# depend on the machine it runs on.
-rm -f "$un/conf/paru/paru.conf"; mv "$un/conf/paru/paru.conf.keep" "$un/conf/paru/paru.conf"
-
 printf '[Mouse]\ncursorTheme=Bibata\n' > "$un/conf/kcminputrc"
 cp "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig"; cp "$un/conf/paru/paru.conf" "$tmp/pc.orig"
 
 if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'; fi
+
+# A BottomUp setup did not add, such as one copied from /etc/paru.conf, is
+# the user's and goes unlisted.
+printf '[options]\nBottomUp\n# not %s\n' "$bottomup_marker" > "$un/conf/paru/paru.conf"
+out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
+grep -qF 'BottomUp block' <<<"$out" && fail "uninstall listed a BottomUp setup never added:\n$out"
+cp "$tmp/pc.orig" "$un/conf/paru/paru.conf"
 
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
 [[ -f $un/conf/hypr/hyprland.lua && -f $un/conf/hypr/hyprland.lua.new && -f $un/state/manifest ]] \
@@ -300,6 +513,8 @@ grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$
 grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
 grep -qF "$un/conf/kcminputrc   (the theme export writes to it)" <<<"$out" || fail "uninstall did not list kcminputrc:\n$out"
 grep -qF "color-scheme setting, now 'prefer-dark'" <<<"$out" || fail "uninstall did not list the gsettings key:\n$out"
+grep -qF "the BottomUp block c7shell-setup added to $un/conf/paru/paru.conf" <<<"$out" \
+  || fail "uninstall did not list paru's BottomUp block:\n$out"
 # Listed is all: the unmarked run0 lines are the user's to remove.
 cmp -s "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig" || fail 'uninstall changed arch-update.conf'
 cmp -s "$un/conf/paru/paru.conf" "$tmp/pc.orig" || fail 'uninstall changed paru.conf'
