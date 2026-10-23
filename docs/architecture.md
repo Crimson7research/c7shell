@@ -183,10 +183,12 @@ that `tests/test-authd.sh` pins:
 
 - a caller sends one request line, then only reads; closing or half-closing
   its end withdraws the request;
-- only the head of the queue is activated, and a sudo request prompts with its
-  activation;
-- a full backlog is a live listener, and only a socket that refuses the
-  connect is stale;
+- a request is activated only on becoming the head: one that closes from the
+  middle of the queue leaves the head alone, and a sudo request prompts with
+  its activation;
+- a full backlog is a live listener, only a socket that refuses the connect
+  is stale, and anything else at the path -- a file, a fifo, a directory, a
+  symlink -- is reported, never removed;
 - a daemon removes only the socket it bound.
 
 ## Why

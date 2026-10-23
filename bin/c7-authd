@@ -649,6 +649,11 @@ class Daemon:
                 pass
             srv.bind(tmp)
             os.chmod(tmp, 0o600)
+            # What shutdown removes: only this socket, never one another daemon
+            # put at the same path after both found it free in the same instant.
+            # Read from the name only this daemon uses, before the rename keeps
+            # the inode and moves it to the shared path.
+            ino = os.stat(tmp).st_ino
             srv.listen(4)
             if tmp != self.sock_path:
                 os.rename(tmp, self.sock_path)
@@ -660,9 +665,7 @@ class Daemon:
             except OSError:
                 pass
             raise
-        # What shutdown removes: only this socket, never one another daemon
-        # bound at the same path after both found it free in the same instant.
-        self.sock_ino = os.stat(self.sock_path).st_ino
+        self.sock_ino = ino
         srv.setblocking(False)
         self.srv = srv
         self.askpass_ok = True

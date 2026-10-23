@@ -451,8 +451,12 @@ done
 # already there under that name is somebody else's, and stays. The pid is
 # known before exec, so the file can be put there first.
 mkdir "$tmp/shared"
+# Not through authd_once, which cannot set the file up before the exec; the
+# same limit, and the same named FAIL on a daemon that does not exit.
+rc=0
 timeout -k 2 10 bash -c 'echo mine > "$1/.c7-authd.$$"; exec "$2" --no-polkit --socket "$1/a.sock"' \
-  _ "$tmp/shared" "$authd" < /dev/null > "$tmp/shared.out" 2> "$tmp/shared.err" 9>&- || true
+  _ "$tmp/shared" "$authd" < /dev/null > "$tmp/shared.out" 2> "$tmp/shared.err" 9>&- || rc=$?
+((rc != 124 && rc != 137)) || fail "c7-authd with a file at its private socket name did not exit"
 for f in "$tmp"/shared/.c7-authd.*; do
   [[ $(cat "$f") == mine ]] || fail "a daemon replaced a file under its private socket name: $(cat "$tmp/shared.err")"
 done
