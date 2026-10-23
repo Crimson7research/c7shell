@@ -1,12 +1,12 @@
 {
-  "_comment": "The stub palette: every key the theme stand-in reads.",
+  "_comment": "The stub palette: every key the theme stand-in reads, as colour names.",
   "palette": {
     "_note": "dropped",
-    "text": "#f0f0f0",
-    "textOnAccent": "#101010",
-    "success": "#20c060",
-    "warning": "#e0a020",
-    "variants": { "dark": { "glassBase": "#181818", "bg": "#000000", "canvas": "#080808" } }
+    "text": "whitesmoke",
+    "textOnAccent": "black",
+    "success": "seagreen",
+    "warning": "goldenrod",
+    "variants": { "dark": { "glassBase": "dimgray", "bg": "black", "canvas": "darkslategray" } }
   },
-  "defaults": { "accent": "#c02030" }
+  "defaults": { "accent": "crimson" }
 }

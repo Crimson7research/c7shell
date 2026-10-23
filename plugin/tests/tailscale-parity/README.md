@@ -435,6 +435,11 @@ C7_IMPL=cpp-286 C7_VIEWS_DIR=$views cargo test --locked -p tailscale-parity --te
 
 `C7_SCENARIOS` and `C7_REPEAT` work as for the scenarios.
 
+The views draw #286's SVG icons, so Qt's SVG image plugin must be there:
+`qt6-svg`, which `quickshell`, a `depends=` of the package, pulls in.
+Without it every icon logs `Unsupported image format` against `Icon.qml`,
+and the `.qml:` rule fails every view test, which is the point.
+
 Each view test's child builds an import tree in its private `TMPDIR`
 (`src/views/tree.rs`): the view files `VIEW_FILES` names, copied from
 `C7_VIEWS_DIR`; the stand-ins under `qml/standins/` (`C7.Tailscale`, the

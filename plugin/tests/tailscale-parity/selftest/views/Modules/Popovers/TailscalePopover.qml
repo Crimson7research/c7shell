@@ -19,7 +19,7 @@ Item {
         Text {
             objectName: "ts-state"
             text: Tailscale.state === Tailscale.Running ? "connected" : "no daemon"
-            color: "#ff0000"
+            color: "red"
         }
 
         Item {

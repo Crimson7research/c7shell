@@ -24,7 +24,8 @@ fn ops(v: &mut Views) -> Result<(), String> {
     v.check("find-one", state.len() == 1, json!(state.len()));
     v.check("same-handle", v.find("pop", Some("ts-state"))? == state, json!(null));
     v.check("text", v.text(state[0], "text")? == "connected", v.get(state[0], "text")?);
-    v.check("colour", v.get(state[0], "color")? == json!("#ff0000"), v.get(state[0], "color")?);
+    let red = json!("#ff0000"); // palette-literal-ok: the stub's red, as the driver writes it
+    v.check("colour", v.get(state[0], "color")? == red, v.get(state[0], "color")?);
     let slot = v.find("pill", Some("tailscale"))?;
     v.check("slot-shown", slot.len() == 1 && v.flag(slot[0], "visible")?, json!(slot.len()));
     let label = v.find("pill", Some("ts-label"))?;
@@ -150,7 +151,7 @@ fn the_tree(failures: &mut Vec<String>) {
     let icons = format!("file://{}", selftest("views/Assets/icons").display());
     check(failures, theme.contains(&icons) && !theme.contains("@ICONS_DIR@"), "the theme names the views' icons");
     let store = read("qs/Theme/PaletteStore.qml");
-    let ok = store.contains("#f0f0f0") && store.contains("#c02030") && !store.contains("_note");
+    let ok = store.contains("whitesmoke") && store.contains("crimson") && !store.contains("_note");
     check(failures, ok, &format!("the PaletteStore holds the palette without its prose: {store}"));
     let missing = tree::palette_store(r#"{"defaults": {}}"#);
     check(failures, missing.as_ref().is_err_and(|e| e.contains("palette")), &format!("no palette: {missing:?}"));
