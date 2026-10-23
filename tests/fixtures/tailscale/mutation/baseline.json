@@ -8,13 +8,13 @@
   ],
   "summary": {
     "mutants": 297,
-    "killed": 220,
+    "killed": 218,
     "timeout": 1,
-    "survived": 76,
+    "survived": 78,
     "build_failed": 0,
-    "killed_by_added": 29,
+    "killed_by_added": 27,
     "baseline_score": 0.6464646464646465,
-    "score": 0.7441077441077442
+    "score": 0.7373737373737373
   },
   "mutants": [
     {
@@ -344,10 +344,8 @@
       "kind": "Binary",
       "from": "<",
       "to": "<=",
-      "outcome": "killed",
-      "step": "scenarios",
-      "detail": "FAIL http-08-an-empty-head-fails (cpp-286: declared pass, but failing [{\"actual\":\"the connection closed before the response headers\",\"id\":\"diagnosed\"}])",
-      "killed_by_added": "scenario http-08-an-empty-head-fails"
+      "outcome": "survived",
+      "reason": "unfixed: a reply that is the blank line alone fails either way, as an empty status line or as a close before the headers; the requirements do not decide whether a blank line before the status line ends the head (R-HTTP-04, R-HTTP-08), so neither reading is pinned"
     },
     {
       "id": "plugin/lib/tailscale/LocalApiClient.cpp:217:14:0->1",
@@ -357,10 +355,8 @@
       "kind": "Integer",
       "from": "0",
       "to": "1",
-      "outcome": "killed",
-      "step": "scenarios",
-      "detail": "FAIL http-08-an-empty-head-fails (cpp-286: declared pass, but failing [{\"actual\":\"the connection closed before the response headers\",\"id\":\"diagnosed\"}])",
-      "killed_by_added": "scenario http-08-an-empty-head-fails"
+      "outcome": "survived",
+      "reason": "unfixed: a reply that is the blank line alone fails either way, as an empty status line or as a close before the headers; the requirements do not decide whether a blank line before the status line ends the head (R-HTTP-04, R-HTTP-08), so neither reading is pinned"
     },
     {
       "id": "plugin/lib/tailscale/LocalApiClient.cpp:218:16:false->true",
@@ -839,7 +835,7 @@
       "to": "false",
       "outcome": "killed",
       "step": "scenarios",
-      "detail": "FAIL http-04-a-watch-line-before-its-chunk-ends (cpp-286: error: steps[9]: wait never reached: the fake recorded 3 of {\"method\":\"GET\",\"target\":\"/localapi/v0/status\"})",
+      "detail": "FAIL http-04-a-watch-line-before-its-chunk-ends (cpp-286: error: steps[11]: wait never reached: the fake recorded 3 of {\"method\":\"GET\",\"target\":\"/localapi/v0/status\"})",
       "killed_by_added": "scenario http-04-a-watch-line-before-its-chunk-ends"
     },
     {
