@@ -5,3 +5,5 @@
 //! `docs/superpowers/plans/2026-10-23-phase2-310.md`.
 
 pub mod dump;
+pub mod query;
+pub mod sites;

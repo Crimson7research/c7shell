@@ -51,11 +51,17 @@ fn it_reads_each_match_and_its_nodes_with_their_depth() {
 fn it_resolves_abbreviated_locations_against_the_last_one() {
     let m = &parse(DUMP)[0];
     let r = |i: usize| m.nodes[i].range.clone();
-    assert_eq!(r(0).map(|r| (r.begin, r.end)), Some((loc("/ref/a.cpp", 21, 13).unwrap(), loc("/ref/a.cpp", 21, 66).unwrap())));
+    assert_eq!(
+        r(0).map(|r| (r.begin, r.end)),
+        Some((loc("/ref/a.cpp", 21, 13).unwrap(), loc("/ref/a.cpp", 21, 66).unwrap()))
+    );
     assert_eq!(r(1).map(|r| r.end), loc("/ref/a.cpp", 21, 40));
     assert!(r(3).is_none(), "an invalid location has no range");
     assert_eq!(r(4).map(|r| r.end), loc("/usr/include/q.h", 432, 78));
-    assert_eq!(r(5).map(|r| (r.begin, r.end)), Some((loc("/ref/a.cpp", 21, 45).unwrap(), loc("/ref/a.cpp", 22, 3).unwrap())));
+    assert_eq!(
+        r(5).map(|r| (r.begin, r.end)),
+        Some((loc("/ref/a.cpp", 21, 45).unwrap(), loc("/ref/a.cpp", 22, 3).unwrap()))
+    );
 }
 
 #[test]
