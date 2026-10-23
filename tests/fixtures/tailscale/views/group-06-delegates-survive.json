@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "group-06-delegates-survive",
+  "requirements": [
+    "R-GROUP-06"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "In QML, the bravo delegate survives a re-sort, a join and a leave as the identical object with its local state",
+    "In the update that moves bravo, alpha's delegate reads `online` false, and gamma's reads its new `ip4` `100.64.0.9` while bravo's still reads `100.64.0.2`",
+    "Rebuilding the model by clearing and refilling it yields a new delegate without that state"
+  ],
+  "deferred": [
+    "the QML delegate half: the delegate survives a re-sort, a join and a leave, a rebuilt model makes a new one, and in the update that moves bravo the delegates of alpha and of the unmoved gamma read their new values while bravo's keeps its old ip4: harness-on-cpp in #309"
+  ],
+  "body": "group_06_delegates_survive",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

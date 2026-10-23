@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "qml-14-long-lists-cap-and-scroll",
+  "requirements": [
+    "R-QML-14"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With 25 peers the device list overflows and clips; 50 leave the panel height within 1 px",
+    "With 20 exit nodes the exit list overflows and clips; 40 leave the height within 1 px",
+    "`ts-exit-search` sits above `ts-exit-scroll`"
+  ],
+  "body": "qml_14_long_lists",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

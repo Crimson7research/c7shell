@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "qml-09-device-list-in-three-sections",
+  "requirements": [
+    "R-QML-09"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Before `ts-devices-row` is clicked, no `ts-peer` row is shown",
+    "With four peers, including another user's `HostName` `localhost` with DNS label `workstation`, 4 rows show and none reads `localhost`",
+    "`workstation` shows its owner and `tango` no subtitle",
+    "Headings by y read my devices, tagged devices, other users; dropping that peer leaves 2 headings"
+  ],
+  "body": "qml_09_device_list",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
