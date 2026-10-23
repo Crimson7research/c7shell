@@ -114,11 +114,22 @@ grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned 
 printf '[options]\nBottomUpX\n#BottomUp_old\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'BottomUp' "$pc" || fail "BottomUpX was taken for BottomUp:\n$(cat "$pc")"
-for line in '  # BottomUp' '  BottomUp'; do
+for line in '  # BottomUp' '  BottomUp' 'BottomUp # mine' 'BottomUp=true'; do
   printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
   [[ $(grep -c BottomUp "$pc") == 1 ]] || fail "BottomUp was added beside '$line':\n$(cat "$pc")"
 done
+# A user file whose last line has no newline still gets each appended line on
+# a line of its own.
+printf '[options]\nDevel' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'Devel' "$pc" && grep -qx 'Sudo = run0' "$pc" \
+  || fail "the Sudo append ran into a last line with no newline:\n$(cat "$pc")"
+printf '[bin]\nSudo = doas' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'Sudo = doas' "$pc" \
+  && grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
+  || fail "the BottomUp append ran into a last line with no newline:\n$(cat "$pc")"
 # paru also takes `BottomUp = <value>`, and that is a choice already made.
 printf '[options]\nBottomUp = true\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true

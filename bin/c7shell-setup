@@ -380,8 +380,9 @@ fi
 # options there (Devel, BottomUp, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
 pc_dir=$(dirname -- "$pc")
+paru_sysconf=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
 paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
-paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
+paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp([[:space:]=].*)?$'
 # A user file setup cannot read is one it cannot check, so every run would
 # append the same lines again. One it cannot write -- read-only, as in a
 # dotfiles store, a symlink to nothing yet, or not there yet in a directory
@@ -406,8 +407,7 @@ if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   if ((dry)); then
     printf '  would: append [bin] Sudo = run0 to %s\n' "$pc"
   else
-    [[ -e $pc || ! -r ${C7SHELL_PARU_SYSCONF:-/etc/paru.conf} ]] \
-      || cp -- "${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}" "$pc"
+    [[ -e $pc || ! -r $paru_sysconf ]] || cp -- "$paru_sysconf" "$pc"
     printf '\n[bin]\nSudo = run0\n' >> "$pc"
   fi
 fi
@@ -415,12 +415,12 @@ fi
 # BottomUp prints `paru <term>` search results bottom to top, the AUR's first
 # (paru.conf(5)). Arch's /etc/paru.conf sets it and the copy above carries it
 # over; a user paru.conf from before setup gets it here. A commented-out
-# #BottomUp, or a BottomUp = <value>, is a choice and stays. paru reads a
-# second [options] section as more options. The marker line above it is how
-# --uninstall tells this BottomUp from one the user or /etc/paru.conf set. A dry
-# run made no copy, so it asks the system file.
+# #BottomUp, a BottomUp = <value>, or one with a comment after it, is a choice
+# and stays. paru reads a second [options] section as more options. The marker
+# line above it is how --uninstall tells this BottomUp from one the user or
+# /etc/paru.conf set. A dry run made no copy, so it asks the system file.
 pc_src=$pc
-((dry)) && [[ ! -e $pc ]] && pc_src=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
+((dry)) && [[ ! -e $pc ]] && pc_src=$paru_sysconf
 if ((paru)) && ! grep -qsE "$paru_bottomup_re" "$pc_src"; then
   printf 'setting BottomUp in %s   (paru lists AUR search results first)\n' "$pc"
   if ((dry)); then
