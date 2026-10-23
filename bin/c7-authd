@@ -157,6 +157,7 @@ class Request:
         self.identity = None
         self.cookie = None
         self.conn = None          # askpass socket, sudo only
+        self.conn_watch = None    # GLib source watching it for the caller leaving
         self.pending_prompt = False
         self.closed = False
         # Set BEFORE the session is cancelled, never after. cancel() makes the
@@ -179,6 +180,7 @@ class Daemon:
         self.subject = None
         self.authority = None
         self.polkit_ok = False
+        self.askpass_ok = False     # this daemon owns the socket at sock_path
         if with_askpass:
             self._serve_askpass()
         if with_polkit:
@@ -192,7 +194,8 @@ class Daemon:
 
     def ready(self):
         self.emit(ev="ready", polkit=self.polkit_ok,
-                  askpass=self.sock_path, user=user_name(os.getuid()))
+                  askpass=self.sock_path if self.askpass_ok else "",
+                  user=user_name(os.getuid()))
 
     # ----------------------------------------------------------------- queue --
     def push(self, req):
@@ -529,7 +532,26 @@ class Daemon:
         req.invocation = None
 
     # --------------------------------------------------------------- askpass --
+    def _askpass_answered(self):
+        """Whether a daemon is listening on sock_path. A socket file nobody
+        answers is a stale one, left by a daemon that died."""
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(1)
+        try:
+            probe.connect(self.sock_path)
+            return True
+        except OSError:
+            return False
+        finally:
+            probe.close()
+
     def _serve_askpass(self):
+        # A second daemon -- a second shell, or a stray restart -- must not take
+        # the socket over: the first one's callers would be stranded, and the
+        # socket the first removes on the way out would then be this one's.
+        if self._askpass_answered():
+            log(f"another c7-authd is already serving {self.sock_path}; serving no askpass")
+            return
         try:
             os.unlink(self.sock_path)
         except FileNotFoundError:
@@ -542,6 +564,7 @@ class Daemon:
         srv.listen(4)
         srv.setblocking(False)
         self.srv = srv
+        self.askpass_ok = True
         GLib.io_add_watch(GLib.IOChannel.unix_new(srv.fileno()),
                           GLib.PRIORITY_DEFAULT, GLib.IOCondition.IN, self._on_accept)
 
@@ -601,6 +624,13 @@ class Daemon:
             root=True,
         )
         req.conn = conn
+        # A caller that gives up -- a Ctrl-C'd `sudo -A` -- closes its end of
+        # the socket. Without a watch its prompt stayed on screen with nobody
+        # to answer it, and blocked every request queued behind it.
+        req.conn_watch = GLib.io_add_watch(
+            GLib.IOChannel.unix_new(conn.fileno()), GLib.PRIORITY_DEFAULT,
+            GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
+            self._on_askpass_gone, req)
         self.push(req)
         # A sudo prompt has no PAM conversation of its own to wait for: the
         # field is live the moment it is drawn.
@@ -608,9 +638,36 @@ class Daemon:
         self.emit(ev="prompt", id=req.id, text=req.fields["detail"] or "Password:", echo=False)
         return False
 
+    def _on_askpass_gone(self, chan, cond, req):
+        """The caller said nothing more after its request, so the socket turning
+        readable means it hung up. Anything it does send is read and dropped,
+        or the watch would fire on the same bytes forever."""
+        if req.conn is None or req.closed:
+            req.conn_watch = None
+            return False
+        if not cond & (GLib.IOCondition.HUP | GLib.IOCondition.ERR):
+            try:
+                if req.conn.recv(4096, socket.MSG_DONTWAIT):
+                    return True
+            except BlockingIOError:
+                return True
+            except OSError:
+                pass
+        req.conn_watch = None
+        try:
+            req.conn.close()
+        except OSError:
+            pass
+        req.conn = None
+        self.close(req, False)
+        return False
+
     def _askpass_reply(self, req, ok, secret):
         if req.conn is None:
             return
+        if req.conn_watch is not None:
+            GLib.source_remove(req.conn_watch)
+            req.conn_watch = None
         try:
             payload = json.dumps({"ok": bool(ok), "secret": secret}) + "\n"
             req.conn.sendall(payload.encode())
@@ -627,10 +684,11 @@ class Daemon:
     def shutdown(self):
         for req in list(self.queue):
             self.deny(req)
-        try:
-            os.unlink(self.sock_path)
-        except OSError:
-            pass
+        if self.askpass_ok:
+            try:
+                os.unlink(self.sock_path)
+            except OSError:
+                pass
         self.loop.quit()
 
     def run(self):

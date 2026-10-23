@@ -186,6 +186,43 @@ grep -q 'without -A' "$tmp/nosock.err" \
 grep -q Traceback "$tmp/nosock.err" && fail "c7-askpass crashed instead of failing:
 $(cat "$tmp/nosock.err")"
 
+# --- 6b. a caller that gives up takes its prompt with it ------------------
+# A Ctrl-C'd `sudo -A` closes its end of the socket. The prompt it raised must
+# close, or it sits on screen with nobody to answer and blocks every request
+# queued behind it.
+before=$(grep -c '"ev":"request"' "$out")
+C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- &
+askpass_gone=$!
+for ((i = 0; i < 100; i++)); do
+  (($(grep -c '"ev":"request"' "$out") > before)) && break
+  sleep 0.05
+done
+gone=$(grep '"ev":"request"' "$out" | sed -n "$((before + 1))s/.*\"id\":\"\([^\"]*\)\".*/\1/p")
+[[ -n $gone ]] || fail "the request from the caller that gives up never arrived:
+$(cat "$out")"
+pkill -P "$askpass_gone" 2>/dev/null; kill "$askpass_gone" 2>/dev/null; wait "$askpass_gone" 2>/dev/null || true
+wait_for "\"ev\":\"close\",\"id\":\"$gone\",\"ok\":false" 'the prompt of a caller that gave up to close'
+
+# --- 6c. a second daemon leaves the first one's socket alone -------------
+# A second shell, or a stray restart, starts another c7-authd. Taking over the
+# socket would strand the first daemon's callers: it is still alive, but no
+# new sudo can reach it, and the socket it removes on the way out is then the
+# new daemon's. The second one serves no askpass and says so.
+ino=$(stat -c %i "$sock")
+"$authd" --no-polkit --socket "$sock" < /dev/null > "$tmp/second.out" 2> "$tmp/second.err" 9>&-
+[[ -S $sock && $(stat -c %i "$sock") == "$ino" ]] \
+  || fail "a second daemon replaced or removed the first one's socket:
+$(cat "$tmp/second.err")"
+grep -q '"askpass":""' "$tmp/second.out" \
+  || fail "the second daemon claimed a socket it does not serve: $(cat "$tmp/second.out")"
+grep -q 'already serving' "$tmp/second.err" \
+  || fail "the second daemon did not say why it serves no askpass: $(cat "$tmp/second.err")"
+
+# Nor does a daemon told not to serve one at all.
+"$authd" --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null 9>&-
+grep -q '"askpass":""' "$tmp/noaskpass.out" \
+  || fail "--no-askpass still named a socket: $(cat "$tmp/noaskpass.out")"
+
 # --- 7. losing the shell releases every caller ----------------------------
 # The daemon is a child of qs. If qs dies while a prompt is up, sudo must be
 # told no rather than left waiting on a socket nobody is reading.
@@ -195,14 +232,15 @@ $(cat "$tmp/nosock.err")"
 # {"ok":false} the daemon sends first. What it does pin down is that the daemon
 # neither outlives the shell nor leaves its socket behind -- a stale socket is
 # worse than none, since the next c7-askpass connects to it and waits.
+before=$(grep -c '"ev":"request"' "$out")
 C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- &
 askpass3=$!
 for ((i = 0; i < 100; i++)); do
   n=$(grep -c '"ev":"request"' "$out")
-  ((n >= 3)) && break
+  ((n > before)) && break
   sleep 0.05
 done
-((n >= 3)) || fail "the third request never arrived:
+((n > before)) || fail "the last request never arrived:
 $(cat "$out")"
 
 exec 9>&-           # EOF on the command channel: the shell has gone
