@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "conn-15-clean-end-dims-the-slot",
+  "requirements": [
+    "R-CONN-15"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "View half: with `state` `NoState`, `readError` `/localapi/v0/watch-ipn-bus ended before tailscaled sent a status` and no other state ever reported, the slot is visible with tint `Theme.textDisabled` (R-QML-02)"
+  ],
+  "deferred": [
+    "the backend half: phase3-only, every clause is read after the retry or idle barrier"
+  ],
+  "body": "conn_15_clean_end_dimmed",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+module qs.Modules.Popovers
+TailscalePopover 1.0 TailscalePopover.qml
+PeerRow 1.0 PeerRow.qml
+ExitNodeList 1.0 ExitNodeList.qml
+TailscaleSettings 1.0 TailscaleSettings.qml
+CopyMenu 1.0 CopyMenu.qml
+TailscaleWriteNote 1.0 TailscaleWriteNote.qml

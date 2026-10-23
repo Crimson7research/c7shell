@@ -17,13 +17,16 @@ without rust-lld.
 
 ```sh
 plugin/tests/tailscale-parity/build-reference.sh
+plugin/tests/tailscale-parity/build-reference.sh --views
 ```
 
 It builds #286's `C7` at `a38dbca` with #286's own CMake, from that commit's
-`plugin/` tree extracted with `git archive` under
+`plugin/` and `quickshell/c7shell/` trees extracted with `git archive` under
 `${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`, and prints
 the directory to pass as `C7_QML_DIR` as its last line. A second run rebuilds
-nothing. `C7_REFERENCE_CACHE` moves the cache. It only reads the repository:
+nothing. With `--views` it builds nothing and prints the directory to pass
+as `C7_VIEWS_DIR`: #286's `quickshell/c7shell/`, the views the view tests
+run. `C7_REFERENCE_CACHE` moves the cache. It only reads the repository:
 it registers no worktree and fetches nothing. When the commit is missing it
 fails and names the `git fetch` to run.
 
@@ -36,17 +39,20 @@ An earlier version registered a git worktree at
 
 `run.sh` is not part of `for t in tests/*.sh`: the reference build is not
 something the suite makes. `tests/test-tailscale-parity.sh` always runs
-`stub_selftest`, the harness self-tests that need only the QML-only stub C7.
-It runs `harness_selftest` and 50 runs of the scenarios when the reference
-build is already in the cache, and skips them with the reason when it is
-not. A `C7_QML_DIR` that holds no `C7/qmldir` is a failure, never a skip.
+`stub_selftest` and `view_selftest`, the harness self-tests that need only
+the QML-only stub C7 and the stub views. It runs 50 runs of the view tests
+when #286's views are already extracted in the cache, and
+`harness_selftest` and 50 runs of the scenarios and the corpus when the
+reference build is, and skips each with the reason when it is not. A
+`C7_VIEWS_DIR` or `C7_QML_DIR` that holds no reference is a failure, never a
+skip.
 The parallel stress is run by hand until a later PR wires the reference
 build into the suite.
 
 ## Run
 
 ```sh
-plugin/tests/tailscale-parity/run.sh               # every scenario once against cpp-286
+plugin/tests/tailscale-parity/run.sh               # every scenario, case and view test once against cpp-286
 plugin/tests/tailscale-parity/run.sh --repeat 50   # 50 consecutive runs of each
 
 qml=$(plugin/tests/tailscale-parity/build-reference.sh | tail -1)
@@ -408,6 +414,53 @@ The captures are #286's (`plugin/lib/tailscale/tests/fixtures/` at
 `a38dbca`), whose names, users and addresses were already made up; the
 node keys, numeric node ids and the tailnet's stable id were replaced with
 made-up values too.
+
+## The view tests (#309)
+
+`tests/fixtures/tailscale/views/` holds one header per view test: a
+scenario's `format`, `id`, `requirements`, `tag`, `evidence`, `clauses`,
+`deferred` and `on`, and `body`, the name of a Rust function in
+`src/views/bodies/`. The format is
+`plugin/lib/testing/fake-tailscaled/src/views.rs`. A view test runs #286's
+views, never #286's C++: the bar pill and the Tailscale popover over a QML
+stand-in for `Tailscale` that a test sets as the backend would and whose
+actions only record their calls (R-QML-25).
+
+```sh
+views=$(plugin/tests/tailscale-parity/build-reference.sh --views)
+cd plugin
+cargo test --locked -p tailscale-parity --test view_selftest
+C7_IMPL=cpp-286 C7_VIEWS_DIR=$views cargo test --locked -p tailscale-parity --test views
+```
+
+`C7_SCENARIOS` and `C7_REPEAT` work as for the scenarios.
+
+The views draw #286's SVG icons, so Qt's SVG image plugin must be there:
+`qt6-svg`, which `quickshell`, a `depends=` of the package, pulls in.
+Without it every icon logs `Unsupported image format` against `Icon.qml`,
+and the `.qml:` rule fails every view test, which is the point.
+
+Each view test's child builds an import tree in its private `TMPDIR`
+(`src/views/tree.rs`): the view files `VIEW_FILES` names, copied from
+`C7_VIEWS_DIR`; the stand-ins under `qml/standins/` (`C7.Tailscale`, the
+Quickshell clipboard, the radios and services at rest, `GlassPopover`,
+`Tooltip`, `ProgressRing` and `BatteryIndicator`); and the theme stand-in,
+whose `PaletteStore` is generated from the views' own `palette.json` and
+whose `iconsDir` is the views' icons. `qml/views-driver.qml` loads the pill
+and the popover in a window and answers commands by name; it knows no
+`ts-` name. An object reaches Rust as a handle numbered by identity, so the
+same delegate is the same `El`.
+
+A body (`Views` in `src/views/mod.rs`, the shared lookups in
+`src/views/ui.rs`) sets the stand-in, clicks and types, and records each
+acceptance clause with `check(id, holds, actual)`. Every `set` and `invoke`
+is followed by the layout barrier, five `forceLayout()` passes over the
+popover and the pill, so every read after it has settled; a recorded call
+is read when the click returns. Setup that did not take is `require`, an
+error. A lookup that finds no element, or two where one is needed, is an
+error unless the clause is about that count. Any line of the child's log
+naming a `.qml` file is an error (R-QML-26, R-QML-27). `tests/views.rs`
+fails when a body is named by no header.
 
 ## Add an implementation
 

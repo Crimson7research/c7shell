@@ -1,0 +1,8 @@
+module qs.Services
+singleton ScreenshareService 1.0 ScreenshareService.qml
+singleton UpdatesService 1.0 UpdatesService.qml
+singleton CaptureService 1.0 CaptureService.qml
+singleton AirplaneService 1.0 AirplaneService.qml
+singleton NetworkService 1.0 NetworkService.qml
+singleton BatteryService 1.0 BatteryService.qml
+singleton PopoverManager 1.0 PopoverManager.qml

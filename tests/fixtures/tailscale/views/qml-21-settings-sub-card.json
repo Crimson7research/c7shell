@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "qml-21-settings-sub-card",
+  "requirements": [
+    "R-QML-21"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Before `ts-settings-row` is clicked, no `ts-settings-routes` row is shown",
+    "With `acceptRoutes` false, `acceptDns` true and no issue, `ts-issue` is absent and the plain-text `ts-settings-routes-why` mentions \"route\" and lies below `ts-settings-routes`; `acceptRoutes` true hides it, false shows it again",
+    "`ts-settings-routes-switch` is unchecked; a routes click records `setAcceptRoutes(true)` and the switch waits; once `acceptRoutes` is true it is checked, and a second click records `setAcceptRoutes(false)`",
+    "With `acceptDns` true the DNS switch is checked; a click records `setAcceptDns(false)`; it stays checked after its own click and is unchecked once `acceptDns` is false",
+    "After a 403 disables the switches, exactly one `ts-settings-routes-why` is still shown"
+  ],
+  "deferred": [
+    "the backend half's exact PATCH counts and its \"until the fake reports\" negatives: cpp-suite, tests/tailscale-qml-test.qml::settingsChecks"
+  ],
+  "body": "qml_21_settings",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

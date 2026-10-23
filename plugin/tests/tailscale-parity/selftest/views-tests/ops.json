@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "ops",
+  "requirements": [
+    "R-QML-25"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "a self-test of the view runner"
+  ],
+  "body": "ops",
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}

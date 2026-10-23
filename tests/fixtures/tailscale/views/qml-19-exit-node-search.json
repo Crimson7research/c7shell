@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "qml-19-exit-node-search",
+  "requirements": [
+    "R-QML-19"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "`HOST` leaves one row, `host-5`, no recommended row, no `ts-exit-no-match`, and `none` visible",
+    "A query matching nothing shows no `ts-exit-row`, exactly one `ts-exit-no-match` titled `no matches`, and not `ts-exit-empty`",
+    "Clearing it restores 3 rows and hides `ts-exit-no-match`; no exit peers shows `ts-exit-empty` only; seeding the three again restores 3 rows"
+  ],
+  "body": "qml_19_exit_search",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

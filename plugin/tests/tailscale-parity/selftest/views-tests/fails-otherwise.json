@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "fails-otherwise",
+  "requirements": [
+    "R-QML-25"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "a self-test of the view runner"
+  ],
+  "body": "fails",
+  "on": {
+    "stub": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "first",
+          "actual": "another"
+        }
+      ],
+      "reason": "a different actual"
+    }
+  }
+}

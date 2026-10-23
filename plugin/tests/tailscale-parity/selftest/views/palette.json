@@ -1,0 +1,12 @@
+{
+  "_comment": "The stub palette: every key the theme stand-in reads, as colour names.",
+  "palette": {
+    "_note": "dropped",
+    "text": "whitesmoke",
+    "textOnAccent": "black",
+    "success": "seagreen",
+    "warning": "goldenrod",
+    "variants": { "dark": { "glassBase": "dimgray", "bg": "black", "canvas": "darkslategray" } }
+  },
+  "defaults": { "accent": "crimson" }
+}

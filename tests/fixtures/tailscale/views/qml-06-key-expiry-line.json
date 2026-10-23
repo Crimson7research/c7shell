@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "qml-06-key-expiry-line",
+  "requirements": [
+    "R-QML-06"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Unset, the line is hidden",
+    "N + 548.5 days reads \"expires in 18 months\" in `Theme.textDisabled`; N + 30.5, 5.5, 1.5 and 0.5 days read \"expires in 1 month\", \"expires in 5 days\", \"expires in 1 day\" and \"expires in under a day\"; N − 0.5 days reads \"session expired\"",
+    "After each text, `Date.now()` is within 12 hours of N"
+  ],
+  "body": "qml_06_key_expiry",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

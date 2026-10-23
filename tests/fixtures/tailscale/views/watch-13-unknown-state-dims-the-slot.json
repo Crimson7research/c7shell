@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "watch-13-unknown-state-dims-the-slot",
+  "requirements": [
+    "R-WATCH-13"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "In the QML suite, with `state` `NoState` and `readError` `tailscaled reported an unknown BackendState \"Weird\"`, the slot is visible with tint `Theme.textDisabled` and `ts-read-error` equals it (R-QML-02)"
+  ],
+  "deferred": [
+    "the chunked idle capture gives `state` `Running`, 20 `peers` rows, `selfName`, `selfIp4`, `selfDnsName` and `tailnet`; a `Weird` state from `Running` gives `readError` exactly the decided reason, already readable inside that `stateChanged` handler, and a later `Running` clears it, each after its change signal: harness-on-cpp in #308, `watch-13-snapshot-identity`, `watch-13-unknown-state-is-named`",
+    "\"no armed reconnect\", the client counts, the change counts and the `\"NoState\"` run's negatives: phase3-only, the retry hook and negatives after the idle barrier"
+  ],
+  "body": "watch_13_unknown_state_dimmed",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

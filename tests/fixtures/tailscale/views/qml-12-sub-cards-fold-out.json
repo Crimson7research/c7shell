@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-12-sub-cards-fold-out",
+  "requirements": [
+    "R-QML-12"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Toggling the popover manager with the name `tailscale` opens the panel, and no element named `ts-back` exists",
+    "The four root rows are shown before the device list folds out; clicking `ts-devices-row` keeps them, draws the four `ts-peer` rows, grows the panel, turns `ts-devices-chevron` and focuses `ts-peer-search-input`; `ts-devices-card` lies strictly between `ts-devices-row` and `ts-exit-row-entry`",
+    "After `tango` is clicked, clicking `ts-devices-row` again shows no `ts-peer` row, turns the chevron back and restores the height within 1 px; reopening returns the identical delegate, still copied",
+    "With devices out, clicking `ts-exit-row-entry` keeps `ts-self-name`, hides every `ts-peer` and focuses `ts-exit-search-input`",
+    "With every sub-card shut, no `ts-settings-routes` row is shown; clicking `ts-settings-row` keeps `ts-self-name`, shows no `ts-peer`, grows the panel and turns `ts-settings-chevron`; `ts-settings-card` lies below its row; clicking again hides `ts-settings-routes`, turns the chevron back and restores the height within 1 px"
+  ],
+  "body": "qml_12_sub_cards",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

@@ -231,7 +231,7 @@ fn sorted(mut f: Vec<Failing>) -> Vec<Failing> {
     f
 }
 
-fn outcome_from_json(v: &Value) -> Outcome {
+pub(crate) fn outcome_from_json(v: &Value) -> Outcome {
     match v["outcome"].as_str() {
         Some("pass") => Outcome::Pass,
         Some("fail") => Outcome::Fail(serde_json::from_value(v["failing"].clone()).unwrap_or_default()),
@@ -240,7 +240,7 @@ fn outcome_from_json(v: &Value) -> Outcome {
     }
 }
 
-fn outcome_json(o: &Outcome) -> Value {
+pub(crate) fn outcome_json(o: &Outcome) -> Value {
     match o {
         Outcome::Pass => json!({ "outcome": "pass" }),
         Outcome::Fail(f) => json!({ "outcome": "fail", "failing": f }),
@@ -249,7 +249,7 @@ fn outcome_json(o: &Outcome) -> Value {
     }
 }
 
-fn arg(name: &str) -> Option<String> {
+pub(crate) fn arg(name: &str) -> Option<String> {
     let prefix = format!("--{name}=");
     std::env::args().find_map(|a| a.strip_prefix(&prefix).map(str::to_string))
 }

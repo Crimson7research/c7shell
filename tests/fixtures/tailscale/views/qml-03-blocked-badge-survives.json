@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "qml-03-blocked-badge-survives",
+  "requirements": [
+    "R-QML-03"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "View half: with an active, offline exit node and `state` `NoState` set after `Running`, the slot is visible with tint `Theme.textDisabled`, and the crimson ✕ and the name are drawn"
+  ],
+  "deferred": [
+    "the backend half: the unchanged values after the retry barrier: cpp-suite, tests/tailscale-qml-test.qml::run"
+  ],
+  "body": "qml_03_blocked_badge_survives",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

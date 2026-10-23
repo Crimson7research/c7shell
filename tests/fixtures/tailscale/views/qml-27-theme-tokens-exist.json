@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-27-theme-tokens-exist",
+  "requirements": [
+    "R-QML-27"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The theme stand-in carries `accentFillActive`, `accentFillSoft`, `accentBorderSoft`, `powerHover`, `radiusSlot`, `radiusMenu`, `radiusMenuRow`, `pillHeight` and `pillRadius`",
+    "Loading #286's views over it, with every sub-card folded out in turn, emits no `.qml:` warning (the runner's rule for every view test)"
+  ],
+  "deferred": [
+    "the property scan of the real `Theme.qml`: cpp-suite, tests/test-tailscale.sh:145-147"
+  ],
+  "body": "qml_27_theme_tokens",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

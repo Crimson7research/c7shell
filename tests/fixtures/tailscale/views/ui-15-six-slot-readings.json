@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "ui-15-six-slot-readings",
+  "requirements": [
+    "R-UI-15"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "View half: the stand-in is set to the values of each of the table's six rows, and after the layout barrier the slot is visible and reads as the bullet of the same number: colour, border, icon tint, the warning and crimson items, the ✕ and the name"
+  ],
+  "deferred": [
+    "the backend half: the table's values once each served status is published: harness-on-cpp in #308, `ui-15-1-plain`, `ui-15-2-stopped`, `ui-15-3-error-online`, `ui-15-4-error-offline`, `ui-15-5-default-router-online`, `ui-15-6-default-router-offline`"
+  ],
+  "body": "ui_15_six_readings",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

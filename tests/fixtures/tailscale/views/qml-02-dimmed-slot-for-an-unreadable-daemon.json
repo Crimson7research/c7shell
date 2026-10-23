@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-02-dimmed-slot-for-an-unreadable-daemon",
+  "requirements": [
+    "R-QML-02"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "View half of the 403: with `state` `NoState` and `readError` set to the 403 reason, the slot is visible with tint `Theme.textDisabled`, and `ts-read-error` is visible and its text equals `readError`",
+    "View half of the clearing: with `readError` set from that string to empty and no other state ever reported, the slot and `ts-read-error` are both not visible"
+  ],
+  "deferred": [
+    "the backend halves of the 403 and of the clearing: cpp-suite, tests/tailscale-qml-test.qml::run"
+  ],
+  "body": "qml_02_dimmed_slot",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

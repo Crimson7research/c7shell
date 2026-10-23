@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-25-stand-in-behaves-like-the-contract",
+  "requirements": [
+    "R-QML-25"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A fresh stand-in reads `state === Tailscale.NoState` and `writable === true`",
+    "Each of its five actions of #286 records one call and changes no property",
+    "With `exitNodeActive` true and `exitNodeOnline` false, `exitNodeBlocked` reads true; `issueCount` is the length of `issues`",
+    "On `peers` with three rows, `setProperty`, `move`, `insert` and `remove` each emit their row signal and no `modelReset`",
+    "`clear()` leaves 0 rows, and refilling after it gives every row a new delegate"
+  ],
+  "body": "qml_25_stand_in",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

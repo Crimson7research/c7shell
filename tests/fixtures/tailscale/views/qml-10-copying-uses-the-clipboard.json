@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "qml-10-copying-uses-the-clipboard",
+  "requirements": [
+    "R-QML-10"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Clicking `tango` sets the clipboard to its IPv4, and its `copied` feedback reads true; clicking the `bravo` delegate sets it to `100.64.0.2`",
+    "The row has one right-button-only area",
+    "A right-click on `tango` opens `ts-copy-menu` with `displayName` `tango`; `ts-copy-ip4`, `ts-copy-ip6` and `ts-copy-dns` each read enabled, copy the IPv4, the IPv6 and `tango.example-tailnet.ts.net`, and close the menu",
+    "A right-click on `workstation`, whose `HostName` is `localhost`, heads the menu `workstation`",
+    "On `yankee`, without IPv6, `ts-copy-ip6` is visible, disabled, labelled in `Theme.textDisabled` and leaves the clipboard alone",
+    "No `Process {` and no `execDetached(` in #286's `PeerRow.qml` and `CopyMenu.qml`"
+  ],
+  "body": "qml_10_copying",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

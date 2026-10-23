@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "no-body",
+  "requirements": [
+    "R-QML-25"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "a self-test of the view runner"
+  ],
+  "body": "no_such_body",
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}

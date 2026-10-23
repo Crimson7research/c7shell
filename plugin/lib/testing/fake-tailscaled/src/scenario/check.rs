@@ -7,7 +7,7 @@ use serde_json::Value;
 use super::{Expect, FakeWait, SignalWait, Step, Wait};
 
 /// `R-` + capital letters + `-` + two digits.
-pub(super) fn is_requirement_id(id: &str) -> bool {
+pub(crate) fn is_requirement_id(id: &str) -> bool {
     let Some(rest) = id.strip_prefix("R-") else { return false };
     let Some((area, number)) = rest.split_once('-') else { return false };
     !area.is_empty()

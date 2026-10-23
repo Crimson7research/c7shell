@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "declared-pass-fails",
+  "requirements": [
+    "R-QML-25"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "a self-test of the view runner"
+  ],
+  "body": "fails",
+  "on": {
+    "stub": {
+      "result": "pass"
+    }
+  }
+}

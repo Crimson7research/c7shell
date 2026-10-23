@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "qml-04-exit-node-label-capped",
+  "requirements": [
+    "R-QML-04"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With names `sierra`, the 55-character `yankee-with-a-long-magicdns-name.example-tailnet.ts.net` and that name doubled, the slot widens from the first to the second and the label truncates",
+    "The doubled name gives the same width",
+    "`sierra` restores the first width without truncation"
+  ],
+  "body": "qml_04_label_capped",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
