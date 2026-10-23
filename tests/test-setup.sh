@@ -107,6 +107,10 @@ grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
 printf '[options]\n#BottomUp\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned back on:\n$(cat "$pc")"
+# A longer word is some other option, not BottomUp.
+printf '[options]\nBottomUpX\n#BottomUp_old\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'BottomUp' "$pc" || fail "BottomUpX was taken for BottomUp:\n$(cat "$pc")"
 for line in '  # BottomUp' '  BottomUp'; do
   printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -146,7 +150,15 @@ if ((EUID != 0)); then
   out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
   chmod 600 "$pc"
   [[ $(cat "$pc") == $'[options]\nDevel' ]] || fail "setup appended to a paru.conf it cannot read:\n$(cat "$pc")"
-  grep -qF "cannot read $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+  grep -qF "cannot read or write $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+  # Read-only, as in a dotfiles store: setup says so and carries on, where an
+  # append would stop it before the rc files and the manifest.
+  printf '[bin]\nSudo = doas\n' > "$pc"; chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "setup changed a read-only paru.conf:\n$(cat "$pc")"
+  grep -qF "cannot read or write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru.conf:\n$out"
+  grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru.conf:\n$out"
 fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'

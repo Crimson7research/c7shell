@@ -379,12 +379,14 @@ fi
 # it, so a new user file starts as a copy of the system one -- otherwise the
 # options there (Devel, BottomUp, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
-# A user file setup cannot read is one it cannot check: every run would append
-# the same lines again, so it adds nothing to it.
+# A user file setup cannot read is one it cannot check, so every run would
+# append the same lines again; one it cannot write, such as a read-only
+# dotfiles store, would stop setup before the rc files and the manifest. Either
+# way it adds nothing to it.
 paru=0
 if command -v paru >/dev/null; then
-  if [[ -e $pc && ! -r $pc ]]; then
-    printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
+  if [[ -e $pc && ! ( -r $pc && -w $pc ) ]]; then
+    printf 'c7shell-setup: cannot read or write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
     paru=1
   fi
