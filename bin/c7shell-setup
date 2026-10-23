@@ -449,8 +449,10 @@ fi
 # paru reads as BottomUp -- bare or with "= <value>" -- counts as set: a
 # commented one is paru's own default, and paru rejects a comment after an
 # option. paru reads a second [options] section as more options. The marker
-# line above it is how --uninstall tells this BottomUp from one the user set. A
-# dry run made no copy, so it asks the system file.
+# line above it is how --uninstall tells this BottomUp from one the user set.
+# paru has no setting that turns BottomUp off (TopDown is not an option, and
+# BottomUp = false still turns it on), so a user file without the block gets
+# it again on every run. A dry run made no copy, so it asks the system file.
 pc_src=$pc
 ((dry)) && [[ ! -e $pc ]] && pc_src=$paru_sysconf
 if ((paru)) && ! has_bottomup "$pc_src"; then

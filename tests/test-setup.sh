@@ -219,6 +219,13 @@ if ((EUID != 0)); then
   [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "setup changed a read-only paru.conf:\n$(cat "$pc")"
   grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru.conf:\n$out"
   grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru.conf:\n$out"
+  # A dry run says what the real run would: that it skips the file.
+  chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "cannot write $pc" <<<"$out" || fail "--dry-run did not say it would skip a read-only paru.conf:\n$out"
+  grep -F "would: append" <<<"$out" | grep -qF "$pc" \
+    && fail "--dry-run would append to a read-only paru.conf:\n$out"
   # A read-only file that already has both needs nothing, so nothing is said.
   printf '[options]\nBottomUp\n[bin]\nSudo = run0\n' > "$pc"; chmod 444 "$pc"
   out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
