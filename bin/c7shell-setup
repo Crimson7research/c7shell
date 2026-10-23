@@ -170,7 +170,7 @@ report_leftovers() {
   local au=$conf/arch-update/arch-update.conf pc=$conf/paru/paru.conf left=() rest=() b part
   grep -qsx 'PrivilegeElevationCommand=run0' "$au" && left+=("PrivilegeElevationCommand=run0 in $au")
   grep -qsE '^[[:space:]]*Sudo[[:space:]]*=[[:space:]]*run0' "$pc" && left+=("Sudo = run0 in $pc")
-  grep -qsxF "$bottomup_marker" "$pc" && left+=("BottomUp in $pc")
+  grep -qsxF "$bottomup_marker" "$pc" && left+=("the BottomUp block c7shell-setup added to $pc")
   grep -qs 'C7Shell' "$conf/kdeglobals" && left+=("the C7Shell colours in $conf/kdeglobals")
   # Each file named only while it holds a key the export sets.
   for b in "$conf/kcminputrc:^cursorTheme=" \
@@ -379,7 +379,17 @@ fi
 # it, so a new user file starts as a copy of the system one -- otherwise the
 # options there (Devel, BottomUp, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
-if command -v paru >/dev/null && ! grep -qs '^[[:space:]]*Sudo[[:space:]]*=' "$pc"; then
+# A user file setup cannot read is one it cannot check: every run would append
+# the same lines again, so it adds nothing to it.
+paru=0
+if command -v paru >/dev/null; then
+  if [[ -e $pc && ! -r $pc ]]; then
+    printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
+  else
+    paru=1
+  fi
+fi
+if ((paru)) && ! grep -qs '^[[:space:]]*Sudo[[:space:]]*=' "$pc"; then
   printf 'setting Sudo = run0 in %s   (paru prompts through polkit)\n' "$pc"
   run mkdir -p -- "$(dirname -- "$pc")"
   if ((dry)); then
@@ -400,7 +410,7 @@ fi
 # run made no copy, so it asks the system file.
 pc_src=$pc
 ((dry)) && [[ ! -e $pc ]] && pc_src=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
-if command -v paru >/dev/null && ! grep -qsE '^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$' "$pc_src"; then
+if ((paru)) && ! grep -qsE '^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$' "$pc_src"; then
   printf 'setting BottomUp in %s   (paru lists AUR search results first)\n' "$pc"
   if ((dry)); then
     printf '  would: append [options] BottomUp to %s\n' "$pc"

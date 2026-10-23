@@ -23,6 +23,16 @@ export XDG_DATA_HOME=$tmp/data
 export HOME=$tmp/home
 # Never the host's /etc/paru.conf: the paru checks below name their own.
 export C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf
+# Nor the host's paru: every command on PATH but paru. The paru checks below
+# put a fake one in front.
+no_paru=$tmp/no-paru-bin; mkdir -p "$no_paru"
+IFS=: read -ra dirs <<<"$PATH"
+for d in "${dirs[@]}"; do
+  for f in "$d"/*; do
+    [[ ${f##*/} == paru || -e $no_paru/${f##*/} || ! -x $f ]] || ln -s -- "$f" "$no_paru/"
+  done
+done
+export PATH=$no_paru
 mkdir -p "$HOME"
 mkdir -p "$C7SHELL_SHARE"/{hypr,quickshell/c7shell,xdg-desktop-portal}
 echo v1 > "$C7SHELL_SHARE/hypr/hyprland.lua"
@@ -74,21 +84,12 @@ grep -qx '# mine' "$HOME/.zshrc" || fail 'adding the sudo line lost what was in 
 # paru: its Sudo goes through run0 too, and a new user paru.conf keeps the
 # system file's options, since paru reads one or the other, never both
 pc=$XDG_CONFIG_HOME/paru/paru.conf
-# The runs above may have found a real paru on this machine's PATH.
-rm -rf -- "$XDG_CONFIG_HOME/paru"
 sysconf=$tmp/etc-paru.conf
 printf '[options]\nC7TestMarker\n' > "$sysconf"
 paru_bin=$tmp/paru-bin
 mkdir -p "$paru_bin"; printf '#!/bin/sh\n' > "$paru_bin/paru"; chmod +x "$paru_bin/paru"
-# Without paru, setup writes no paru.conf: a PATH with every command but paru.
-no_paru=$tmp/no-paru-bin; mkdir -p "$no_paru"
-IFS=: read -ra dirs <<<"$PATH"
-for d in "${dirs[@]}"; do
-  for f in "$d"/*; do
-    [[ ${f##*/} == paru || -e $no_paru/${f##*/} || ! -x $f ]] || ln -s -- "$f" "$no_paru/"
-  done
-done
-out=$(PATH=$no_paru C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+# Without paru, setup writes no paru.conf.
+out=$(C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
 [[ ! -e $XDG_CONFIG_HOME/paru ]] || fail "setup wrote a paru config without paru:\n$(ls -R "$XDG_CONFIG_HOME/paru")"
 grep -qF 'paru.conf' <<<"$out" && fail "setup tried to write a paru config without paru:\n$out"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -106,6 +107,11 @@ grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
 printf '[options]\n#BottomUp\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned back on:\n$(cat "$pc")"
+for line in '  # BottomUp' '  BottomUp'; do
+  printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
+  PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+  [[ $(grep -c BottomUp "$pc") == 1 ]] || fail "BottomUp was added beside '$line':\n$(cat "$pc")"
+done
 # paru also takes `BottomUp = <value>`, and that is a choice already made.
 printf '[options]\nBottomUp = true\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -117,8 +123,15 @@ printf '[bin]\nSudo = doas\n' > "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
 [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "--dry-run wrote paru.conf:\n$(cat "$pc")"
 grep -qF 'would: append [options] BottomUp' <<<"$out" || fail "--dry-run did not name the BottomUp it would add:\n$out"
-rm -f -- "$pc"
+# An existing user file is what paru reads, whatever the system file says.
 printf '[options]\nBottomUp\n' > "$tmp/bottomup-paru.conf"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF 'would: append [options] BottomUp' <<<"$out" \
+  || fail "--dry-run asked the system file about a user file that lacks BottomUp:\n$out"
+printf '[options]\nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the user file has:\n$out"
+rm -f -- "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
 grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the system file already has:\n$out"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
@@ -127,6 +140,14 @@ grep -qF 'would: append [options] BottomUp' <<<"$out" \
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -q run0 "$pc" && fail "a paru Sudo the user chose was overwritten:\n$(cat "$pc")"
+# A paru.conf setup cannot read is one it cannot check, so it adds nothing.
+if ((EUID != 0)); then
+  printf '[options]\nDevel\n' > "$pc"; chmod 200 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  [[ $(cat "$pc") == $'[options]\nDevel' ]] || fail "setup appended to a paru.conf it cannot read:\n$(cat "$pc")"
+  grep -qF "cannot read $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
 [[ $(cat "$XDG_CONFIG_HOME/xdg-desktop-portal/hyprland-portals.conf") == v1 ]] || fail 'portal config not installed'
@@ -289,8 +310,10 @@ echo edited > "$un/conf/quickshell/c7shell/shell.qml"
 # Beside an edited file, a .new is what the user was told to merge.
 echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
 mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
+# PATH has no paru, so setup wrote no paru.conf here; this is the one it would.
+mkdir -p "$un/conf/paru"
 printf '[bin]\nSudo = run0\n\n# c7shell: BottomUp (paru lists AUR search results first)\n[options]\nBottomUp\n' \
-  > "$un/conf/paru/paru.conf.keep"
+  > "$un/conf/paru/paru.conf"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
 # What the shell itself writes, and what an upgrade backs up per file: in no
@@ -304,10 +327,6 @@ printf '[Settings]\ngtk-font-name=Sans 10\n' > "$un/conf/gtk-4.0/settings.ini"
 mv "$un/conf/xdg-desktop-portal" "$un/dotfiles/portal"
 ln -s ../dotfiles/portal "$un/conf/xdg-desktop-portal"
 
-# setup writes paru.conf only where paru is installed; this test must not
-# depend on the machine it runs on.
-rm -f "$un/conf/paru/paru.conf"; mv "$un/conf/paru/paru.conf.keep" "$un/conf/paru/paru.conf"
-
 printf '[Mouse]\ncursorTheme=Bibata\n' > "$un/conf/kcminputrc"
 cp "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig"; cp "$un/conf/paru/paru.conf" "$tmp/pc.orig"
 
@@ -317,7 +336,7 @@ if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'
 # the user's and goes unlisted.
 printf '[options]\nBottomUp\n' > "$un/conf/paru/paru.conf"
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
-grep -qF 'BottomUp in' <<<"$out" && fail "uninstall listed a BottomUp setup never added:\n$out"
+grep -qF 'BottomUp block' <<<"$out" && fail "uninstall listed a BottomUp setup never added:\n$out"
 cp "$tmp/pc.orig" "$un/conf/paru/paru.conf"
 
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
@@ -349,7 +368,8 @@ grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$
 grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
 grep -qF "$un/conf/kcminputrc   (the theme export writes to it)" <<<"$out" || fail "uninstall did not list kcminputrc:\n$out"
 grep -qF "color-scheme setting, now 'prefer-dark'" <<<"$out" || fail "uninstall did not list the gsettings key:\n$out"
-grep -qF "BottomUp in $un/conf/paru/paru.conf" <<<"$out" || fail "uninstall did not list paru's BottomUp:\n$out"
+grep -qF "the BottomUp block c7shell-setup added to $un/conf/paru/paru.conf" <<<"$out" \
+  || fail "uninstall did not list paru's BottomUp block:\n$out"
 # Listed is all: the unmarked run0 lines are the user's to remove.
 cmp -s "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig" || fail 'uninstall changed arch-update.conf'
 cmp -s "$un/conf/paru/paru.conf" "$tmp/pc.orig" || fail 'uninstall changed paru.conf'
