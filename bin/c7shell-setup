@@ -357,6 +357,28 @@ fi
 printf 'creating %s   (drop executable scripts here to get launcher rows)\n' "$data/scripts"
 run mkdir -p -- "$data/scripts"
 
+# conf_access <file> -- prints "read" if setup cannot read <file>, "write" if
+# it cannot create or append to it, and nothing if it can. A user config setup
+# cannot read is one it cannot check, so every run would append the same lines
+# again. One it cannot write -- read-only, as in a dotfiles store, a symlink to
+# nothing yet, a directory, or not there yet where setup cannot create it --
+# would stop setup before the rc files and the manifest. Either way setup adds
+# nothing to it; it names one it cannot write only when it lacks a line setup
+# adds.
+conf_access() {
+  local f=$1 base
+  if [[ -e $f && ! -r $f ]]; then echo read; return; fi
+  # The nearest path on the way that is there already, dangling symlinks
+  # included: anything but a directory setup can write into and search is in
+  # the way.
+  base=$(dirname -- "$f")
+  while [[ ! -e $base && ! -L $base && $base != / ]]; do base=$(dirname -- "$base"); done
+  if [[ -L $f && ! -e $f ]] || [[ -e $f && ! ( -f $f && -w $f ) ]] \
+     || [[ ! -e $f && ! ( -d $base && -w $base && -x $base ) ]]; then
+    echo write
+  fi
+}
+
 # arch-update elevates with sudo unless told otherwise, and a terminal sudo
 # asks on the terminal. run0 asks polkit, so `arch-update` gets the shell's own
 # prompt -- fingerprint, and a password field that is live at once. The file is
@@ -364,7 +386,14 @@ run mkdir -p -- "$data/scripts"
 # elevation command nobody chose: an explicit PrivilegeElevationCommand, even
 # sudo, is left exactly as it is.
 au=$conf/arch-update/arch-update.conf
-if ! grep -qs '^[[:space:]]*PrivilegeElevationCommand=' "$au"; then
+au_access=$(conf_access "$au")
+if [[ $au_access == read ]]; then
+  printf 'c7shell-setup: cannot read %s, so its PrivilegeElevationCommand is left as it is\n' "$au" >&2
+elif grep -qs '^[[:space:]]*PrivilegeElevationCommand=' "$au"; then
+  :
+elif [[ $au_access == write ]]; then
+  printf 'c7shell-setup: cannot write %s, so its PrivilegeElevationCommand is left as it is\n' "$au" >&2
+else
   printf 'setting PrivilegeElevationCommand=run0 in %s   (arch-update prompts through polkit)\n' "$au"
   run mkdir -p -- "$(dirname -- "$au")"
   if ((dry)); then
@@ -389,28 +418,17 @@ has_bottomup() {
        opts && /^[[:space:]]*BottomUp[[:space:]]*(=.*)?$/ { found = 1 }
        END { exit !found }' "$1" 2>/dev/null
 }
-# The nearest path on the way to paru.conf that is there already, dangling
-# symlinks included: where setup would create paru/ or paru.conf. Anything but
-# a directory it can write into and search is in the way.
-pc_base=$pc_dir
-while [[ ! -e $pc_base && ! -L $pc_base && $pc_base != / ]]; do pc_base=$(dirname -- "$pc_base"); done
-# A user file setup cannot read is one it cannot check, so every run would
-# append the same lines again. One it cannot write -- read-only, as in a
-# dotfiles store, a symlink to nothing yet, or not there yet where setup
-# cannot create it -- would stop setup before the rc files and the manifest,
-# so it is named only when it lacks a line setup adds. Either way setup adds
-# nothing to it.
+# paru's Sudo and BottomUp go in only where setup can read and write the file
+# (conf_access, above).
 paru=0
 if command -v paru >/dev/null; then
-  if [[ -e $pc && ! -r $pc ]]; then
-    printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
-  elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]] \
-       || [[ ! -e $pc && ! ( -d $pc_base && -w $pc_base && -x $pc_base ) ]]; then
-    grep -qs "$paru_sudo_re" "$pc" && has_bottomup "$pc" \
-      || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
-  else
-    paru=1
-  fi
+  case $(conf_access "$pc") in
+    read) printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2 ;;
+    write)
+      grep -qs "$paru_sudo_re" "$pc" && has_bottomup "$pc" \
+        || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2 ;;
+    *) paru=1 ;;
+  esac
 fi
 if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   printf 'setting Sudo = run0 in %s   (paru prompts through polkit)\n' "$pc"

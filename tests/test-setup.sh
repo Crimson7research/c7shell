@@ -73,6 +73,24 @@ grep -qx 'PrivilegeElevationCommand=doas' "$au" && ! grep -q run0 "$au" \
 printf '#PrivilegeElevationCommand=sudo\n' > "$au"
 "$setup" >/dev/null 2>&1 || true
 grep -qx 'PrivilegeElevationCommand=run0' "$au" || fail "a commented-out default was taken as a choice:\n$(cat "$au")"
+# An arch-update.conf setup cannot read or write is named and left alone, and
+# setup carries on; a read-only one that already has the line is not named.
+if ((EUID != 0)); then
+  for case in '200:#AURHelper=paru:cannot read' '444:#AURHelper=paru:cannot write' '444:PrivilegeElevationCommand=doas:'; do
+    IFS=: read -r mode body says <<<"$case"
+    printf '%s\n' "$body" > "$au"; chmod "$mode" "$au"
+    out=$("$setup" 2>&1) || true
+    chmod 600 "$au"
+    [[ $(cat "$au") == "$body" ]] || fail "setup changed a mode $mode arch-update.conf:\n$(cat "$au")"
+    if [[ -n $says ]]; then
+      grep -qF "$says $au" <<<"$out" || fail "setup did not say '$says' for a mode $mode arch-update.conf:\n$out"
+    else
+      grep -qF "$au" <<<"$out" && fail "setup spoke about a read-only arch-update.conf it had nothing to add to:\n$out"
+    fi
+    grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a mode $mode arch-update.conf:\n$out"
+  done
+  printf 'PrivilegeElevationCommand=run0\n' > "$au"
+fi
 
 # sudo: one guarded source line per existing rc file, never twice, and no rc
 # file created for a shell the user does not use
@@ -120,6 +138,13 @@ for line in '#BottomUp' '  # BottomUp' 'BottomUp # mine'; do
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
   (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "'$line' was taken for a BottomUp that is set:\n$(cat "$pc")"
 done
+# paru reads a header with blanks around it as that section.
+printf '  [options]  \nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+(($(grep -c BottomUp "$pc") == 1)) || fail "BottomUp under '  [options]  ' was not taken as set:\n$(cat "$pc")"
+printf '[options]\nDevel\n  [bin]  \nBottomUp\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+(($(grep -cx BottomUp "$pc") == 2)) || fail "'  [bin]  ' did not end the [options] section:\n$(cat "$pc")"
 # BottomUp is an [options] key; under [bin] paru rejects it.
 printf '[bin]\nBottomUp\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -157,6 +182,11 @@ printf '[options]\nBottomUp\n' > "$tmp/bottomup-paru.conf"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
 grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
   || fail "--dry-run asked the system file about a user file that lacks BottomUp:\n$out"
+# An empty user file is still the one paru reads.
+: > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
+  || fail "--dry-run asked the system file about an empty user file:\n$out"
 printf '[options]\nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
 grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the user file has:\n$out"
@@ -227,13 +257,16 @@ fi
 # Nor where ~/.config/paru is in the way: a dangling symlink to a dotfiles
 # directory not checked out yet, or a plain file (mode 755, so only "is it a
 # directory" tells it apart).
-for kind in symlink file; do
+for kind in symlink file dir; do
   rm -rf -- "$(dirname -- "$pc")"
-  if [[ $kind == symlink ]]; then ln -s -- "$tmp/no-such-dotfiles" "$(dirname -- "$pc")"
-  else : > "$(dirname -- "$pc")"; chmod 755 "$(dirname -- "$pc")"; fi
+  case $kind in
+    symlink) ln -s -- "$tmp/no-such-dotfiles" "$(dirname -- "$pc")" ;;
+    file) : > "$(dirname -- "$pc")"; chmod 755 "$(dirname -- "$pc")" ;;
+    dir) mkdir -p -- "$pc" ;;  # paru.conf itself is the directory
+  esac
   out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
   grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a paru.conf behind a $kind:\n$out"
-  grep -qE 'cannot create|File exists|Not a directory' <<<"$out" \
+  grep -qE 'cannot create|File exists|Not a directory|Is a directory' <<<"$out" \
     && fail "setup stopped on a paru.conf behind a $kind:\n$out"
 done
 rm -rf -- "$(dirname -- "$pc")"; mkdir -p -- "$(dirname -- "$pc")"
