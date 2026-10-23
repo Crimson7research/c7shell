@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "sec-03-network-strings-drawn-literally",
+  "requirements": [
+    "R-SEC-03"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A peer named `<b>a</b>` and a health entry `<img src=http://x/>` reach the views byte for byte",
+    "The bar label for `<b>a</b>` is more than twice as wide as for `a`",
+    "Every Text inside each element checked has plain-text format: the bar label, `ts-issue`, which holds the literal `<img src=http://x/>`, `ts-blocked-text`, `ts-self-name`, two peer rows, an exit row, `ts-exit-lan`, `ts-exit-advertise`, `ts-exit-no-match`, `ts-exit-write-error`, `ts-settings-routes`, `ts-settings-dns`, `ts-settings-routes-why`, `ts-settings-write-error` and `ts-connect-tip`",
+    "Setup: each element holds at least one Text, and a peer row at least three"
+  ],
+  "body": "sec_03_plain_text",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

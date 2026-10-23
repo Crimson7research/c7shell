@@ -4,6 +4,8 @@ mod bar;
 mod devices;
 mod exit;
 mod panel;
+mod sec;
+mod standin;
 mod writes;
 
 use super::Body;
@@ -37,4 +39,7 @@ pub const ALL: &[(&str, Body)] = &[
     ("qml_21_settings", writes::qml_21_settings),
     ("qml_22_connect_toggle", writes::qml_22_connect_toggle),
     ("write_09_toggle_after_disconnect", writes::write_09_toggle_after_disconnect),
+    ("qml_25_stand_in", standin::qml_25_stand_in),
+    ("qml_27_theme_tokens", standin::qml_27_theme_tokens),
+    ("sec_03_plain_text", sec::sec_03_plain_text),
 ];
