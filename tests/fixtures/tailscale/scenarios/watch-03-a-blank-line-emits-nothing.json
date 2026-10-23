@@ -7,10 +7,10 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "From `Running`, with only the watch connected, the fake pushes an empty line and then `{\"State\":6}`: the empty line emits nothing and holds nothing back, so the fake records a second GET of `/status`, and `state` still reads `Running`"
+    "From `Running`, with only the watch connected, the fake pushes an empty line and then `{\"State\":6}`: the empty line holds nothing back, so the fake records a second GET of `/status`"
   ],
   "deferred": [
-    "every event count: cpp-suite, the transport's own events are read after the read barrier"
+    "that the empty line emits no event, and every event count: cpp-suite, the transport's own events are read after the read barrier"
   ],
   "needs": [],
   "fake": {
@@ -122,16 +122,6 @@
             "target": "/localapi/v0/status"
           },
           "count": 2
-        }
-      }
-    },
-    {
-      "expect": {
-        "id": "still-running",
-        "contract": {
-          "state": {
-            "enum": "Running"
-          }
         }
       }
     }

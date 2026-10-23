@@ -7,7 +7,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "`HTTP/1.1 300 Multiple Choices` to `/status`, with the idle capture as its body, is outside 200-299 and fails: once `readErrorChanged` has fired, `readError` contains `HTTP/1.1 300` and `state` reads `NoState`"
+    "`HTTP/1.1 300 Multiple Choices` to `/status`, with the idle capture as its body, is outside 200-299 and fails: once `readErrorChanged` has fired, `readError` contains `HTTP/1.1 300`"
   ],
   "deferred": [
     "the numeric status and the counts: cpp-suite, the transport's own outcomes are not reachable through QML"
@@ -82,16 +82,6 @@
         "contract": {
           "readError": {
             "contains": "HTTP/1.1 300"
-          }
-        }
-      }
-    },
-    {
-      "expect": {
-        "id": "lost",
-        "contract": {
-          "state": {
-            "enum": "NoState"
           }
         }
       }

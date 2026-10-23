@@ -2,13 +2,14 @@
   "format": 1,
   "id": "http-04-a-watch-line-before-its-chunk-ends",
   "requirements": [
-    "R-HTTP-04"
+    "R-HTTP-04",
+    "R-WATCH-03"
   ],
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
     "From `Running`, with only the watch connected, the fake writes the chunk `c\\r\\n{\"State\":6}\\n` without its closing CRLF: the line it carries is delivered at once and starts a pass, so the fake records a second GET of `/status`",
-    "Then the fake writes that CRLF, the whole chunk `c\\r\\n{\"State\":6}\\n\\r\\n` and the size line `5\\r\\n` of a chunk whose data has not arrived, once only the watch is connected again: the second line is delivered at once too, so the fake records a third GET of `/status`"
+    "Then the fake writes that CRLF, the whole chunk `c\\r\\n{\"State\":6}\\n\\r\\n` and the size line `5\\r\\n` of a chunk whose data has not arrived, once the second pass's three reads are recorded and only the watch is connected again: the second line is delivered at once too, so the fake records a third GET of `/status`"
   ],
   "deferred": [
     "the event counts after each push: cpp-suite, the transport's own events are read after the read barrier"
@@ -124,6 +125,28 @@
     {
       "wait": {
         "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/prefs"
+          },
+          "count": 2
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/suggest-exit-node"
+          },
+          "count": 2
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
           "connected": 1
         }
       }
@@ -141,16 +164,6 @@
             "target": "/localapi/v0/status"
           },
           "count": 3
-        }
-      }
-    },
-    {
-      "expect": {
-        "id": "still-running",
-        "contract": {
-          "state": {
-            "enum": "Running"
-          }
         }
       }
     }

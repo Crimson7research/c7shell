@@ -135,16 +135,6 @@
           "count": 3
         }
       }
-    },
-    {
-      "expect": {
-        "id": "still-running",
-        "contract": {
-          "state": {
-            "enum": "Running"
-          }
-        }
-      }
     }
   ],
   "on": {

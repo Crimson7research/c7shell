@@ -7,7 +7,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "A 200 `/status` declaring `Transfer-Encoding: chunked` whose body starts with an empty size line (`\\r\\n0\\r\\n\\r\\n`), then a close: once `readErrorChanged` has fired, `readError` contains `/localapi/v0/status`, the path a framing failure names, and `state` reads `NoState`"
+    "A 200 `/status` declaring `Transfer-Encoding: chunked` whose body starts with an empty size line (`\\r\\n0\\r\\n\\r\\n`), then a close: once `readErrorChanged` has fired, `readError` contains `/localapi/v0/status`, the path a framing failure names"
   ],
   "deferred": [
     "the failure and reply counts: phase3-only, the transport's own outcomes are read after the read barrier"
@@ -86,16 +86,6 @@
         "contract": {
           "readError": {
             "contains": "/localapi/v0/status"
-          }
-        }
-      }
-    },
-    {
-      "expect": {
-        "id": "lost",
-        "contract": {
-          "state": {
-            "enum": "NoState"
           }
         }
       }

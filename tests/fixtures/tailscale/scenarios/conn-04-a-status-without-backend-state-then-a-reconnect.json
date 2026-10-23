@@ -2,16 +2,17 @@
   "format": 1,
   "id": "conn-04-a-status-without-backend-state-then-a-reconnect",
   "requirements": [
-    "R-CONN-04"
+    "R-CONN-04",
+    "R-CONN-06"
   ],
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "A chunked 200 `/status` of `{}` publishes nothing and is diagnosed: `readErrorChanged` fires",
-    "A reconnect follows: once `/status` answers the idle capture, `state` reaches `Running`, and then the fake has exactly one connected client, the new watch, so the first attempt's watch was closed"
+    "A chunked 200 `/status` of `{}` is diagnosed: `readErrorChanged` fires (R-CONN-04)",
+    "A reconnect follows: once `/status` answers the idle capture, `state` reaches `Running`, and then the fake has exactly one connected client, the new watch, so the first attempt's watch was closed (R-CONN-04's reconnect, R-CONN-06's stopped watch)"
   ],
   "deferred": [
-    "the exact `readError`, the retry and change counts and `stateChanged` 0: phase3-only, they are read after the retry barrier with paused time"
+    "that nothing is published, the exact `readError`, the retry and change counts and `stateChanged` 0: phase3-only, they are read after the retry barrier with paused time"
   ],
   "needs": [],
   "fake": {
