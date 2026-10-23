@@ -187,21 +187,56 @@ grep -q Traceback "$tmp/nosock.err" && fail "c7-askpass crashed instead of faili
 $(cat "$tmp/nosock.err")"
 
 # --- 6b. a caller that gives up takes its prompt with it ------------------
-# A Ctrl-C'd `sudo -A` closes its end of the socket. The prompt it raised must
-# close, or it sits on screen with nobody to answer and blocks every request
-# queued behind it.
-before=$(grep -c '"ev":"request"' "$out")
-C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- &
-askpass_gone=$!
-for ((i = 0; i < 100; i++)); do
-  (($(grep -c '"ev":"request"' "$out") > before)) && break
-  sleep 0.05
-done
-gone=$(grep '"ev":"request"' "$out" | sed -n "$((before + 1))s/.*\"id\":\"\([^\"]*\)\".*/\1/p")
-[[ -n $gone ]] || fail "the request from the caller that gives up never arrived:
+# A Ctrl-C'd `sudo -A` closes its end of the socket. Its prompt must close, or
+# it sits on screen with nobody to answer and blocks every request queued
+# behind it. Request ids count up from r1, so the next one is known ahead.
+next_id() { echo "r$(($(grep -c '"ev":"request"' "$out") + 1))"; }
+caller() { C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- & }
+hang_up() { pkill -P "$1" 2>/dev/null; kill "$1" 2>/dev/null; wait "$1" 2>/dev/null || true; }
+head_id=$(next_id); caller; head_pid=$!
+wait_for "\"ev\":\"active\",\"id\":\"$head_id\"" 'the first caller to become active'
+queued_id=$(next_id); caller; queued_pid=$!
+wait_for "\"ev\":\"request\",\"id\":\"$queued_id\"" 'the second caller to queue'
+last_id=$(next_id); caller; last_pid=$!
+wait_for "\"ev\":\"request\",\"id\":\"$last_id\"" 'the third caller to queue'
+# One queued behind the prompt on screen gives up. The prompt on screen must
+# not be activated again: the shell would take that as a new prompt starting,
+# and stop accepting the password already being typed.
+hang_up "$queued_pid"
+wait_for "\"ev\":\"close\",\"id\":\"$queued_id\",\"ok\":false" 'a queued caller that gave up to close'
+(($(grep -c "\"ev\":\"active\",\"id\":\"$head_id\"" "$out") == 1)) \
+  || fail "a queued caller giving up re-activated the prompt on screen:
 $(cat "$out")"
-pkill -P "$askpass_gone" 2>/dev/null; kill "$askpass_gone" 2>/dev/null; wait "$askpass_gone" 2>/dev/null || true
-wait_for "\"ev\":\"close\",\"id\":\"$gone\",\"ok\":false" 'the prompt of a caller that gave up to close'
+# The one on screen gives up: it closes, and the queue moves on.
+hang_up "$head_pid"
+wait_for "\"ev\":\"close\",\"id\":\"$head_id\",\"ok\":false" 'the prompt of a caller that gave up to close'
+wait_for "\"ev\":\"active\",\"id\":\"$last_id\"" 'the queue to move past a caller that gave up'
+send "{\"cmd\":\"cancel\",\"id\":\"$last_id\"}"
+wait "$last_pid" 2>/dev/null || true
+
+# Anything a caller sends after its request is not it leaving: the request
+# stays open and still gets its answer.
+mkfifo "$tmp/go" "$tmp/sent"
+python3 - "$sock" "$tmp/go" "$tmp/sent" > "$tmp/chatty.out" 9>&- <<'PY' &
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sys.argv[1])
+s.sendall(json.dumps({"prompt": "Password:", "command": "chatty"}).encode() + b"\n")
+open(sys.argv[2]).read()          # the test says when the request is on screen
+s.sendall(b"more\n")
+open(sys.argv[3], "w").write("sent\n")   # ...and hears when the bytes are out
+print(json.loads(s.makefile().readline()).get("secret", ""))
+PY
+chatty_pid=$!
+chatty_id=$(next_id)
+wait_for "\"ev\":\"active\",\"id\":\"$chatty_id\"" 'a caller that keeps talking to become active'
+echo go > "$tmp/go"
+read -r _ < "$tmp/sent"
+send "{\"cmd\":\"respond\",\"id\":\"$chatty_id\",\"secret\":\"hunter3\"}"
+wait "$chatty_pid" || true
+[[ $(cat "$tmp/chatty.out") == hunter3 ]] \
+  || fail "bytes after a request were taken for the caller leaving:
+$(cat "$out")"
 
 # --- 6c. a second daemon leaves the first one's socket alone -------------
 # A second shell, or a stray restart, starts another c7-authd. Taking over the
@@ -222,6 +257,13 @@ grep -q 'already serving' "$tmp/second.err" \
 "$authd" --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null 9>&-
 grep -q '"askpass":""' "$tmp/noaskpass.out" \
   || fail "--no-askpass still named a socket: $(cat "$tmp/noaskpass.out")"
+
+# A socket file nobody answers is left by a daemon that died: it is replaced.
+python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"
+"$authd" --no-polkit --socket "$tmp/stale.sock" < /dev/null > "$tmp/stale.out" 2> "$tmp/stale.err" 9>&-
+grep -qF "\"askpass\":\"$tmp/stale.sock\"" "$tmp/stale.out" \
+  || fail "a daemon did not take over a stale socket: $(cat "$tmp/stale.out") $(cat "$tmp/stale.err")"
+grep -q 'already serving' "$tmp/stale.err" && fail "a stale socket was taken for a live daemon: $(cat "$tmp/stale.err")"
 
 # --- 7. losing the shell releases every caller ----------------------------
 # The daemon is a child of qs. If qs dies while a prompt is up, sudo must be

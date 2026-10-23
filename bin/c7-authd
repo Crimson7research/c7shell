@@ -219,13 +219,18 @@ class Daemon:
         if req.closed:
             return
         req.closed = True
+        # Only the head is on screen. A queued request can close too -- its
+        # sudo caller gave up -- and re-activating the head then would tell the
+        # shell a new prompt had started, dropping the password being typed,
+        # and start a second PAM session for a polkit head.
+        was_head = self.head() is req
         if req in self.queue:
             self.queue.remove(req)
         self.emit(ev="close", id=req.id, ok=ok)
         if req.cookie:
             self.by_cookie.pop(req.cookie, None)
         head = self.head()
-        if head and not head.closed:
+        if was_head and head and not head.closed:
             self.activate(head)
 
     def find(self, req_id):
