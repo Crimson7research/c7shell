@@ -224,6 +224,28 @@ if ((EUID != 0)); then
     && fail "setup stopped on a paru.conf under a read-only ~/.config:\n$out"
   mkdir -p -- "$(dirname -- "$pc")"
 fi
+# Nor where ~/.config/paru is in the way: a dangling symlink to a dotfiles
+# directory not checked out yet, or a plain file (mode 755, so only "is it a
+# directory" tells it apart).
+for kind in symlink file; do
+  rm -rf -- "$(dirname -- "$pc")"
+  if [[ $kind == symlink ]]; then ln -s -- "$tmp/no-such-dotfiles" "$(dirname -- "$pc")"
+  else : > "$(dirname -- "$pc")"; chmod 755 "$(dirname -- "$pc")"; fi
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a paru.conf behind a $kind:\n$out"
+  grep -qE 'cannot create|File exists|Not a directory' <<<"$out" \
+    && fail "setup stopped on a paru.conf behind a $kind:\n$out"
+done
+rm -rf -- "$(dirname -- "$pc")"; mkdir -p -- "$(dirname -- "$pc")"
+# A new user file is setup's to append to, even when the system file it copies
+# is read-only.
+if ((EUID != 0)); then
+  rm -f -- "$pc"; cp -- "$sysconf" "$tmp/ro-paru.conf"; chmod 444 "$tmp/ro-paru.conf"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/ro-paru.conf "$setup" 2>&1) || true
+  grep -qx 'Sudo = run0' "$pc" && grep -qx 'BottomUp' "$pc" \
+    || fail "a copy of a read-only system paru.conf did not get Sudo and BottomUp:\n$out\n$(cat "$pc" 2>&1)"
+  rm -f -- "$pc"
+fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
 [[ $(cat "$XDG_CONFIG_HOME/xdg-desktop-portal/hyprland-portals.conf") == v1 ]] || fail 'portal config not installed'

@@ -389,10 +389,11 @@ has_bottomup() {
        opts && /^[[:space:]]*BottomUp[[:space:]]*(=.*)?$/ { found = 1 }
        END { exit !found }' "$1" 2>/dev/null
 }
-# The nearest directory on the way to paru.conf that is there already: where
-# setup would create paru/ or paru.conf.
+# The nearest path on the way to paru.conf that is there already, dangling
+# symlinks included: where setup would create paru/ or paru.conf. Anything but
+# a directory it can write into and search is in the way.
 pc_base=$pc_dir
-while [[ ! -e $pc_base && $pc_base != / ]]; do pc_base=$(dirname -- "$pc_base"); done
+while [[ ! -e $pc_base && ! -L $pc_base && $pc_base != / ]]; do pc_base=$(dirname -- "$pc_base"); done
 # A user file setup cannot read is one it cannot check, so every run would
 # append the same lines again. One it cannot write -- read-only, as in a
 # dotfiles store, a symlink to nothing yet, or not there yet where setup
@@ -404,7 +405,7 @@ if command -v paru >/dev/null; then
   if [[ -e $pc && ! -r $pc ]]; then
     printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]] \
-       || [[ ! -e $pc && -d $pc_base && ! ( -w $pc_base && -x $pc_base ) ]]; then
+       || [[ ! -e $pc && ! ( -d $pc_base && -w $pc_base && -x $pc_base ) ]]; then
     grep -qs "$paru_sudo_re" "$pc" && has_bottomup "$pc" \
       || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
@@ -417,7 +418,9 @@ if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   if ((dry)); then
     printf '  would: append [bin] Sudo = run0 to %s\n' "$pc"
   else
-    [[ -e $pc || ! -r $paru_sysconf ]] || cp -- "$paru_sysconf" "$pc"
+    # cat, not cp: the new file is the user's, writable, whatever the mode of
+    # the system file.
+    [[ -e $pc || ! -r $paru_sysconf ]] || cat -- "$paru_sysconf" > "$pc"
     printf '\n[bin]\nSudo = run0\n' >> "$pc"
   fi
 fi
