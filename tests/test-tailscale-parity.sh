@@ -57,7 +57,15 @@ in_plugin() { (cd "$plugin" && "$@"); }
 run_logged 'the stub self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test stub_selftest
 run_logged 'the view self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test view_selftest
 echo "PASS: the harness self-tests that need no reference pass on the stub"
-run_logged 'the mutation tool tests' in_plugin cargo test --locked -q -p mutate-cpp
+# The query and command-line tests run clang-query; without it the rest,
+# the baseline record's checks among them, still run.
+if command -v clang-query >/dev/null; then
+  run_logged 'the mutation tool tests' in_plugin cargo test --locked -q -p mutate-cpp
+else
+  echo 'SKIP: clang-query is not on PATH (package: clang); the mutation tool query and CLI tests were not run'
+  run_logged 'the mutation tool tests' in_plugin cargo test --locked -q -p mutate-cpp \
+    --lib --test baseline --test dump --test record --test run --test sites --test targets
+fi
 echo "PASS: the mutation tool's tests pass, and the baseline record holds every survivor's reason"
 
 sha=a38dbcae841a1134514f68cba8f5b98d4efddb68
