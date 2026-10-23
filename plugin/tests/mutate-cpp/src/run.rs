@@ -144,6 +144,15 @@ fn confirm(w: &Worker, step: &Step, detail: String) -> Result<Outcome, String> {
     }
 }
 
+/// The unmutated tree in `w` builds and passes every step: the kill suite
+/// is sound there, so a failure under a mutant is the mutant's.
+pub fn sanity(w: &Worker, p: &Pipeline) -> Result<(), String> {
+    match kill(w, p)? {
+        Outcome::Survived => Ok(()),
+        other => Err(format!("the unmutated tree in {} does not pass: {other:?}", w.tree.display())),
+    }
+}
+
 /// Runs every mutant `record` lacks, one worker per thread, saving the
 /// record at `path` after each. Returns how many ran; the first error stops
 /// every worker.

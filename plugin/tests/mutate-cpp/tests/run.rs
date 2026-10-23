@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use mutate_cpp::record::{Outcome, Record};
-use mutate_cpp::run::{run_all, run_mutant, Mutant, Pipeline, Step, Worker};
+use mutate_cpp::run::{run_all, run_mutant, sanity, Mutant, Pipeline, Step, Worker};
 
 /// A private directory, removed when dropped.
 struct Dir(PathBuf);
@@ -161,4 +161,14 @@ fn run_all_records_every_mutant_across_workers_and_resumes() {
     assert_eq!(outcomes.len(), 3);
     assert!(outcomes.contains(&("a.txt:19:4", &Outcome::Timeout { step: "slow".into() })));
     assert!(workers.iter().all(restored));
+}
+
+#[test]
+fn the_unmutated_tree_must_pass_every_step_before_any_mutant_runs() {
+    let d = Dir::new("sanity");
+    let w = worker(&d);
+    sanity(&w, &pipeline()).unwrap();
+    fs::write(w.tree.join("a.txt"), "check a != b\nlimit 3\n").unwrap();
+    let e = sanity(&w, &pipeline()).unwrap_err();
+    assert!(e.contains("fast") && e.contains("FAIL equality"), "{e}");
 }

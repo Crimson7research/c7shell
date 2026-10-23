@@ -55,8 +55,11 @@ fi
 
 gen=()
 if command -v ninja >/dev/null; then gen=(-G Ninja); fi
-if [[ ! -f $cache/out/CMakeCache.txt ]]; then
-  cmake -S "$cache/tree/plugin" -B "$cache/out" "${gen[@]}" -DCMAKE_BUILD_TYPE=Debug >&2
+# compile_commands.json is what plugin/tests/mutate-cpp reads the sources
+# with (#310); a build configured before it was exported is configured again.
+if [[ ! -f $cache/out/CMakeCache.txt || ! -f $cache/out/compile_commands.json ]]; then
+  cmake -S "$cache/tree/plugin" -B "$cache/out" "${gen[@]}" -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >&2
 fi
 cmake --build "$cache/out" --target c7 --parallel "$(nproc)" >&2
 
