@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "qml-11-exit-list-none-recommended-check",
+  "requirements": [
+    "R-QML-11"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With only `host-5` and `pentest-exit-node` (`nCCC1CNTRL`) seeded and the suggestion `nCCC1CNTRL`, `ts-exit-none` is checked and live, one `ts-exit-recommended` reads `pentest-exit-node`, and `ts-exit-row` shows exactly 2 rows titled by `displayName`, never `ip-172-31-0-10`",
+    "With the twin `nFFF1CNTRL` added, selecting `nCCC1CNTRL` checks exactly that row; `exitNodeActive` false and `exitNodeId` empty then leave no row checked",
+    "An unknown suggestion shows no recommended row or heading; the suggestion back to `nCCC1CNTRL` shows exactly one `ts-exit-recommended-label` again"
+  ],
+  "body": "qml_11_exit_list",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "write-09-toggle-after-disconnecting",
+  "requirements": [
+    "R-WRITE-09"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With `wantRunning` false, `state` `Stopped` and `writeError` empty after the disconnect, the toggle is enabled and unchecked, and toggling records `setWantRunning(true)`"
+  ],
+  "deferred": [
+    "the toggle enabled and unchecked, and toggling sending the opposite body: harness-on-cpp in #309"
+  ],
+  "body": "write_09_toggle_after_disconnect",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "qml-22-connect-toggle-follows-want-running",
+  "requirements": [
+    "R-QML-22"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Opening the panel live with `writable` true, `writeError` empty and `wantRunning` true, the toggle is enabled and checked, and stays checked through `Starting` and `NeedsLogin`",
+    "In `Running`, toggling records `setWantRunning(false)` and the toggle stays checked; with `wantRunning` false it is unchecked, and toggling records `setWantRunning(true)`",
+    "In `NoState` it is disabled and records nothing; live again with `wantRunning` true it is enabled and checked",
+    "After a 403 with `readError` empty it is disabled, records nothing, and `ts-connect-tip` contains `writeError`; with `writable` back it is enabled, the tip lacks the refusal, and toggling records exactly one call",
+    "`ts-connect-tip` reads `connect to the tailnet` live with `wantRunning` false, contains `a session reached over tailscale ends with it` with it true, and reads `tailscaled is not answering, so there is nothing to ask` in `NoState`"
+  ],
+  "deferred": [
+    "the backend half's exact PATCH counts and its \"until the fake reports\" negatives: cpp-suite, tests/tailscale-qml-test.qml::connectToggleChecks"
+  ],
+  "body": "qml_22_connect_toggle",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

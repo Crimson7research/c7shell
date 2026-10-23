@@ -2,7 +2,9 @@
 
 mod bar;
 mod devices;
+mod exit;
 mod panel;
+mod writes;
 
 use super::Body;
 
@@ -27,4 +29,12 @@ pub const ALL: &[(&str, Body)] = &[
     ("qml_13_device_search", devices::qml_13_device_search),
     ("qml_14_long_lists", devices::qml_14_long_lists),
     ("group_06_delegates_survive", devices::group_06_delegates_survive),
+    ("qml_11_exit_list", exit::qml_11_exit_list),
+    ("qml_17_rows_request_by_id", exit::qml_17_rows_request_by_id),
+    ("qml_18_lan_switch", exit::qml_18_lan_switch),
+    ("qml_19_exit_search", exit::qml_19_exit_search),
+    ("qml_20_dead_after_a_refusal", writes::qml_20_dead_after_a_refusal),
+    ("qml_21_settings", writes::qml_21_settings),
+    ("qml_22_connect_toggle", writes::qml_22_connect_toggle),
+    ("write_09_toggle_after_disconnect", writes::write_09_toggle_after_disconnect),
 ];

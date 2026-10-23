@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "qml-20-controls-dead-after-a-403",
+  "requirements": [
+    "R-QML-20"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "While `writable` is true and nothing is refused, `ts-exit-all-label` lacks `read-only`, no write-error line is shown, the switches are enabled and the rows hoverable",
+    "After a 403, `ts-exit-all-label` contains `read-only`, `ts-exit-write-error` and `ts-settings-write-error` contain `writeError` and `c7shell-bootstrap`, `ts-exit-row` shows exactly 3 rows, every exit row and the routes and DNS rows are dimmed and not hoverable, every switch is disabled, and clicks record nothing",
+    "With `writable` true and `writeError` empty again, the controls are live, the lines hidden, and clicks record calls",
+    "After a close before headers, `writable` stays true, `ts-settings-write-error` shows one line containing `writeError` and lacking `c7shell-bootstrap`, the switches stay enabled, and a click records a call"
+  ],
+  "deferred": [
+    "the backend half's exact PATCH counts and its \"until the fake reports\" negatives: cpp-suite, tests/tailscale-qml-test.qml::exitNodeControlChecks, tests/tailscale-qml-test.qml::panelChecks, tests/tailscale-qml-test.qml::settingsChecks"
+  ],
+  "body": "qml_20_dead_after_a_refusal",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

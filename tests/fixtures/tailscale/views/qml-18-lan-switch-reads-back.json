@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-18-lan-switch-reads-back",
+  "requirements": [
+    "R-QML-18"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With the pref true the switch is checked; a click records `setExitNodeAllowLANAccess(false)` and the switch stays checked until the stand-in reports false",
+    "With the pref false and the switch unchecked, a second click records `setExitNodeAllowLANAccess(true)`, and with the pref still false the switch stays unchecked"
+  ],
+  "deferred": [
+    "the backend half's exact PATCH counts and its \"until the fake reports\" negatives: cpp-suite, tests/tailscale-qml-test.qml::exitNodeControlChecks"
+  ],
+  "body": "qml_18_lan_switch",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
