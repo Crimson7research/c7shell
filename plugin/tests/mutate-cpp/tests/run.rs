@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use mutate_cpp::record::{Outcome, Record};
-use mutate_cpp::run::{restore, run_all, run_mutant, sanity, Mutant, Pipeline, Step, Worker};
+use mutate_cpp::run::{first_failure, restore, run_all, run_mutant, sanity, Mutant, Pipeline, Step, Worker};
 
 /// A private directory, removed when dropped.
 struct Dir(PathBuf);
@@ -186,4 +186,45 @@ fn restore_copies_each_file_back_from_the_reference_after_a_run_was_stopped() {
     assert!(restored(&w));
     assert!(restore(&w, &reference, &["a.txt"]).unwrap().is_empty(), "an unchanged file is left alone");
     assert!(restore(&w, &reference, &["missing.txt"]).is_err());
+}
+
+/// A pipeline whose one step hangs the first time it runs and passes after.
+fn hangs_once(marker: &Path) -> Pipeline {
+    Pipeline {
+        build: sh("true"),
+        build_timeout_s: 30,
+        steps: vec![Step {
+            name: "hangs".into(),
+            argv: sh(&format!("if [ ! -e {m} ]; then touch {m}; exec tail -f /dev/null; fi", m = marker.display())),
+            timeout_s: 1,
+        }],
+    }
+}
+
+#[test]
+fn a_step_that_times_out_once_and_then_passes_is_flaky_and_stops_the_run() {
+    let d = Dir::new("timeout-flaky");
+    let w = worker(&d);
+    let e = run_mutant(&w, &mutant(8, "==", "!="), &hangs_once(&d.0.join("hung-once"))).unwrap_err();
+    assert!(e.contains("flaky") && e.contains("timed out"), "{e}");
+    assert!(restored(&w));
+}
+
+#[test]
+fn a_build_past_its_timeout_is_an_error_not_a_mutant_left_out() {
+    let d = Dir::new("build-timeout");
+    let w = worker(&d);
+    let slow = Pipeline { build: sh("exec tail -f /dev/null"), build_timeout_s: 1, steps: Vec::new() };
+    let e = run_mutant(&w, &mutant(8, "==", "!="), &slow).unwrap_err();
+    assert!(e.contains("build") && e.contains("timed out"), "{e}");
+    assert!(restored(&w));
+}
+
+#[test]
+fn the_harness_fail_line_comes_before_any_other_marked_line() {
+    let text = "note: error: a log line the scenario printed\nFAIL http-08-a-300-fails (cpp-286: ...)\n";
+    assert_eq!(first_failure(text), "FAIL http-08-a-300-fails (cpp-286: ...)");
+    assert_eq!(first_failure("x\n1 (Failed)\nlast\n"), "1 (Failed)");
+    assert_eq!(first_failure("a\nb: error: c\n"), "b: error: c");
+    assert_eq!(first_failure("a\nlast\n"), "last");
 }

@@ -93,11 +93,15 @@ fn run(argv: &[String], w: &Worker, timeout_s: u64) -> Result<Ran, String> {
     }
 }
 
-/// The line that says what failed: the harness's `FAIL ...`, ctest's
-/// `(Failed)`, a compiler's `error:`, else the last line.
+/// The line that says what failed: the harness's first `FAIL ...`, else
+/// ctest's first `(Failed)`, else a compiler's first `error:`, else the last
+/// line. In that order of preference, so a log line that happens to carry
+/// `error:` never stands in for the test that failed.
 pub fn first_failure(text: &str) -> String {
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    let marked = lines.iter().find(|l| l.starts_with("FAIL") || l.contains("(Failed)") || l.contains("error:"));
+    let marks: [fn(&str) -> bool; 3] =
+        [|l| l.starts_with("FAIL"), |l| l.contains("(Failed)"), |l| l.contains("error:")];
+    let marked = marks.iter().find_map(|m| lines.iter().find(|l| m(l)));
     let line = marked.or(lines.last()).copied().unwrap_or("");
     line.chars().take(300).collect()
 }
@@ -122,25 +126,35 @@ fn kill(w: &Worker, p: &Pipeline) -> Result<Outcome, String> {
     match run(&p.build, w, p.build_timeout_s)? {
         Ran::Passed => {}
         Ran::Failed(detail) => return Ok(Outcome::BuildFailed { detail }),
-        Ran::TimedOut => return Ok(Outcome::BuildFailed { detail: "the build timed out".into() }),
+        // An error, not a mutant left out of the score: a build that runs
+        // out of time says something about the machine, not the mutant.
+        Ran::TimedOut => return Err(format!("the build timed out after {} s", p.build_timeout_s)),
     }
     for step in &p.steps {
         match run(&step.argv, w, step.timeout_s)? {
             Ran::Passed => {}
-            Ran::Failed(detail) => return confirm(w, step, detail),
-            Ran::TimedOut => return Ok(Outcome::Timeout { step: step.name.clone() }),
+            first => return confirm(w, step, first),
         }
     }
     Ok(Outcome::Survived)
 }
 
-/// A failed step runs again: a kill counts only when it fails both times.
-/// One that passes the second time is flaky, and an error: a kill under
-/// load that a quiet run does not repeat says nothing about the mutant.
-fn confirm(w: &Worker, step: &Step, detail: String) -> Result<Outcome, String> {
+/// A failed or timed-out step runs again: a kill counts only when it does
+/// not pass the second time either. One that passes is flaky, and an error:
+/// a kill under load, or a child the system killed (which `timeout` also
+/// reports as 137), that a quiet run does not repeat says nothing about the
+/// mutant. The first ending is the one recorded.
+fn confirm(w: &Worker, step: &Step, first: Ran) -> Result<Outcome, String> {
+    let what = match &first {
+        Ran::Failed(detail) => format!("failed once ({detail})"),
+        _ => format!("timed out once after {} s", step.timeout_s),
+    };
     match run(&step.argv, w, step.timeout_s)? {
-        Ran::Passed => Err(format!("step {} is flaky: it failed once ({detail}) and then passed", step.name)),
-        Ran::Failed(_) | Ran::TimedOut => Ok(Outcome::Killed { step: step.name.clone(), detail }),
+        Ran::Passed => Err(format!("step {} is flaky: it {what} and then passed", step.name)),
+        Ran::Failed(_) | Ran::TimedOut => Ok(match first {
+            Ran::Failed(detail) => Outcome::Killed { step: step.name.clone(), detail },
+            _ => Outcome::Timeout { step: step.name.clone() },
+        }),
     }
 }
 
