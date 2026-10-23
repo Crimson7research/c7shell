@@ -83,6 +83,14 @@ grep -qx 'Sudo = run0' "$pc" || fail "paru was not pointed at run0:\n$(cat "$pc"
 grep -qx 'C7TestMarker' "$pc" || fail "the new paru.conf dropped the system file's options:\n$(cat "$pc")"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 (($(grep -c '^Sudo' "$pc") == 1)) || fail "a rerun added a second paru Sudo line:\n$(cat "$pc")"
+# BottomUp lists AUR search results first, as Arch's own paru.conf does; a
+# system file without it still gets it, once, and paru reads it as an option.
+(($(grep -cx 'BottomUp' "$pc") == 1)) || fail "paru.conf lacks BottomUp, or has it twice:\n$(cat "$pc")"
+[[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc") == '[options]' ]] \
+  || fail "BottomUp is outside [options]:\n$(cat "$pc")"
+printf '[options]\n#BottomUp\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned back on:\n$(cat "$pc")"
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -q run0 "$pc" && fail "a paru Sudo the user chose was overwritten:\n$(cat "$pc")"
@@ -248,7 +256,7 @@ echo edited > "$un/conf/quickshell/c7shell/shell.qml"
 # Beside an edited file, a .new is what the user was told to merge.
 echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
 mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
-printf '[bin]\nSudo = run0\n' > "$un/conf/paru/paru.conf.keep"
+printf '[bin]\nSudo = run0\n\n[options]\nBottomUp\n' > "$un/conf/paru/paru.conf.keep"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
 # What the shell itself writes, and what an upgrade backs up per file: in no
@@ -300,6 +308,7 @@ grep -qF "$un/conf/gtk-3.0/settings.ini   (the theme export writes to it)" <<<"$
 grep -qF "$un/conf/gtk-4.0/settings.ini" <<<"$out" && fail "uninstall listed a settings.ini the export never wrote:\n$out"
 grep -qF "$un/conf/kcminputrc   (the theme export writes to it)" <<<"$out" || fail "uninstall did not list kcminputrc:\n$out"
 grep -qF "color-scheme setting, now 'prefer-dark'" <<<"$out" || fail "uninstall did not list the gsettings key:\n$out"
+grep -qF "BottomUp in $un/conf/paru/paru.conf" <<<"$out" || fail "uninstall did not list paru's BottomUp:\n$out"
 # Listed is all: the unmarked run0 lines are the user's to remove.
 cmp -s "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig" || fail 'uninstall changed arch-update.conf'
 cmp -s "$un/conf/paru/paru.conf" "$tmp/pc.orig" || fail 'uninstall changed paru.conf'
