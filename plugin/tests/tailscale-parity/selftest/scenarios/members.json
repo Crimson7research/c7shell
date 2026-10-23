@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "members",
+  "requirements": ["R-UI-02"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: an assign expect holds when assigning the member from QML throws because the member is read-only; it reports threw false for a writable member, and read_only false when the assignment throws for another reason, such as a value of the wrong type; a member_types expect holds when each member reads as its type and reports the type each read as when one does not"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "read-only", "assign": { "member": "wantRunning", "value": true } } },
+    { "expect": { "id": "kept-its-value", "contract": { "wantRunning": false } } },
+    { "expect": { "id": "writable", "assign": { "member": "writeError", "value": "x" } } },
+    { "expect": { "id": "wrong-type", "assign": { "member": "state", "value": "x" } } },
+    { "expect": { "id": "types", "member_types": {
+      "state": "number", "writeError": "string", "acceptRoutes": "boolean", "keyExpiry": "date",
+      "issues": "array", "peers": "model", "setAcceptRoutes": "function" } } },
+    { "expect": { "id": "wrong-member-type", "member_types": { "state": "string", "peers": "model" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "writable", "actual": { "threw": false, "read_only": false } },
+    { "id": "wrong-type", "actual": { "threw": true, "read_only": false } },
+    { "id": "wrong-member-type", "actual": { "state": "number", "peers": "model" } }
+  ], "reason": "self-test" } }
+}

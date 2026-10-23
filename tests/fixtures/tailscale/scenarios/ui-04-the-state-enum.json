@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "ui-04-the-state-enum",
+  "requirements": ["R-UI-04"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Tailscale.NoState to Tailscale.Running evaluate to 0 to 5 in that order (NoState, NeedsMachineAuth, NeedsLogin, Stopped, Starting, Running)",
+    "A fresh backend, read right after the driver loads and before the event loop has run, reports state 0, NoState"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "fresh-is-no-state", "contract": { "state": 0 } } },
+    { "expect": { "id": "values", "contract": {
+      "NoState": 0, "NeedsMachineAuth": 1, "NeedsLogin": 2, "Stopped": 3, "Starting": 4, "Running": 5 } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

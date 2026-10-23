@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "kept-values",
+  "requirements": ["R-CONN-03"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a keep step stores a member's value; a kept distinct expect holds when the kept values differ pairwise and reports them by label when they do not; a kept same expect holds while the member is still the kept object, and reports false when it is not. A list or a date is compared by value, not by the JS object each read makes, so two reads of an unchanged list are the same and not distinct"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "keep": { "label": "w0", "member": "writeError" } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "keep": { "label": "w1", "member": "writeError" } },
+    { "call": { "name": "setAcceptRoutes", "args": [false] } },
+    { "keep": { "label": "w2", "member": "writeError" } },
+    { "call": { "name": "setAcceptRoutes", "args": [false] } },
+    { "keep": { "label": "w3", "member": "writeError" } },
+    { "keep": { "label": "peers-before", "member": "peers" } },
+    { "keep": { "label": "issues-1", "member": "issues" } },
+    { "keep": { "label": "issues-2", "member": "issues" } },
+    { "keep": { "label": "expiry", "member": "keyExpiry" } },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "expect": { "id": "three-differ", "kept": { "distinct": ["w0", "w1", "w2"] } } },
+    { "expect": { "id": "same-peers", "kept": { "same": "peers-before", "as": "peers" } } },
+    { "expect": { "id": "repeat", "kept": { "distinct": ["w1", "w2", "w3"] } } },
+    { "expect": { "id": "not-same", "kept": { "same": "w0", "as": "writeError" } } },
+    { "expect": { "id": "other-model", "kept": { "same": "peers-before", "as": "exitNodes" } } },
+    { "expect": { "id": "same-list", "kept": { "same": "issues-1", "as": "issues" } } },
+    { "expect": { "id": "same-date", "kept": { "same": "expiry", "as": "keyExpiry" } } },
+    { "expect": { "id": "equal-lists", "kept": { "distinct": ["issues-1", "issues-2"] } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [
+    { "id": "repeat", "actual": { "w1": "set true", "w2": "set false", "w3": "set false" } },
+    { "id": "not-same", "actual": false },
+    { "id": "other-model", "actual": false },
+    { "id": "equal-lists", "actual": { "issues-1": [], "issues-2": [] } }
+  ], "reason": "self-test" } }
+}

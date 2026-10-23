@@ -256,10 +256,9 @@ fn scenarios_agree_with_the_evidence() {
     }
 }
 
-/// Every requirement #307 runs on a38dbca is named by a scenario or a
-/// corpus case.
-#[test]
-fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
+/// The requirements Phase 2 PR `pr` runs on a38dbca, by an entry or a
+/// deferred clause, that no committed scenario or corpus case names.
+fn not_run_by_a_test(pr: u32) -> Vec<String> {
     let ev = loaded();
     let fixtures = repo().join("tests/fixtures/tailscale");
     let mut named = BTreeSet::new();
@@ -271,13 +270,27 @@ fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
     }
     let cases = Case::load_dir(&fixtures.join("corpus"), fake_tailscaled::scenario::IMPLEMENTATIONS).unwrap();
     named.extend(cases.into_iter().flat_map(|c| c.requirements));
-    let runs_in_307 = |r: &&evidence::Entry| {
-        (r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(307))
-            || r.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp && d.pr == Some(307))
+    let runs_in = |r: &&evidence::Entry| {
+        (r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(pr))
+            || r.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp && d.pr == Some(pr))
     };
-    let missing: Vec<&str> =
-        ev.requirements.iter().filter(runs_in_307).map(|r| r.id.as_str()).filter(|id| !named.contains(*id)).collect();
+    ev.requirements.iter().filter(runs_in).map(|r| r.id.clone()).filter(|id| !named.contains(id)).collect()
+}
+
+/// Every requirement #307 runs on a38dbca is named by a scenario or a
+/// corpus case.
+#[test]
+fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
+    let missing = not_run_by_a_test(307);
     assert!(missing.is_empty(), "assigned to #307, but no scenario or corpus case runs: {missing:?}");
+}
+
+/// Every requirement #308 runs on a38dbca, R-FAKE-03's backend half
+/// included, is named by a scenario.
+#[test]
+fn every_requirement_of_308_has_a_scenario() {
+    let missing = not_run_by_a_test(308);
+    assert!(missing.is_empty(), "assigned to #308, but no scenario runs: {missing:?}");
 }
 
 #[test]
@@ -331,15 +344,16 @@ fn tests_by_requirement() -> (BTreeMap<String, BTreeSet<String>>, BTreeMap<Strin
     (scenarios, corpus)
 }
 
-/// Table C lists every R-HTTP, R-PARSE and R-GROUP requirement once, in
-/// order, with its evidence class and exactly the scenarios and corpus
+/// Table C lists every requirement of the areas #307 and #308 run (R-HTTP,
+/// R-PARSE, R-GROUP, R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC and R-BOOT) once,
+/// in order, with its evidence class and exactly the scenarios and corpus
 /// cases that name it.
 #[test]
-fn table_c_lists_the_harness_tests_of_each_http_parse_and_group_requirement() {
+fn table_c_lists_the_harness_tests_of_each_requirement_of_its_areas() {
     let ev = loaded();
     let (scenarios, corpus) = tests_by_requirement();
     let empty = BTreeSet::new();
-    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-"];
+    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-", "R-WATCH-", "R-CONN-", "R-WRITE-", "R-UI-", "R-SEC-", "R-BOOT-"];
     let want: Vec<evidence::HarnessRow> = ev
         .requirements
         .iter()

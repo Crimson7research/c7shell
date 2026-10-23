@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "write-05-repeats-are-sent",
+  "requirements": ["R-WRITE-05"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With acceptDns true (prefs.json's CorpDNS), calling setAcceptDns(true) twice, the fake answering each PATCH 200, records two PATCHes, each with the body {\"CorpDNS\":true,\"CorpDNSSet\":true}: a repeat of a value already in effect is still sent"
+  ],
+  "deferred": [
+    "\"exactly two\" since the first call: phase3-only, an exact count after the barriers; #286 has no test of it"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "dns-on", "precondition": true, "contract": { "acceptDns": true } } },
+    { "call": { "name": "setAcceptDns", "args": [true] } },
+    { "call": { "name": "setAcceptDns", "args": [true] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 2 } } },
+    { "expect": { "id": "both-sent", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "body_json": { "CorpDNS": true, "CorpDNSSet": true } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

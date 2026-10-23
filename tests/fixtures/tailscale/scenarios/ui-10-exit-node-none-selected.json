@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "ui-10-exit-node-none-selected",
+  "requirements": ["R-UI-10"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The same status with no ExitNodeID in prefs (none selected): once Running is published, exitNodeId and exitNodeName are exactly empty and exitNodeOnline is false"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "Peer": {"k1": {"ID": "nABC123CNTRL", "HostName": "relay", "DNSName": "relay.example.ts.net.", "ExitNodeOption": true}, "k2": {"ID": "nDEF456CNTRL", "HostName": "relay", "DNSName": "relay-1.example.ts.net.", "ExitNodeOption": true}}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": {"WantRunning": true} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "none", "contract": { "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": false } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

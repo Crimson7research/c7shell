@@ -11,7 +11,11 @@
 // {"op": "has_children", "name", "row"} and {"op": "data", "name", "row",
 // "role"} (row null for the root; role a name or "#<number>"), and
 // {"op": "distinct", "name", "other"}, whether two model members are
-// different objects.
+// different objects; {"op": "keep", "label", "name"} stores a member's
+// value, {"op": "kept_distinct", "labels"} says whether the kept values
+// differ pairwise, with each by label, and {"op": "kept_same", "label",
+// "name"} whether a kept value is still the member's (`===`: a string by
+// value, an object by identity).
 // The answer is {"value": ...} or {"error": "..."}.
 import QtQml
 import QtQml.Models
@@ -23,6 +27,17 @@ QtObject {
 
     // Signal name -> times fired since the driver loaded.
     property var counts: ({})
+
+    // Keep label -> the member's value when it was kept.
+    property var kept: ({})
+
+    // The members read inside every counted signal's handler, and each
+    // firing read since, in order.
+    property var watched: []
+    property var firings: []
+
+    // Tailscale's objectName before singleton_here named it.
+    property string savedName: ""
 
     // Model member name -> a DelegateModel over it. QAbstractItemModel's
     // roleNames() is not invokable from QML, so a role named in a scenario
@@ -64,7 +79,24 @@ QtObject {
 
     function count(name, s) {
         root.counts[name] = 0;
-        s.connect(function () { root.counts[name] += 1; });
+        s.connect(function () {
+            root.counts[name] += 1;
+            if (root.watched.length === 0)
+                return;
+            const values = {};
+            for (const m of root.watched)
+                values[m] = encode(Tailscale[m]);
+            root.firings.push({ "signal": name, "values": values });
+        });
+    }
+
+    // Whether two kept or read values are the same: a model by identity,
+    // anything else by value, since each read of a list or a date makes a
+    // new JS object.
+    function same(a, b) {
+        if (isModel(a) || isModel(b))
+            return a === b;
+        return JSON.stringify(encode(a)) === JSON.stringify(encode(b));
     }
 
     function isModel(v) {
@@ -140,6 +172,66 @@ QtObject {
             return data(c.name, c.row, c.role);
         case "distinct":
             return model(c.name) !== model(c.other);
+        case "keep":
+            root.kept[c.label] = member(c.name);
+            return null;
+        case "kept_distinct": {
+            const values = {};
+            let distinct = true;
+            c.labels.forEach(function (a, i) {
+                values[a] = encode(root.kept[a]);
+                c.labels.slice(i + 1).forEach(function (b) { distinct = distinct && !root.same(root.kept[a], root.kept[b]); });
+            });
+            return { "distinct": distinct, "values": values };
+        }
+        case "kept_same":
+            return root.same(root.kept[c.label], member(c.name));
+        case "watch_handlers":
+            c.names.forEach(member);
+            root.watched = c.names;
+            return null;
+        case "firings":
+            return c.from === undefined ? root.firings.length : root.firings.slice(c.from);
+        case "assign": {
+            member(c.name);
+            try {
+                Tailscale[c.name] = c.value;
+            } catch (e) {
+                // Only a read-only member counts, not a value of the
+                // wrong type, which throws too.
+                return { "threw": true, "read_only": /read-only/.test(String(e)), "error": String(e) };
+            }
+            return { "threw": false, "read_only": false };
+        }
+        case "type": {
+            const v = member(c.name);
+            if (v instanceof Date)
+                return "date";
+            if (isModel(v))
+                return "model";
+            if (v !== null && typeof v === "object" && typeof v.length === "number")
+                return "array";
+            return v === null ? "null" : typeof v;
+        }
+        case "singleton_here": {
+            root.savedName = Tailscale.objectName;
+            Tailscale.objectName = "c7-harness-first-engine";
+            let o = null;
+            try {
+                o = Qt.createQmlObject("import QtQml; import C7; QtObject { property var t: Tailscale }", root);
+                return o.t === Tailscale;
+            } catch (e) {
+                // singleton_done is never sent after an error.
+                Tailscale.objectName = root.savedName;
+                throw e;
+            } finally {
+                if (o !== null)
+                    o.destroy();
+            }
+        }
+        case "singleton_done":
+            Tailscale.objectName = root.savedName;
+            return null;
         case "members": {
             const names = [];
             for (const k in Tailscale)

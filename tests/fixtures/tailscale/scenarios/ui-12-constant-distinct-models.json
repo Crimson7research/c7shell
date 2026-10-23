@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "id": "ui-12-constant-distinct-models",
+  "requirements": ["R-UI-12"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Given peers laptop and c7-exit-ams, only the second an exit option, peers has 2 rows and exitNodes 1, and the two are different objects",
+    "Both are the same objects before and after an update: a notification brings the same peers with laptop offline in another tailnet, and once that tailnet is published peers and exitNodes are still the objects kept before it"
+  ],
+  "deferred": [
+    "both properties are constant: the CONSTANT flag is not reachable through QML: cpp-suite, tst_module.cpp::tailscaleSingletonLoadsAndStaysInNoState, tst_tailscalebackend.cpp::bothCollectionsAreStableRowModels"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true}, "Peer": {"nodekey:laptop": {"ID": "nLAPTOPCNTRL", "HostName": "laptop", "DNSName": "laptop.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": true}, "nodekey:ams": {"ID": "nAMSCNTRL", "HostName": "c7-exit-ams", "DNSName": "c7-exit-ams.example.ts.net.", "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": true}}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.net"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true}, "Peer": {"nodekey:laptop": {"ID": "nLAPTOPCNTRL", "HostName": "laptop", "DNSName": "laptop.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": false}, "nodekey:ams": {"ID": "nAMSCNTRL", "HostName": "c7-exit-ams", "DNSName": "c7-exit-ams.example.ts.net.", "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": true}}} } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "two-peers", "model": { "name": "peers", "count": 2 } } },
+    { "expect": { "id": "one-exit-node", "model": { "name": "exitNodes", "count": 1 } } },
+    { "expect": { "id": "distinct", "model": { "name": "exitNodes", "distinct_from": "peers" } } },
+    { "keep": { "label": "peers-before", "member": "peers" } },
+    { "keep": { "label": "exit-nodes-before", "member": "exitNodes" } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "tailnet": "example.net" } } },
+    { "expect": { "id": "same-peers", "kept": { "same": "peers-before", "as": "peers" } } },
+    { "expect": { "id": "same-exit-nodes", "kept": { "same": "exit-nodes-before", "as": "exitNodes" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

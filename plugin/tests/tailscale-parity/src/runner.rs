@@ -293,6 +293,7 @@ fn run_child(path: &Path, qml: &Path, socket: &Path) -> Outcome {
         contract: Contract::new(),
         failing: Vec::new(),
         marks: BTreeMap::new(),
+        mark_firings: BTreeMap::new(),
     };
     let result = scenario.steps.iter().enumerate().try_for_each(|(i, step)| {
         run.step(step).map_err(|e| format!("steps[{i}]: {e}"))?;

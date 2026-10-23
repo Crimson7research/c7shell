@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "write-02-set-exit-node-empty",
+  "requirements": ["R-WRITE-02", "R-WRITE-03"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "setExitNode(\"\"), called by name once the backend is Running, sends one PATCH the fake answers 200: its request line starts with `PATCH /localapi/v0/prefs HTTP/1.1` and its JSON body equals {\"ExitNodeID\": \"\", \"ExitNodeIDSet\": true}, with Host and a Content-Length of the body's length",
+    "R-WRITE-03: setExitNode(\"\") sends ExitNodeID \"\", which clears the selection"
+  ],
+  "deferred": [
+    "R-WRITE-02: exactly one PATCH since the call: cpp-suite, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling, tst_localapitailscalebackend.cpp::writesThePrefAndItsSetSibling_data",
+    "R-WRITE-03: exactly one PATCH since the call: cpp-suite, tst_localapitailscalebackend.cpp::selectsAnExitNodeByIdNotByIp"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setExitNode", "args": [""] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" } } } },
+    { "expect": { "id": "patch", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "headers": [["Host", "local-tailscaled.sock"]],
+      "body_json": {"ExitNodeID": "", "ExitNodeIDSet": true} } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

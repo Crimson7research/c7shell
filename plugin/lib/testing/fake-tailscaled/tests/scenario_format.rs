@@ -7,107 +7,8 @@ use std::path::{Path, PathBuf};
 
 use fake_tailscaled::scenario::{Capability, Scenario};
 use serde_json::{json, Value};
+use support::scenario::{assert_names, full, load, rejected, timed, with_steps};
 use support::TestDir;
-
-/// A scenario that uses every step and expect kind that needs no
-/// capability.
-fn full() -> Value {
-    json!({
-        "format": 1,
-        "id": "full",
-        "requirements": ["R-HTTP-09"],
-        "tag": "fix",
-        "evidence": "harness-on-cpp",
-        "clauses": ["every step and expect kind"],
-        "deferred": ["nothing"],
-        "needs": [],
-        "fake": { "rules": [
-            { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" }, "stream": { "framing": "chunked" } },
-            { "match": { "method": "GET", "path": "/localapi/v0/status" }, "times": 1,
-              "reply": { "status": 200, "body": { "json": { "BackendState": "Running" } },
-                         "split": [{ "at": 10, "await": "rest" }] } },
-            { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "hold": true }
-        ] },
-        "steps": [
-            { "start": {} },
-            { "call": { "name": "setAcceptRoutes", "args": [true] } },
-            { "wait": { "contract": { "state": { "enum": "Running" } } } },
-            { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1 } } },
-            { "wait": { "fake": { "connected": 1 } } },
-            { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 1 } } },
-            { "wait": { "fake": { "held": 1 } } },
-            { "fake": { "push_line": "x" } },
-            { "fake": { "push_chunk": { "hex": "ff" } } },
-            { "fake": { "push_watch_line": "{}" } },
-            { "fake": { "hold_next": "/status " } },
-            { "fake": { "complete_held": { "status": 403, "body": "no" } } },
-            { "fake": { "resume": "rest" } },
-            { "fake": { "close_client": { "holding": "/localapi/v0/prefs" } } },
-            { "fake": { "close_client": { "stream": true } } },
-            { "fake": { "close_client": { "index": 2 } } },
-            { "expect": { "id": "patch-sent", "precondition": true,
-                          "requests": { "match": { "method": "PATCH", "path": "/localapi/v0/prefs" }, "count": 1 } } },
-            { "expect": { "id": "error", "contract": { "writeError": "x" } } },
-            { "expect": { "id": "expiry", "contract": { "keyExpiry": { "date": null } } } },
-            { "expect": { "id": "expiry-set", "contract": { "keyExpiry": { "date": "2027-04-11T09:06:08.000Z" } } } },
-            { "expect": { "id": "signal", "signal": { "name": "stateChanged", "count": 0 } } },
-            { "expect": { "id": "bytes", "request": { "match": { "method": "GET", "target": "/localapi/v0/status" },
-                                                      "raw": "GET /localapi/v0/status HTTP/1.1\r\n\r\n" } } }
-        ],
-        "on": {
-            "cpp-286": { "result": "fail", "failing": [{ "id": "error", "actual": "y" }], "reason": "a defect" },
-            "rust": { "result": "pass" }
-        }
-    })
-}
-
-/// A scenario that uses every capability step: it cannot run on either
-/// implementation yet.
-fn timed() -> Value {
-    json!({
-        "format": 1,
-        "id": "timed",
-        "requirements": ["R-CONN-13"],
-        "tag": "fix",
-        "evidence": "phase3-only",
-        "clauses": ["the probe"],
-        "needs": ["clock", "read-barrier", "idle-barrier", "retry-hook"],
-        "fake": { "rules": [] },
-        "steps": [
-            { "start": {} },
-            { "advance_ms": 30000 },
-            { "barrier": "read" },
-            { "barrier": "idle" },
-            { "barrier": "retry" },
-            { "expect": { "id": "state", "contract": { "state": { "enum": "NoState" } } } }
-        ],
-        "on": {
-            "cpp-286": { "result": "cannot-run", "reason": "no clock" },
-            "rust": { "result": "cannot-run", "reason": "Phase 3 adds the clock" }
-        }
-    })
-}
-
-/// Writes `value` as `<stem>.json` in `dir` and loads it.
-fn load(dir: &TestDir, stem: &str, value: &Value) -> Result<Scenario, String> {
-    let path = dir.join(format!("{stem}.json"));
-    std::fs::write(&path, serde_json::to_string_pretty(value).unwrap()).unwrap();
-    Scenario::load(&path)
-}
-
-/// Loads `value` under its own id and returns the error.
-fn rejected(value: Value) -> String {
-    let dir = TestDir::new();
-    let stem = value["id"].as_str().unwrap_or("x").to_string();
-    match load(&dir, &stem, &value) {
-        Ok(_) => panic!("accepted: {value}"),
-        Err(e) => e,
-    }
-}
-
-fn assert_names(error: &str, field: &str) {
-    assert!(error.contains(field), "the error does not name `{field}`: {error}");
-}
 
 #[test]
 fn it_accepts_every_step_and_expect_kind() {
@@ -424,13 +325,6 @@ fn it_rejects_an_array_holding_a_value_it_cannot_compare() {
     assert_names(&rejected(v), "steps[2].wait.contract.issues");
 }
 
-/// `full()` with `steps` appended.
-fn with_steps(steps: Value) -> Value {
-    let mut v = full();
-    v["steps"].as_array_mut().unwrap().extend(steps.as_array().unwrap().iter().cloned());
-    v
-}
-
 /// `full()` with one model expectation `query` appended, as `steps[22]`.
 fn with_model_expect(query: Value) -> Value {
     with_steps(json!([{ "expect": { "id": "model", "model": query } }]))
@@ -555,7 +449,7 @@ fn it_accepts_undefined_only_as_true() {
 fn it_rejects_an_expect_with_a_model_and_another_kind() {
     let e = rejected(with_steps(json!([{ "expect": { "id": "two", "model": { "name": "peers", "count": 0 },
                                                        "signal": { "name": "stateChanged", "count": 0 } } }])));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 /// Writes `value` as `<root>/scenarios/<stem>.json`, so `{"file": ...}`
@@ -648,7 +542,7 @@ fn it_rejects_request_parts_with_a_bad_match_an_empty_header_name_or_another_kin
         json!([{ "expect": { "id": "two", "requests": { "match": { "method": "GET", "target": "/a" }, "count": 1 },
         "request_parts": { "match": { "method": "GET", "target": "/a" }, "starts_with": "GET " } } }]),
     ));
-    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests and model");
+    assert_names(&e, "exactly one of contract, signal, request, request_parts, requests, model, kept, handlers, assign, member_types and singleton");
 }
 
 #[test]
@@ -701,4 +595,29 @@ fn it_rejects_a_signal_wait_since_no_earlier_mark() {
     let e = rejected(with_steps(json!([wait, { "mark": "later" }])));
     assert_names(&e, "steps[22].wait");
     assert_names(&e, "no earlier mark `later`");
+}
+
+#[test]
+fn it_accepts_a_string_matcher_in_a_wait_and_an_expect() {
+    let mut v = full();
+    v["steps"][2]["wait"]["contract"] = json!({ "readError": { "non_empty": true } });
+    v["steps"][17]["expect"]["contract"] =
+        json!({ "writeError": { "contains": "403" }, "issues": [{ "contains": "DNS" }] });
+    let dir = TestDir::new();
+    load(&dir, "full", &v).unwrap();
+}
+
+#[test]
+fn it_rejects_a_string_matcher_it_cannot_apply() {
+    for (matcher, named) in [
+        (json!({ "non_empty": false }), "non_empty"),
+        (json!({ "contains": 403 }), "contains"),
+        (json!({ "contains": "" }), "contains"),
+    ] {
+        let mut v = full();
+        v["steps"][17]["expect"]["contract"] = json!({ "writeError": matcher });
+        let e = rejected(v);
+        assert_names(&e, "steps[17].expect `error`: contract.writeError");
+        assert_names(&e, named);
+    }
 }

@@ -11,6 +11,24 @@ use serde_json::{json, Value};
 
 use crate::probe;
 
+/// Whether `got`, as the driver read it, matches the resolved scenario
+/// value `want`: `{"non_empty": true}` a non-empty string,
+/// `{"contains": text}` a string holding `text`, an array element by
+/// element, anything else by equality.
+pub fn matches(got: &Value, want: &Value) -> bool {
+    match (got, want) {
+        (Value::Array(g), Value::Array(w)) => g.len() == w.len() && g.iter().zip(w).all(|(g, w)| matches(g, w)),
+        (_, Value::Object(m)) if m.len() == 1 && (m.contains_key("non_empty") || m.contains_key("contains")) => {
+            let Some(text) = got.as_str() else { return false };
+            match m.get("contains").and_then(Value::as_str) {
+                Some(part) => text.contains(part),
+                None => !text.is_empty(),
+            }
+        }
+        _ => got == want,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Contract;
 
@@ -92,6 +110,79 @@ impl Contract {
     pub fn models_distinct(&self, name: &str, other: &str) -> Result<bool, String> {
         let v = self.request(json!({ "op": "distinct", "name": name, "other": other }))?;
         v.as_bool().ok_or_else(|| format!("distinct of {name} and {other} is {v}"))
+    }
+
+    /// Stores member `name`'s value in the driver under `label`.
+    pub fn keep(&self, label: &str, name: &str) -> Result<(), String> {
+        self.request(json!({ "op": "keep", "label": label, "name": name })).map(drop)
+    }
+
+    /// Whether the values kept under `labels` differ pairwise, and each
+    /// value by label.
+    pub fn kept_distinct(&self, labels: &[String]) -> Result<(bool, Value), String> {
+        let v = self.request(json!({ "op": "kept_distinct", "labels": labels }))?;
+        match (v.get("distinct").and_then(Value::as_bool), v.get("values")) {
+            (Some(d), Some(values)) => Ok((d, values.clone())),
+            _ => Err(format!("kept_distinct answered {v}")),
+        }
+    }
+
+    /// Whether the value kept under `label` is still member `name`'s.
+    pub fn kept_same(&self, label: &str, name: &str) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "kept_same", "label": label, "name": name }))?;
+        v.as_bool().ok_or_else(|| format!("kept_same of {label} and {name} is {v}"))
+    }
+
+    /// From now on, the driver reads members `names` inside every counted
+    /// signal's handler.
+    pub fn watch_handlers(&self, names: &[String]) -> Result<(), String> {
+        self.request(json!({ "op": "watch_handlers", "names": names })).map(drop)
+    }
+
+    /// How many handler firings the driver has read.
+    pub fn firing_count(&self) -> Result<usize, String> {
+        let v = self.request(json!({ "op": "firings" }))?;
+        v.as_u64().map(|n| n as usize).ok_or_else(|| format!("the firing count is {v}"))
+    }
+
+    /// Each firing read from index `from` on, as `(signal, values)`.
+    pub fn firings(&self, from: usize) -> Result<Vec<(String, Value)>, String> {
+        let v = self.request(json!({ "op": "firings", "from": from }))?;
+        let list = v.as_array().ok_or_else(|| format!("the firings are {v}"))?;
+        list.iter()
+            .map(|f| match (f.get("signal").and_then(Value::as_str), f.get("values")) {
+                (Some(s), Some(values)) => Ok((s.to_string(), values.clone())),
+                _ => Err(format!("a firing reads {f}")),
+            })
+            .collect()
+    }
+
+    /// Assigns `value` to member `name` from QML: whether that threw,
+    /// whether it threw because the member is read-only, and with what.
+    pub fn assign(&self, name: &str, value: &Value) -> Result<(bool, bool, Option<String>), String> {
+        let v = self.request(json!({ "op": "assign", "name": name, "value": value }))?;
+        let flag = |k: &str| v.get(k).and_then(Value::as_bool).ok_or_else(|| format!("assign answered {v}"));
+        Ok((flag("threw")?, flag("read_only")?, v.get("error").and_then(Value::as_str).map(str::to_string)))
+    }
+
+    /// The type member `name` reads as: number, string, boolean, date,
+    /// array, model, function (a method or a signal), or what `typeof` says
+    /// of anything else.
+    pub fn member_type(&self, name: &str) -> Result<String, String> {
+        let v = self.request(json!({ "op": "type", "name": name }))?;
+        v.as_str().map(str::to_string).ok_or_else(|| format!("the type of {name} is {v}"))
+    }
+
+    /// Names `Tailscale` for a second engine to recognise, and says whether
+    /// a second component of the driver's engine resolves the same object.
+    pub fn singleton_here(&self) -> Result<bool, String> {
+        let v = self.request(json!({ "op": "singleton_here" }))?;
+        v.as_bool().ok_or_else(|| format!("singleton_here answered {v}"))
+    }
+
+    /// Gives `Tailscale` back the name it had before [`Contract::singleton_here`].
+    pub fn singleton_done(&self) -> Result<(), String> {
+        self.request(json!({ "op": "singleton_done" })).map(drop)
     }
 
     /// Every member name QML enumerates on `Tailscale`.

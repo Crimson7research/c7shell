@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "id": "watch-14-prefs-selection-fails-closed",
+  "requirements": ["R-WATCH-14"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The idle status (no ExitNodeStatus) with prefs ExitNodeID nEwJFIats021CNTRL reaches Running and yields exitNodeActive true, exitNodeOnline false, exitNodeBlocked true, exitNodeId that id and exitNodeName that peer's name, pentest-exit-node",
+    "The fake then serves prefs without ExitNodeID and pushes {\"Prefs\":{}}: once exitNodeActive reads false, exitNodeBlocked reads false and exitNodeId and exitNodeName read empty"
+  ],
+  "deferred": [
+    "each of the four change signals fired exactly once since the push: cpp-suite, tst_localapitailscalebackend.cpp::clearsTheBlockWhenPrefsStopsSelectingAnExitNode, tst_localapitailscalebackend.cpp::doesNotReportBlockedWhileTheExitNodeAnswers, tst_localapitailscalebackend.cpp::failsClosedWhenPrefsSelectsAnExitNodeTheStatusHasNotResolved, tst_localapitailscalebackend.cpp::reportsTheBlockedStateWhenTheExitNodeIsOffline"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" }, "times": 1,
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true, "ExitNodeID": "nEwJFIats021CNTRL" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": { "WantRunning": true } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "selected-and-unresolved", "contract": {
+      "exitNodeActive": true, "exitNodeOnline": false, "exitNodeBlocked": true,
+      "exitNodeId": "nEwJFIats021CNTRL", "exitNodeName": "pentest-exit-node" } } },
+    { "expect": { "id": "one-prefs-so-far", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/prefs" }, "count": 1 } } },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "contract": { "exitNodeActive": false } } },
+    { "expect": { "id": "cleared", "contract": { "exitNodeBlocked": false, "exitNodeId": "", "exitNodeName": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

@@ -9,6 +9,8 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+pub mod scenario;
+
 pub use fake_tailscaled::FAILURE_BOUND;
 
 /// A private directory (mode 0700) under the temporary directory, removed

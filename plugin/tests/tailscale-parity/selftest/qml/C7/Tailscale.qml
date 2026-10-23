@@ -10,6 +10,10 @@ QtObject {
     property string writeError: ""
     property bool acceptRoutes: false
     property list<string> issues: []
+    // Read-only, as every #286 property is, and a date, for the member
+    // self-tests.
+    readonly property bool wantRunning: false
+    readonly property date keyExpiry: new Date(0)
     // Two models, as #286's peers and exitNodes are. ListModel numbers its
     // roles from 0; exitNodes has one, so its role 0 is hostName.
     property ListModel peers: ListModel {

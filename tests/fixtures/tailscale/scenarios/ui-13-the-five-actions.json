@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "id": "ui-13-the-five-actions",
+  "requirements": ["R-UI-13"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The five actions of #286 are among the members QML enumerates on Tailscale, each a function: setWantRunning, setExitNode, setExitNodeAllowLANAccess, setAcceptRoutes and setAcceptDns",
+    "Each is callable by name with an argument of its type: the five calls send five PATCHes, which the fake records. #286 meets this clause of the fix requirement, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the exact set of seven, and `login()` and `setAdvertiseExitNode(bool)`: phase3-only, they name the two invokables #286 lacks",
+    "the test-only fake's recorded calls: phase3-only, the test-only fake is not in the shipped module"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "expect": { "id": "five-functions", "member_types": {
+      "setWantRunning": "function", "setExitNode": "function", "setExitNodeAllowLANAccess": "function",
+      "setAcceptRoutes": "function", "setAcceptDns": "function" } } },
+    { "call": { "name": "setWantRunning", "args": [true] } },
+    { "call": { "name": "setExitNode", "args": ["nABC123CNTRL"] } },
+    { "call": { "name": "setExitNodeAllowLANAccess", "args": [true] } },
+    { "call": { "name": "setAcceptRoutes", "args": [false] } },
+    { "call": { "name": "setAcceptDns", "args": [true] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" }, "count": 5 } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

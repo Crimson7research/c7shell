@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "id": "ui-15-3-error-online",
+  "requirements": [
+    "R-UI-15"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "The backend half, staging 3 of the table: captures/status-idle.json plus the health entry DNS is not working reads state Running, issueCount 1 (issues exactly [DNS is not working]), exitNodeActive false, exitNodeOnline false, exitNodeBlocked false and exitNodeName empty. The prefs are {\"WantRunning\":true} rather than {}: the corpus runner waits for wantRunning, and no value in the table reads it"
+  ],
+  "deferred": [
+    "the view half: the slot's colours, outline, badge and dot for each staging, #309's",
+    "prefs {} as R-UI-15 stages each run: the corpus runner waits for wantRunning to read true, so these cases serve {\"WantRunning\":true}; no value in the table reads it"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "edits": [
+    {
+      "op": "add",
+      "path": "/Health/-",
+      "value": "DNS is not working"
+    }
+  ],
+  "prefs": {
+    "json": {
+      "WantRunning": true
+    }
+  },
+  "expect": {
+    "contract": {
+      "state": {
+        "enum": "Running"
+      },
+      "issueCount": 1,
+      "issues": [
+        "DNS is not working"
+      ],
+      "exitNodeActive": false,
+      "exitNodeOnline": false,
+      "exitNodeBlocked": false,
+      "exitNodeName": ""
+    }
+  },
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

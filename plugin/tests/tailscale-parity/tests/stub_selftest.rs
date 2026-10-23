@@ -36,6 +36,15 @@ fn child_probe() -> i32 {
     i32::from(!ok)
 }
 
+/// Child: a second engine over a C7 whose Tailscale is a type with no
+/// instance reads "no object", not another object.
+fn child_second_engine_no_object() -> i32 {
+    let app = headless_app();
+    let got = tailscale_parity::second_engine(&app, &selftest("qml-tailscale-type"));
+    println!("SECOND-ENGINE {got:?}");
+    i32::from(got != Ok("no object"))
+}
+
 /// Child: the driver over the C7 in `selftest/<dir>` must fail to load
 /// with `want` in the reason, reported at once, not waited out.
 fn child_load_fails(dir: &str, want: &str) -> i32 {
@@ -314,6 +323,97 @@ fn the_model_reset_and_layout(failures: &mut Vec<String>) {
     verdict(failures, &r, true, &["fail as declared: reset-twice"], read);
 }
 
+/// 18. A string matcher: `non_empty` and `contains` hold only for a string
+///     that is non-empty or holds the text, in a wait, an expect, an array
+///     and a model role; a failed one reports the value read.
+fn the_string_matchers(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/string-matchers.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("empty-is-not-non-empty") == Some(json!(""))
+            && actual("does-not-contain") == Some(json!("set true"))
+            && actual("not-a-string") == Some(json!(0))
+    };
+    let wants = ["fail as declared: does-not-contain, empty-is-not-non-empty, not-a-string"];
+    verdict(failures, &r, true, &wants, read);
+}
+
+/// 19. A keep step stores a member's value; kept values differing pairwise
+///     hold, a repeat is reported by label, and a kept object is the same
+///     as its member and no other. A list or a date compares by value.
+fn the_kept_values(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/kept-values.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("repeat") == Some(json!({ "w1": "set true", "w2": "set false", "w3": "set false" }))
+            && actual("not-same") == Some(json!(false))
+            && actual("other-model") == Some(json!(false))
+            && actual("equal-lists") == Some(json!({ "issues-1": [], "issues-2": [] }))
+    };
+    verdict(failures, &r, true, &["fail as declared: equal-lists, not-same, other-model, repeat"], read);
+}
+
+/// 20. Inside every firing after watch_handlers the driver reads the
+///     watched members; a handlers expect checks every firing since the
+///     watch or a mark, and reports the first firing that read otherwise,
+///     or a signal that never fired.
+fn the_handler_reads(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/handler-reads.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("half-update") == Some(json!({ "signal": "acceptRoutesChanged", "values": { "writeError": "" } }))
+            && actual("never-fired") == Some(json!({ "signal": "stateChanged", "fired": 0 }))
+    };
+    verdict(failures, &r, true, &["fail as declared: half-update, never-fired"], read);
+}
+
+/// 21. Assigning a read-only member from QML throws as read-only; a
+///     writable one does not throw, and a value of the wrong type throws for
+///     another reason. Each member reads as its type, and a wrong one
+///     reports the types read.
+fn the_members(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/members.json");
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("writable") == Some(json!({ "threw": false, "read_only": false }))
+            && actual("wrong-type") == Some(json!({ "threw": true, "read_only": false }))
+            && actual("wrong-member-type") == Some(json!({ "state": "number", "peers": "model" }))
+    };
+    let wants = ["fail as declared: writable, wrong-member-type, wrong-type"];
+    verdict(failures, &r, true, &wants, read);
+}
+
+/// 22. The stub's Tailscale is one object per engine: a second component
+///     in the driver's engine sees the same one, and a second engine
+///     another. A Tailscale
+///     the second engine reads as the driver's fails the check.
+fn the_singleton(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/singleton.json");
+    verdict(failures, &r, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
+    // A second engine whose Tailscale reads as the driver's fails the check.
+    let named = Implementation { qml_dir: selftest("qml-singleton-named"), ..stub() };
+    let env = [("C7_HARNESS_MAX_ITERATIONS", "20000")];
+    let r = runner::run_one(&named, STUB_IMPLEMENTATIONS, &selftest("scenarios/singleton-named.json"), &env);
+    let same = json!({ "same_in_engine": true, "second_engine": "same" });
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == same);
+    verdict(failures, &r, true, &["fail as declared: one-per-engine"], read);
+    // A Tailscale that is a type with no instance is no object, not another.
+    let out = spawn_child("second-engine-no-object", &[("C7_HARNESS_MAX_ITERATIONS", "20000")]);
+    check(failures, out.status.success(), "a second engine whose Tailscale has no instance reads no object");
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -333,6 +433,11 @@ fn parent() -> i32 {
     the_distinct_models(&mut failures);
     the_signal_wait_marks(&mut failures);
     the_model_reset_and_layout(&mut failures);
+    the_string_matchers(&mut failures);
+    the_kept_values(&mut failures);
+    the_handler_reads(&mut failures);
+    the_members(&mut failures);
+    the_singleton(&mut failures);
     finish("stub_selftest", &failures)
 }
 
@@ -341,6 +446,7 @@ fn main() {
         Some("probe") => child_probe(),
         Some("no-tailscale") => child_load_fails("qml-no-tailscale", "Tailscale is not defined"),
         Some("tailscale-type") => child_load_fails("qml-tailscale-type", "no backend object"),
+        Some("second-engine-no-object") => child_second_engine_no_object(),
         Some("scenario") => runner::child_main(),
         Some(other) => panic!("unknown child {other}"),
         None => parent(),

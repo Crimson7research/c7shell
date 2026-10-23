@@ -18,11 +18,17 @@ use crate::script::{within_write_limit, Match, Script};
 
 mod check;
 pub(crate) mod files;
+mod handlers;
+mod kept;
+mod members;
 mod model;
 mod request;
 
 pub use check::check_value;
 use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub use handlers::HandlerCheck;
+pub use kept::{Keep, KeptCheck};
+pub use members::{Assign, MEMBER_TYPES};
 pub use model::{role, ModelQuery, Role};
 pub use request::RequestParts;
 
@@ -106,6 +112,11 @@ pub enum Step {
     /// Records every counted signal under this label, for a signal
     /// expectation's `since`.
     Mark(String),
+    /// Stores a member's value under a label, for a `kept` expect.
+    Keep(Keep),
+    /// From here on, the driver reads these members inside every counted
+    /// signal's handler, for a `handlers` expect.
+    WatchHandlers(Vec<String>),
     Expect(Box<Expect>),
 }
 
@@ -168,6 +179,9 @@ pub enum FakeOp {
     CompleteHeld(ReplySpec),
     Resume(String),
     CloseClient(ClientSelector),
+    /// Stops the fake: every client closed and nothing at the socket path,
+    /// its records kept.
+    Stop(Empty),
 }
 
 /// Which client a `close_client` closes.
@@ -222,6 +236,17 @@ pub struct Expect {
     pub requests: Option<RequestCount>,
     /// The model query holds.
     pub model: Option<ModelQuery>,
+    /// Kept values differ pairwise, or one is still a member's.
+    pub kept: Option<KeptCheck>,
+    /// What the watched members read inside the named signals' handlers.
+    pub handlers: Option<HandlerCheck>,
+    /// Assigning the member from QML throws.
+    pub assign: Option<Assign>,
+    /// Each member reads as its type.
+    pub member_types: Option<BTreeMap<String, String>>,
+    /// `Tailscale` is one object per engine: the same one again in this
+    /// engine, another in a second engine.
+    pub singleton: Option<Empty>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -351,7 +376,9 @@ impl Scenario {
         }
         self.fake.validate().map_err(|e| format!("fake.{e}"))?;
         self.validate_steps()?;
-        self.validate_marks()?;
+        check::validate_marks(&self.steps)?;
+        kept::validate_keeps(&self.steps)?;
+        handlers::validate_handlers(&self.steps)?;
         self.validate_declarations(implementations)
     }
 
@@ -362,9 +389,17 @@ impl Scenario {
             return Err("steps: `start` must be the first step, and only once".into());
         }
         let mut ids = BTreeSet::new();
+        let mut stopped = false;
         for (i, step) in self.steps.iter().enumerate() {
             let at = |e: String| format!("steps[{i}].{e}");
             match step {
+                Step::Fake(FakeOp::Stop(_)) if stopped => {
+                    return Err(at("fake.stop: the fake is already stopped".into()))
+                }
+                Step::Fake(FakeOp::Stop(_)) => stopped = true,
+                Step::Expect(e) if e.singleton.is_some() && i + 1 < self.steps.len() => {
+                    return Err(at(format!("expect `{}`: singleton must be the last step", e.id)))
+                }
                 Step::Wait(Wait::Contract(values)) => {
                     check_values(values).map_err(|e| at(format!("wait.contract.{e}")))?
                 }
@@ -389,30 +424,6 @@ impl Scenario {
                 }
                 Step::Fake(FakeOp::PushWatchLine(b)) => within_write_limit("the chunk", watch_chunk(&b.0).len())
                     .map_err(|e| at(format!("fake.push_watch_line: {e}")))?,
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
-    /// Each mark is named once, and each `since` names an earlier mark.
-    fn validate_marks(&self) -> Result<(), String> {
-        let mut marks = BTreeSet::new();
-        for (i, step) in self.steps.iter().enumerate() {
-            match step {
-                Step::Mark(label) if label.trim().is_empty() => return Err(format!("steps[{i}].mark: empty")),
-                Step::Mark(label) if !marks.insert(label.as_str()) => {
-                    return Err(format!("steps[{i}].mark: `{label}` twice"))
-                }
-                Step::Expect(e) => match e.signal.as_ref().and_then(|s| s.since.as_deref()) {
-                    Some(label) if !marks.contains(label) => {
-                        return Err(format!("steps[{i}].expect `{}`: since: no earlier mark `{label}`", e.id))
-                    }
-                    _ => {}
-                },
-                Step::Wait(Wait::Signal(SignalWait { since: Some(label), .. })) if !marks.contains(label.as_str()) => {
-                    return Err(format!("steps[{i}].wait: since: no earlier mark `{label}`"))
-                }
                 _ => {}
             }
         }

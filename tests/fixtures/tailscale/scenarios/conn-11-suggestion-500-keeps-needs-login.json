@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "id": "conn-11-suggestion-500-keeps-needs-login",
+  "requirements": ["R-CONN-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "On a fresh backend whose /suggest-exit-node answers 500 with {\"error\":\"no preferred DERP, try again later\"} while logged out, state reaches the served state, NeedsLogin: a failing suggestion does not keep the backend from it. The wait is the check: the suggestion is handled apart from the snapshot, so a read after it could precede the failure; conn-11-failures-clear-the-suggestion pins that the failure is not a loss"
+  ],
+  "deferred": [
+    "\"no retry is scheduled\", the single `/status` GET, the timeout staging and the change and retry counts: cpp-suite, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails, tst_localapitailscalebackend.cpp::connectsThroughASuggestionThatFails_data"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": { "BackendState": "NeedsLogin" } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 500, "reason": "Internal Server Error", "body": { "json": { "error": "no preferred DERP, try again later" } } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" } } } },
+    { "wait": { "contract": { "state": { "enum": "NeedsLogin" } } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

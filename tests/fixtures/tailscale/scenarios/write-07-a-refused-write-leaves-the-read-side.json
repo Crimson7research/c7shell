@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "write-07-a-refused-write-leaves-the-read-side",
+  "requirements": ["R-WRITE-07"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With 20 peers and Running, a PATCH answered 403 leaves state Running, 20 peers rows and readError empty, read once writeErrorChanged has fired and the client barrier holds at 1 (the PATCH connection closed, the watch left). #286 meets this clause of the fix requirement, so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "\"no retry scheduled\", and the run with a held PATCH across a reconnect: phase3-only, it reads the retry hook and advances paused time"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 403, "reason": "Forbidden", "body": "prefs write access denied\n" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "wait": { "model": { "name": "peers", "count": 20 } } },
+    { "mark": "before-write" },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "signal": { "name": "writeErrorChanged", "at_least": 1, "since": "before-write" } } },
+    { "wait": { "fake": { "connected": 1 } } },
+    { "expect": { "id": "read-side-untouched", "contract": { "state": { "enum": "Running" }, "readError": "" } } },
+    { "expect": { "id": "rows-kept", "model": { "name": "peers", "count": 20 } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

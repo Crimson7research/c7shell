@@ -115,9 +115,16 @@ pub fn load_driver(app: &QGuiApplication, qml_dir: &Path) -> Result<Loaded, Stri
     load(app, qml_dir, &qml_file("driver.qml"))
 }
 
-/// Loads `qml` with `qml_dir` as the only added import path, and waits
-/// until the `Probe` reports ready.
-pub fn load(app: &QGuiApplication, qml_dir: &Path, qml: &Path) -> Result<Loaded, String> {
+/// An engine that has started loading: the code QML passed to `Qt.exit`
+/// (`i32::MIN` until it does), and whether creating the root object failed.
+struct Started {
+    engine: UniquePtr<QQmlApplicationEngine>,
+    exit_code: Arc<AtomicI32>,
+    failed: Arc<AtomicBool>,
+}
+
+/// An engine with `qml_dir` as the only added import path, loading `qml`.
+fn start_engine(qml_dir: &Path, qml: &Path) -> Result<Started, String> {
     let mut engine = QQmlApplicationEngine::new();
     engine.pin_mut().add_import_path(&QString::from(qml_dir.to_str().ok_or("a non-UTF-8 module path")?));
     let exit_code = Arc::new(AtomicI32::new(i32::MIN));
@@ -132,6 +139,13 @@ pub fn load(app: &QGuiApplication, qml_dir: &Path, qml: &Path) -> Result<Loaded,
         engine.pin_mut().on_object_creation_failed(move |_, _| failed.store(true, Ordering::SeqCst)).release();
     }
     engine.pin_mut().load(&QUrl::from_local_file(&QString::from(qml.to_str().ok_or("a non-UTF-8 QML path")?)));
+    Ok(Started { engine, exit_code, failed })
+}
+
+/// Loads `qml` with `qml_dir` as the only added import path, and waits
+/// until the `Probe` reports ready.
+pub fn load(app: &QGuiApplication, qml_dir: &Path, qml: &Path) -> Result<Loaded, String> {
+    let Started { engine, exit_code, failed } = start_engine(qml_dir, qml)?;
     let loaded = Loaded { engine, exit_code };
     let ready = wait_until(app, || {
         if failed.load(Ordering::SeqCst) {
@@ -148,5 +162,30 @@ pub fn load(app: &QGuiApplication, qml_dir: &Path, qml: &Path) -> Result<Loaded,
         Some(Ok(())) => Ok(loaded),
         Some(Err(e)) => Err(e),
         None => Err(format!("{} never reported ready", qml.display())),
+    }
+}
+
+/// What a second engine with only `qml_dir` on its import path resolves
+/// `Tailscale` to, beside the driver's: `distinct` (another object),
+/// `same` (the driver's own) or `no object`. The engine is destroyed
+/// before this returns, and with it the singleton it created.
+pub fn second_engine(app: &QGuiApplication, qml_dir: &Path) -> Result<&'static str, String> {
+    let qml = qml_file("second-engine.qml");
+    let Started { engine, exit_code, failed } = start_engine(qml_dir, &qml)?;
+    let code = wait_until(app, || {
+        if failed.load(Ordering::SeqCst) {
+            return Some(Err(format!("{} did not load (see the QML errors above)", qml.display())));
+        }
+        let c = exit_code.load(Ordering::SeqCst);
+        (c != i32::MIN).then_some(Ok(c))
+    });
+    drop(engine);
+    match code {
+        Some(Ok(5)) => Ok("distinct"),
+        Some(Ok(4)) => Ok("same"),
+        Some(Ok(3)) => Ok("no object"),
+        Some(Ok(c)) => Err(format!("{} exited with {c}", qml.display())),
+        Some(Err(e)) => Err(e),
+        None => Err(format!("{} never exited", qml.display())),
     }
 }

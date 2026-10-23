@@ -232,6 +232,118 @@ naming the rule or step. The self-tests' root is `selftest/`, so
 `selftest/scenarios-cpp/served-change.json` reads
 `selftest/captures/two-peers.json`.
 
+### String matchers (#308)
+
+A contract value, an array element or a model role value may be a
+matcher instead of a value, where a requirement asks only that a reason
+exists or names a word:
+
+```json
+{ "expect": { "id": "named", "contract": { "readError": { "non_empty": true } } } },
+{ "expect": { "id": "code", "contract": { "writeError": { "contains": "403" } } } }
+```
+
+`{"non_empty": true}` holds for a non-empty string, `{"contains": text}`
+(text not empty) for a string holding `text`. Neither holds for a value
+that is not a string. A failed one reports the value read.
+
+### Kept values (#308)
+
+A `keep` step stores a member's current value in the driver under a
+label. A `kept` expect then compares kept values, with exactly one of:
+
+```json
+{ "keep": { "label": "first-403", "member": "readError" } },
+{ "keep": { "label": "peers-before", "member": "peers" } },
+{ "expect": { "id": "reasons-differ", "kept": { "distinct": ["first-403", "first-garbage"] } } },
+{ "expect": { "id": "same-model", "kept": { "same": "peers-before", "as": "peers" } } }
+```
+
+- `distinct` names two or more labels, and holds when no two of their
+  values are the same. Its actual value is each kept value by label.
+- `same` with `as` holds when the kept value is the same as the member
+  now. Its actual value is that boolean.
+
+A model is the same only as the same object (`===`). Anything else is
+compared by value, as the driver encodes it, because each read of a list
+or a date makes a new JS object. Each label is kept once, and a `kept` expect names only labels
+an earlier step kept, or the scenario is a format error.
+
+### Reads inside handlers (#308)
+
+A `watch_handlers` step names members the driver reads inside the
+handler of every signal it counts, from then on; each firing is logged
+with what it read. A `handlers` expect checks the log:
+
+```json
+{ "watch_handlers": ["state", "readError", "peers"] },
+{ "mark": "before-push" },
+{ "fake": { "push_watch_line": "{\"State\":6}" } },
+{ "wait": { "signal": { "name": "stateChanged", "at_least": 1, "since": "before-push" } } },
+{ "expect": { "id": "whole-snapshot", "handlers": {
+  "signals": ["stateChanged", "readErrorChanged"], "since": "before-push",
+  "values": { "state": { "enum": "NoState" }, "readError": { "non_empty": true }, "peers": { "rows": 20 } } } } }
+```
+
+It holds when each named signal fired at least once since the mark (or
+since the watch, without `since`) and every one of those firings read
+the values, matchers included. A model reads as `{"rows": n}`. Its actual
+value is the first firing that read otherwise, as `{"signal", "values"}`
+with the values it read of those named, or `{"signal", "fired": 0}`. A
+scenario watches once, before any `handlers` expect, and an expect names
+only watched members.
+
+### Stopping the fake (#308)
+
+`{"fake": {"stop": {}}}` takes tailscaled away mid-scenario: the fake stops
+accepting, closes every client and removes its socket, so nothing is at
+the path. What it recorded before stays readable to `requests` and
+`request_parts` expects. A push after it reaches no client, which is an
+error, and so is a second `stop`. `selftest/scenarios-cpp/stop.json` is
+the worked example.
+
+### Assignment and member types (#308)
+
+An `assign` expect assigns a member from QML, the way
+`Tailscale.wantRunning = true` would, and holds when that throws because
+the member is read-only (the error says `read-only`). A value of the wrong
+type throws too, and does not count. Its actual value is
+`{"threw", "read_only"}`; the log shows the error when it throws. Reads after it in the same step sequence see the state right
+after the assignment, since the event loop runs only inside waits.
+
+```json
+{ "mark": "before-assign" },
+{ "expect": { "id": "read-only", "assign": { "member": "wantRunning", "value": true } } },
+{ "expect": { "id": "unchanged", "contract": { "wantRunning": false } } },
+{ "expect": { "id": "no-signal", "signal": { "name": "wantRunningChanged", "count": 0, "since": "before-assign" } } }
+```
+
+A `member_types` expect reads each named member and holds when each reads
+as its type: `number`, `string`, `boolean`, `date`, `array`, `model` or
+`function`. Its actual value is the type each read as. A signal reads as
+`function` too: QML gives a method the same `connect` a signal has, so
+the two cannot be told apart. QML reads an enum and an int both as
+`number`, and shows no method's parameter types, so a `function` says
+only that the name is callable.
+
+### One singleton per engine (#308)
+
+`{"expect": {"id": ..., "singleton": {}}}` checks R-UI-01's identity
+clauses. The driver names its `Tailscale` (`objectName`) and creates a
+second component in its own engine, which must resolve the same object.
+Then `qml/second-engine.qml` loads in a second engine with only the
+module directory on its import path; it exits with a code saying whether
+its `Tailscale` is no object, the driver's named one or another one.
+A `Tailscale` with no members, such as a type name with no instance,
+is no object. That engine is destroyed, and the name given back, before
+the expect ends. It holds for the same object in one engine and another object in
+the second. Its actual value is `{"same_in_engine", "second_engine"}`.
+
+A second #286 singleton is a second backend: while its engine lives it
+connects to the fake as the first does, so a scenario with this expect
+counts no requests after it, and a `singleton` expect must be the
+scenario's last step.
+
 ### A served change
 
 A change is a second `/status` reply. Give the first a `"times": 1` rule
