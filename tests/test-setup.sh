@@ -175,6 +175,15 @@ out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
 grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a dangling paru.conf symlink:\n$out"
 grep -qF 'dangling' <<<"$out" && fail "setup stopped on a dangling paru.conf symlink:\n$out"
 rm -f -- "$pc"
+# So is a paru.conf that does not exist yet in a directory setup cannot write.
+if ((EUID != 0)); then
+  chmod 555 "$(dirname -- "$pc")"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 755 "$(dirname -- "$pc")"
+  [[ ! -e $pc ]] || fail "setup wrote a paru.conf into a read-only directory"
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru directory:\n$out"
+  grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru directory:\n$out"
+fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
 [[ $(cat "$XDG_CONFIG_HOME/xdg-desktop-portal/hyprland-portals.conf") == v1 ]] || fail 'portal config not installed'

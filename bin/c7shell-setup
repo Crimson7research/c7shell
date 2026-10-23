@@ -383,14 +383,16 @@ paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
 paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
 # A user file setup cannot read is one it cannot check, so every run would
 # append the same lines again. One it cannot write -- read-only, as in a
-# dotfiles store, or a symlink to nothing yet -- would stop setup before the rc
-# files and the manifest, so it is named only when it lacks a line setup adds.
-# Either way setup adds nothing to it.
+# dotfiles store, a symlink to nothing yet, or not there yet in a directory
+# setup cannot write -- would stop setup before the rc files and the manifest,
+# so it is named only when it lacks a line setup adds. Either way setup adds
+# nothing to it.
 paru=0
 if command -v paru >/dev/null; then
   if [[ -e $pc && ! -r $pc ]]; then
     printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
-  elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]]; then
+  elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]] \
+       || [[ ! -e $pc && -d ${pc%/*} && ! -w ${pc%/*} ]]; then
     grep -qs "$paru_sudo_re" "$pc" && grep -qsE "$paru_bottomup_re" "$pc" \
       || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
