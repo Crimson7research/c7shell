@@ -94,7 +94,8 @@ mkdir -p "$paru_bin"; printf '#!/bin/sh\n' > "$paru_bin/paru"; chmod +x "$paru_b
 out=$(C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
 [[ ! -e $XDG_CONFIG_HOME/paru ]] || fail "setup wrote a paru config without paru:\n$(ls -R "$XDG_CONFIG_HOME/paru")"
 grep -qF 'paru.conf' <<<"$out" && fail "setup tried to write a paru config without paru:\n$out"
-PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+grep -qF "setting BottomUp in $pc" <<<"$out" || fail "setup added BottomUp without saying so:\n$out"
 grep -qx 'Sudo = run0' "$pc" || fail "paru was not pointed at run0:\n$(cat "$pc" 2>&1)"
 grep -qx 'C7TestMarker' "$pc" || fail "the new paru.conf dropped the system file's options:\n$(cat "$pc")"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -175,14 +176,17 @@ out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
 grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a dangling paru.conf symlink:\n$out"
 grep -qF 'dangling' <<<"$out" && fail "setup stopped on a dangling paru.conf symlink:\n$out"
 rm -f -- "$pc"
-# So is a paru.conf that does not exist yet in a directory setup cannot write.
+# So is a paru.conf that does not exist yet in a directory setup cannot write
+# into: read-only (555), or writable but not searchable (200).
 if ((EUID != 0)); then
-  chmod 555 "$(dirname -- "$pc")"
-  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
-  chmod 755 "$(dirname -- "$pc")"
-  [[ ! -e $pc ]] || fail "setup wrote a paru.conf into a read-only directory"
-  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru directory:\n$out"
-  grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru directory:\n$out"
+  for mode in 555 200; do
+    chmod "$mode" "$(dirname -- "$pc")"
+    out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+    chmod 755 "$(dirname -- "$pc")"
+    [[ ! -e $pc ]] || fail "setup wrote a paru.conf into a mode $mode directory"
+    grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a mode $mode paru directory:\n$out"
+    grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a mode $mode paru directory:\n$out"
+  done
 fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'

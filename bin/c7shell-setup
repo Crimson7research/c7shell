@@ -379,6 +379,7 @@ fi
 # it, so a new user file starts as a copy of the system one -- otherwise the
 # options there (Devel, BottomUp, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
+pc_dir=$(dirname -- "$pc")
 paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
 paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
 # A user file setup cannot read is one it cannot check, so every run would
@@ -392,7 +393,7 @@ if command -v paru >/dev/null; then
   if [[ -e $pc && ! -r $pc ]]; then
     printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]] \
-       || [[ ! -e $pc && -d ${pc%/*} && ! -w ${pc%/*} ]]; then
+       || [[ ! -e $pc && -d $pc_dir && ! ( -w $pc_dir && -x $pc_dir ) ]]; then
     grep -qs "$paru_sudo_re" "$pc" && grep -qsE "$paru_bottomup_re" "$pc" \
       || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
@@ -401,7 +402,7 @@ if command -v paru >/dev/null; then
 fi
 if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   printf 'setting Sudo = run0 in %s   (paru prompts through polkit)\n' "$pc"
-  run mkdir -p -- "$(dirname -- "$pc")"
+  run mkdir -p -- "$pc_dir"
   if ((dry)); then
     printf '  would: append [bin] Sudo = run0 to %s\n' "$pc"
   else
