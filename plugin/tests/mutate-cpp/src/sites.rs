@@ -2,8 +2,11 @@
 //! source file, the token each mutant changes and what it becomes.
 //!
 //! A site is kept only when its text is where the dump puts it; a node from
-//! another file, from a macro expansion, or whose token does not read as
-//! the dump says is skipped with the reason.
+//! another file, from a macro expansion, on a preprocessor line, or whose
+//! token does not read as the dump says is skipped with the reason. The
+//! preprocessor line is what catches a macro defined in the file itself:
+//! clang-query 23 locates such a node at its `#define` and prints no
+//! `Spelling=` for it.
 
 use crate::dump::{self, Loc, Node};
 
@@ -107,6 +110,9 @@ fn site(kind: Kind, file: &str, text: &Text, root: &Node, nodes: &[Node]) -> Res
         }
     };
     let (line, col) = text.line_col(offset);
+    if text.preprocessor(line) {
+        return Err(format!("on preprocessor line {line}"));
+    }
     Ok(Site { file: file.to_string(), line, col, offset, kind, from, to })
 }
 
@@ -203,10 +209,36 @@ impl<'a> Text<'a> {
         self.source.get(from..to).ok_or_else(|| format!("no text at {from}..{to}"))
     }
 
-    /// The length of the token at `offset`: a word (identifier or number,
-    /// digit separators included) or one other character.
+    /// Whether 1-based `line` is a preprocessor directive, or continues one
+    /// with a backslash.
+    fn preprocessor(&self, line: u32) -> bool {
+        let text = |n: u32| {
+            let start = self.starts[n as usize - 1];
+            let end = self.starts.get(n as usize).map_or(self.source.len(), |e| e - 1);
+            &self.source[start..end]
+        };
+        let mut n = line;
+        while n > 1 && text(n - 1).trim_end().ends_with('\\') {
+            n -= 1;
+        }
+        text(n).trim_start().starts_with('#')
+    }
+
+    /// The length of the token at `offset`: a string literal to its closing
+    /// quote, a word (identifier or number, digit separators included), or
+    /// one other character.
     fn token_len(&self, offset: usize) -> usize {
         let rest = &self.source[offset..];
+        if let Some(body) = rest.strip_prefix('"') {
+            let mut escaped = false;
+            for (i, c) in body.char_indices() {
+                match c {
+                    '\\' if !escaped => escaped = true,
+                    '"' if !escaped => return i + 2,
+                    _ => escaped = false,
+                }
+            }
+        }
         let word =
             rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '\'').map(char::len_utf8).sum();
         if word > 0 {

@@ -45,3 +45,31 @@ fn a_unit_or_a_file_that_cannot_be_read_is_an_error() {
     let missing = find(&build, &tree.join("a.cpp"), &tree.join("none.cpp")).unwrap_err();
     assert!(missing.contains("none.cpp"), "{missing}");
 }
+
+/// clang-query 23 locates a node expanded from a macro defined in the file
+/// at the `#define`, with no `Spelling=` to mark it: nothing on a
+/// preprocessor line is a site, continuation lines included.
+#[test]
+fn nothing_on_a_preprocessor_line_is_a_site() {
+    let d = Dir::new("query-macro");
+    let (tree, build) = (d.0.join("tree"), d.0.join("out"));
+    let unit = "void g(int);\n#define ONE 1\n#define CALL(x) \\\n    g(x)\nvoid f() {\n    CALL(ONE);\n    g(2);\n}\n";
+    project(&tree, &build, &[("m.cpp", unit)]);
+    let file = tree.join("m.cpp");
+    let (sites, _) = find(&build, &file, &file).unwrap();
+    let got: Vec<(u32, &str)> = sites.iter().map(|s| (s.line, s.from.as_str())).collect();
+    assert_eq!(got, [(7, "g(2)"), (7, "2")], "{got:?}");
+}
+
+/// A dropped call ends at its last token, a string literal included.
+#[test]
+fn a_dropped_call_ending_in_a_string_drops_all_of_it() {
+    let d = Dir::new("query-string");
+    let (tree, build) = (d.0.join("tree"), d.0.join("out"));
+    let unit = "struct S { S &operator<<(const char *); };\nvoid f(S s) {\n    s << \"a \\\"b\\\" c\";\n}\n";
+    project(&tree, &build, &[("s.cpp", unit)]);
+    let file = tree.join("s.cpp");
+    let (sites, _) = find(&build, &file, &file).unwrap();
+    let dropped: Vec<&str> = sites.iter().filter(|s| s.to.is_empty()).map(|s| s.from.as_str()).collect();
+    assert_eq!(dropped, ["s << \"a \\\"b\\\" c\""], "{sites:?}");
+}
