@@ -26,7 +26,8 @@ mod model;
 mod request;
 
 pub use check::check_value;
-use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub(crate) use check::is_requirement_id;
+use check::{check_expect, check_fake_wait, check_values};
 pub(crate) use declare::{validate_declarations, Declared};
 pub use handlers::HandlerCheck;
 pub use kept::{Keep, KeptCheck};

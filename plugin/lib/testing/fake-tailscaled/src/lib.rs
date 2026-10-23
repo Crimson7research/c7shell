@@ -22,6 +22,7 @@ pub mod scenario;
 mod script;
 mod scripted;
 mod server;
+pub mod views;
 
 pub use bytes::{decode_hex, encode_hex, Body, Bytes};
 pub use client::ClientReport;
