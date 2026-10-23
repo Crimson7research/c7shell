@@ -105,7 +105,7 @@
       "reason": "no #286 test and cannot run on C++: the transport's own outcomes (reply, failure, status, token, flag, event, started, ended) are not reachable through QML, and each count and \"no reply\" is read after the read barrier; only the backend half runs on C++, as its deferred clause",
       "deferred": [
         {
-          "clause": "the backend half: a chunked `/status` whose body starts with an empty size line, then a close, gives a `readError` containing `/localapi/v0/status`",
+          "clause": "the backend half: a chunked `/status` whose body starts with an empty size line, and one whose chunk data is not followed by CRLF (`2\\r\\nabXY`), each then a close, give a `readError` containing `/localapi/v0/status`",
           "class": "harness-on-cpp",
           "needs": [],
           "pr": 310

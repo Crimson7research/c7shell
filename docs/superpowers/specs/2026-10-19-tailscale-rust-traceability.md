@@ -648,7 +648,7 @@ or is `phase3-only`.
 | R-HTTP-02 | `harness-on-cpp` | `http-02-patch-bytes` | — | — | PR #307; deferred clauses: cpp-suite |
 | R-HTTP-03 | `cpp-suite` | `http-03-a-declared-zero-delivers-nothing`, `http-03-a-reply-ends-at-its-length` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
 | R-HTTP-04 | `cpp-suite` | `http-04-a-header-before-the-framing`, `http-04-a-one-byte-chunk`, `http-04-a-watch-line-before-its-chunk-ends` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
-| R-HTTP-05 | `phase3-only` | `http-05-an-empty-size-line-fails` | — | — | Rust tests in Phase 3; backend-half clause: PR #310 |
+| R-HTTP-05 | `phase3-only` | `http-05-a-chunk-that-does-not-end-where-it-said-fails`, `http-05-an-empty-size-line-fails` | — | — | Rust tests in Phase 3; backend-half clause: PR #310 |
 | R-HTTP-06 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-HTTP-07 | `cpp-suite` | `http-07-a-chunked-body-without-its-last-chunk-fails` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
 | R-HTTP-08 | `cpp-suite` | `http-08-a-300-fails`, `http-08-a-head-that-is-not-http-fails`, `http-08-a-status-line-without-a-reason` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
