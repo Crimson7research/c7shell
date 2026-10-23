@@ -192,11 +192,13 @@ pub struct HarnessRow {
     pub scenarios: BTreeSet<String>,
     /// The ids of the corpus cases that name it.
     pub corpus: BTreeSet<String>,
+    /// The ids of the view tests that name it.
+    pub views: BTreeSet<String>,
 }
 
 /// The rows of the table headed `Requirement | Class | Scenarios | Corpus
-/// cases | ...` under `## Table C`, in order. A test cell lists backticked
-/// ids; a cell with none (`—`) is empty.
+/// cases | View tests | ...` under `## Table C`, in order. A test cell
+/// lists backticked ids; a cell with none (`—`) is empty.
 pub fn table_c(traceability: &str) -> Vec<HarnessRow> {
     let mut rows = Vec::new();
     let mut in_c = false;
@@ -209,7 +211,7 @@ pub fn table_c(traceability: &str) -> Vec<HarnessRow> {
             continue;
         }
         let cells: Vec<&str> = line.trim().trim_matches('|').split('|').map(str::trim).collect();
-        let [id, class, scenarios, corpus, ..] = cells[..] else { continue };
+        let [id, class, scenarios, corpus, views, ..] = cells[..] else { continue };
         let ids = requirement_ids(id);
         if ids.len() != 1 {
             continue;
@@ -219,6 +221,7 @@ pub fn table_c(traceability: &str) -> Vec<HarnessRow> {
             class: backticked(class).into_iter().next().unwrap_or_default(),
             scenarios: backticked(scenarios),
             corpus: backticked(corpus),
+            views: backticked(views),
         });
     }
     rows

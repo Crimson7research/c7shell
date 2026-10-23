@@ -327,9 +327,9 @@ fn every_requirement_of_309_has_a_view_test() {
 fn the_reader_finds_table_c_rows() {
     let text = "## Table B\n\n| Requirement | Class | Scenarios | Corpus cases |\n|---|---|---|---|\n\
                 | R-X-01 | `cpp-suite` | `b` | — |\n\n## Table C: harness\n\n\
-                | Requirement | Class | Scenarios | Corpus cases | Notes |\n|---|---|---|---|---|\n\
-                | R-HTTP-02 | `harness-on-cpp` | `http-02-a`, `http-02-b` | — | see R-HTTP-01 |\n\
-                | R-PARSE-10 | `none` | — | `c` | |\n\n## After\n\n| R-Y-01 | `none` | `d` | — |\n";
+                | Requirement | Class | Scenarios | Corpus cases | View tests | Notes |\n|---|---|---|---|---|---|\n\
+                | R-HTTP-02 | `harness-on-cpp` | `http-02-a`, `http-02-b` | — | `v` | see R-HTTP-01 |\n\
+                | R-PARSE-10 | `none` | — | `c` | — | |\n\n## After\n\n| R-Y-01 | `none` | `d` | — | — |\n";
     let rows = evidence::table_c(text);
     let set = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>();
     assert_eq!(
@@ -340,20 +340,25 @@ fn the_reader_finds_table_c_rows() {
                 class: "harness-on-cpp".into(),
                 scenarios: set(&["http-02-a", "http-02-b"]),
                 corpus: set(&[]),
+                views: set(&["v"]),
             },
             evidence::HarnessRow {
                 id: "R-PARSE-10".into(),
                 class: "none".into(),
                 scenarios: set(&[]),
-                corpus: set(&["c"])
+                corpus: set(&["c"]),
+                views: set(&[]),
             },
         ]
     );
 }
 
-/// The ids of the committed scenarios and corpus cases, by each
-/// requirement they name.
-fn tests_by_requirement() -> (BTreeMap<String, BTreeSet<String>>, BTreeMap<String, BTreeSet<String>>) {
+/// Test ids by each requirement they name.
+type ByRequirement = BTreeMap<String, BTreeSet<String>>;
+
+/// The ids of the committed scenarios, corpus cases and view tests, by
+/// each requirement they name.
+fn tests_by_requirement() -> (ByRequirement, ByRequirement, ByRequirement) {
     let fixtures = repo().join("tests/fixtures/tailscale");
     let mut scenarios: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for entry in std::fs::read_dir(fixtures.join("scenarios")).unwrap() {
@@ -371,19 +376,30 @@ fn tests_by_requirement() -> (BTreeMap<String, BTreeSet<String>>, BTreeMap<Strin
             corpus.entry(id).or_default().insert(c.id.clone());
         }
     }
-    (scenarios, corpus)
+    let mut views: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for entry in std::fs::read_dir(fixtures.join("views")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "json") {
+            let t = ViewTest::read(&path).unwrap();
+            for id in t.requirements {
+                views.entry(id).or_default().insert(t.id.clone());
+            }
+        }
+    }
+    (scenarios, corpus, views)
 }
 
-/// Table C lists every requirement of the areas #307 and #308 run (R-HTTP,
-/// R-PARSE, R-GROUP, R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC and R-BOOT) once,
-/// in order, with its evidence class and exactly the scenarios and corpus
-/// cases that name it.
+/// Table C lists every requirement of the areas #307 to #309 run (R-HTTP,
+/// R-PARSE, R-GROUP, R-WATCH, R-CONN, R-WRITE, R-UI, R-QML, R-SEC and
+/// R-BOOT) once, in order, with its evidence class and exactly the
+/// scenarios, corpus cases and view tests that name it.
 #[test]
 fn table_c_lists_the_harness_tests_of_each_requirement_of_its_areas() {
     let ev = loaded();
-    let (scenarios, corpus) = tests_by_requirement();
+    let (scenarios, corpus, views) = tests_by_requirement();
     let empty = BTreeSet::new();
-    let areas = ["R-HTTP-", "R-PARSE-", "R-GROUP-", "R-WATCH-", "R-CONN-", "R-WRITE-", "R-UI-", "R-SEC-", "R-BOOT-"];
+    let areas =
+        ["R-HTTP-", "R-PARSE-", "R-GROUP-", "R-WATCH-", "R-CONN-", "R-WRITE-", "R-UI-", "R-QML-", "R-SEC-", "R-BOOT-"];
     let want: Vec<evidence::HarnessRow> = ev
         .requirements
         .iter()
@@ -393,6 +409,7 @@ fn table_c_lists_the_harness_tests_of_each_requirement_of_its_areas() {
             class: serde_json::to_value(r.class).unwrap().as_str().unwrap().to_string(),
             scenarios: scenarios.get(&r.id).unwrap_or(&empty).clone(),
             corpus: corpus.get(&r.id).unwrap_or(&empty).clone(),
+            views: views.get(&r.id).unwrap_or(&empty).clone(),
         })
         .collect();
     let got = evidence::table_c(&traceability());
@@ -400,6 +417,29 @@ fn table_c_lists_the_harness_tests_of_each_requirement_of_its_areas() {
     for (g, w) in got.iter().zip(&want) {
         assert_eq!(g, w, "Table C's row for {} differs from evidence.json and the test files", w.id);
     }
+}
+
+/// Each check of #286's QML suite maps to a new test (#309): every
+/// requirement Table B maps `tests/tailscale-qml-test.qml` to is named by a
+/// view test, unless evidence.json gives it no test on C++ at all
+/// (`phase3-only`, with its reason).
+#[test]
+fn every_check_of_the_qml_suite_maps_to_a_view_test() {
+    let ev = loaded();
+    let by_id: BTreeMap<&str, &evidence::Entry> = ev.requirements.iter().map(|r| (r.id.as_str(), r)).collect();
+    let mapped = evidence::table_b_section(&traceability(), "tailscale-qml-test.qml");
+    assert!(
+        mapped.len() >= 20,
+        "Table B maps the QML suite to {} requirements; the reader is not finding it",
+        mapped.len()
+    );
+    let (_, _, views) = tests_by_requirement();
+    let unmapped: Vec<&String> = mapped
+        .keys()
+        .filter(|id| !views.contains_key(*id))
+        .filter(|id| by_id.get(id.as_str()).is_none_or(|r| r.class != EvidenceClass::Phase3Only || r.reason.is_none()))
+        .collect();
+    assert!(unmapped.is_empty(), "the QML suite checks these, but no view test runs them: {unmapped:?}");
 }
 
 /// A corpus case runs harness-on-cpp clauses of the requirements it names.
