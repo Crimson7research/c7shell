@@ -36,13 +36,15 @@ pub struct Entry {
     /// For a survivor: why no test can kill it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// For a survivor: the test added after the baseline that kills it.
+    /// For a mutant the baseline run left alive and a rerun killed: the
+    /// test this PR added that kills it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub killed_by_added: Option<String>,
 }
 
-/// The counts and the score: killed and timed-out mutants over every valid
-/// one.
+/// The counts and the scores: killed and timed-out mutants over every
+/// valid one, with every kill (`score`) and without the kills only an added
+/// test makes (`baseline_score`, the suite as it was).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Summary {
     pub mutants: usize,
@@ -50,6 +52,10 @@ pub struct Summary {
     pub timeout: usize,
     pub survived: usize,
     pub build_failed: usize,
+    #[serde(default)]
+    pub killed_by_added: usize,
+    #[serde(default)]
+    pub baseline_score: f64,
     pub score: f64,
 }
 
@@ -71,7 +77,16 @@ impl Record {
             format: 1,
             source: source.to_string(),
             kill_suite: kill_suite.to_vec(),
-            summary: Summary { mutants: 0, killed: 0, timeout: 0, survived: 0, build_failed: 0, score: 0.0 },
+            summary: Summary {
+                mutants: 0,
+                killed: 0,
+                timeout: 0,
+                survived: 0,
+                build_failed: 0,
+                killed_by_added: 0,
+                baseline_score: 0.0,
+                score: 0.0,
+            },
             mutants: Vec::new(),
         };
         r.summary = r.summary();
@@ -110,17 +125,27 @@ impl Record {
         let timeout = count(|o| matches!(o, Outcome::Timeout { .. }));
         let survived = count(|o| matches!(o, Outcome::Survived));
         let build_failed = count(|o| matches!(o, Outcome::BuildFailed { .. }));
+        let killed_by_added = self.mutants.iter().filter(|m| m.killed_by_added.is_some()).count();
         let valid = killed + timeout + survived;
-        let score = if valid == 0 { 0.0 } else { (killed + timeout) as f64 / valid as f64 };
-        Summary { mutants: self.mutants.len(), killed, timeout, survived, build_failed, score }
+        let ratio = |n: usize| if valid == 0 { 0.0 } else { n as f64 / valid as f64 };
+        Summary {
+            mutants: self.mutants.len(),
+            killed,
+            timeout,
+            survived,
+            build_failed,
+            killed_by_added,
+            baseline_score: ratio((killed + timeout).saturating_sub(killed_by_added)),
+            score: ratio(killed + timeout),
+        }
     }
 
-    /// The ids of survivors with neither a reason nor a killing test.
+    /// The ids of survivors with no reason given.
     pub fn unaccounted(&self) -> Vec<&str> {
         let given = |s: &Option<String>| s.as_deref().is_some_and(|s| !s.trim().is_empty());
         self.mutants
             .iter()
-            .filter(|m| m.outcome == Outcome::Survived && !given(&m.reason) && !given(&m.killed_by_added))
+            .filter(|m| m.outcome == Outcome::Survived && !given(&m.reason))
             .map(|m| m.id.as_str())
             .collect()
     }

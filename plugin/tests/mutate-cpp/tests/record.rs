@@ -35,19 +35,26 @@ fn the_score_counts_timeouts_as_killed_and_leaves_out_what_did_not_build() {
     let s = record().summary();
     assert_eq!((s.mutants, s.killed, s.timeout, s.survived, s.build_failed), (5, 2, 1, 1, 1));
     assert!((s.score - 0.75).abs() < 1e-9, "{}", s.score);
+    assert!((s.baseline_score - 0.75).abs() < 1e-9, "{}", s.baseline_score);
 }
 
 #[test]
-fn a_survivor_is_accounted_for_by_a_reason_or_an_added_test() {
+fn the_baseline_score_leaves_out_the_kills_only_an_added_test_makes() {
+    let mut r = record();
+    r.mutants[1].killed_by_added = Some("scenario x".into());
+    let s = r.summary();
+    assert_eq!(s.killed_by_added, 1);
+    assert!((s.score - 0.75).abs() < 1e-9 && (s.baseline_score - 0.5).abs() < 1e-9, "{s:?}");
+}
+
+#[test]
+fn a_survivor_is_accounted_for_by_a_reason() {
     let mut r = record();
     assert_eq!(r.unaccounted(), ["s"]);
     r.mutants[3].reason = Some("equivalent: the order is the same either way".into());
     assert!(r.unaccounted().is_empty());
     r.mutants[3].reason = Some("  ".into());
     assert_eq!(r.unaccounted(), ["s"], "a blank reason accounts for nothing");
-    r.mutants[3].reason = None;
-    r.mutants[3].killed_by_added = Some("scenario conn-03-reasons-differ-1".into());
-    assert!(r.unaccounted().is_empty());
 }
 
 #[test]
