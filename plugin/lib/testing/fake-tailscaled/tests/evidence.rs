@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use fake_tailscaled::corpus::Case;
 use fake_tailscaled::evidence::{self, Evidence, KNOWN_NEEDS};
 use fake_tailscaled::scenario::{EvidenceClass, Scenario, Tag, Verdict};
+use fake_tailscaled::views::ViewTest;
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
@@ -256,12 +257,20 @@ fn scenarios_agree_with_the_evidence() {
     }
 }
 
-/// The requirements Phase 2 PR `pr` runs on a38dbca, by an entry or a
-/// deferred clause, that no committed scenario or corpus case names.
-fn not_run_by_a_test(pr: u32) -> Vec<String> {
-    let ev = loaded();
+/// The requirements committed tests name: the scenarios', the corpus
+/// cases' and the view tests', or with `views_only` the view tests' alone.
+fn named_by_tests(views_only: bool) -> BTreeSet<String> {
     let fixtures = repo().join("tests/fixtures/tailscale");
     let mut named = BTreeSet::new();
+    for entry in std::fs::read_dir(fixtures.join("views")).into_iter().flatten() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "json") {
+            named.extend(ViewTest::read(&path).unwrap().requirements);
+        }
+    }
+    if views_only {
+        return named;
+    }
     for entry in std::fs::read_dir(fixtures.join("scenarios")).into_iter().flatten() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "json") {
@@ -270,11 +279,23 @@ fn not_run_by_a_test(pr: u32) -> Vec<String> {
     }
     let cases = Case::load_dir(&fixtures.join("corpus"), fake_tailscaled::scenario::IMPLEMENTATIONS).unwrap();
     named.extend(cases.into_iter().flat_map(|c| c.requirements));
+    named
+}
+
+/// The requirements Phase 2 PR `pr` runs on a38dbca, by an entry or a
+/// deferred clause, that no test in `named` names.
+fn not_run_by(pr: u32, named: &BTreeSet<String>) -> Vec<String> {
     let runs_in = |r: &&evidence::Entry| {
         (r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(pr))
             || r.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp && d.pr == Some(pr))
     };
-    ev.requirements.iter().filter(runs_in).map(|r| r.id.clone()).filter(|id| !named.contains(id)).collect()
+    loaded().requirements.iter().filter(runs_in).map(|r| r.id.clone()).filter(|id| !named.contains(id)).collect()
+}
+
+/// The requirements Phase 2 PR `pr` runs on a38dbca that no committed
+/// scenario, corpus case or view test names.
+fn not_run_by_a_test(pr: u32) -> Vec<String> {
+    not_run_by(pr, &named_by_tests(false))
 }
 
 /// Every requirement #307 runs on a38dbca is named by a scenario or a
@@ -291,6 +312,15 @@ fn every_requirement_of_307_has_a_scenario_or_a_corpus_case() {
 fn every_requirement_of_308_has_a_scenario() {
     let missing = not_run_by_a_test(308);
     assert!(missing.is_empty(), "assigned to #308, but no scenario runs: {missing:?}");
+}
+
+/// Every requirement #309 runs on a38dbca is named by a view test: the
+/// deferred view halves too (R-GROUP-06, R-WRITE-09, R-UI-15), whose
+/// requirements #307's and #308's scenarios already name.
+#[test]
+fn every_requirement_of_309_has_a_view_test() {
+    let missing = not_run_by(309, &named_by_tests(true));
+    assert!(missing.is_empty(), "assigned to #309, but no view test runs: {missing:?}");
 }
 
 #[test]
