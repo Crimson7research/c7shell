@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "id": "parse-06-peer-without-id",
+  "requirements": [
+    "R-PARSE-06"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "a peer object without ID is listed with an empty nodeId",
+    "online and exitNodeOption read false when absent"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "HostName": "noid",
+          "Online": true,
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nA1CNTRL",
+          "HostName": "plain",
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"nodeId": "", "hostName": "noid", "online": true, "exitNodeOption": false},
+      {"nodeId": "nA1CNTRL", "hostName": "plain", "online": false, "exitNodeOption": false}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

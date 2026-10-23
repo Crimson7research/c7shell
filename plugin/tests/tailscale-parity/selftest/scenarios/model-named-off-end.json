@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "model-named-off-end",
+  "requirements": ["R-GROUP-05"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a role named on a row that does not exist is an error, since only a row has role names"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "off-end", "model": { "name": "peers", "row": 99, "values": { "hostName": "x" } } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "id": "group-10-empty-peer-object-clears",
+  "requirements": ["R-GROUP-10"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With 20 peers shown (status-idle.json), a notification brings a status without a Peer key as the next /status; once its tailnet example.net is seen (a positive wait on that snapshot, as group-12's kept rows wait for NeedsLogin), peers still has 20 rows and exitNodes 2, no rowsRemoved, modelReset or rowsInserted fired on either since the notification (a reset and refill from a cache is not keeping the rows), and state reads Running; one /status is recorded before the mark, so the no-Peer reply is served after it. The tailnet name is seen only once the fake has served that second GET of /status. #286 replaces rows only from a Peer object (LocalApiTailscaleBackend.cpp:655-671), so it keeps them",
+    "A later status with \"Peer\":{} leaves 0 rows in both models: from status-idle.json's 20 peers and 2 exit nodes, a status without a Peer key (its tailnet example.net, seen first) and then one with \"Peer\":{}, each served as a change; peers and exitNodes read 0 rows once the Peer:{} status's tailnet example.info is seen (R-UI-06 fills both models before any property signal, so neither count races). #286 already clears both from an empty Peer object (LocalApiTailscaleBackend.cpp:655-671), so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the second run, Running with \"Peer\":null: group-10-running-peer-null-clears; its peersKnown: phase3-only, a contract addition"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.net"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.info"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"contract": {"state": {"enum": "Running"}}}},
+    {"wait": {"model": {"name": "peers", "count": 20}}},
+    {"expect": {"id": "exit-nodes-before", "model": {"name": "exitNodes", "count": 2}}},
+    {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"expect": {"id": "no-peer-not-served-yet", "precondition": true, "requests": {"match": {"method": "GET", "target": "/localapi/v0/status"}, "count": 1}}},
+    {"mark": "before-no-peer"},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"contract": {"tailnet": "example.net"}}},
+    {"expect": {"id": "peers-kept", "model": {"name": "peers", "count": 20}}},
+    {"expect": {"id": "exit-nodes-kept", "model": {"name": "exitNodes", "count": 2}}},
+    {"expect": {"id": "no-peer-removed", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "no-exit-node-removed", "signal": {"name": "exitNodes.rowsRemoved", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "no-peers-modelReset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "no-peers-rowsInserted", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "no-exit-nodes-modelReset", "signal": {"name": "exitNodes.modelReset", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "no-exit-nodes-rowsInserted", "signal": {"name": "exitNodes.rowsInserted", "count": 0, "since": "before-no-peer"}}},
+    {"expect": {"id": "still-running", "contract": {"state": {"enum": "Running"}}}},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"contract": {"tailnet": "example.info"}}},
+    {"expect": {"id": "peers-cleared", "model": {"name": "peers", "count": 0}}},
+    {"expect": {"id": "exit-nodes-cleared", "model": {"name": "exitNodes", "count": 0}}}
+  ],
+  "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
+}

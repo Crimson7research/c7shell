@@ -30,3 +30,7 @@ harness = false
 [[test]]
 name = "scenarios"
 harness = false
+
+[[test]]
+name = "corpus"
+harness = false

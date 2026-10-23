@@ -15,6 +15,7 @@ use fake_tailscaled::scenario::Capability;
 use support::{check, finish, selftest, spawn_child, verdict};
 use tailscale_parity::child::{self, PrivateRoot};
 use tailscale_parity::contract::Contract;
+use tailscale_parity::corpus;
 use tailscale_parity::implementation::Implementation;
 use tailscale_parity::runner::{self, Outcome};
 use tailscale_parity::{headless_app, load_driver};
@@ -87,6 +88,49 @@ fn the_request_failures(failures: &mut Vec<String>, imp: &Implementation) {
     verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
 }
 
+/// 4. A request_parts expectation holds on a PATCH whose start, headers
+///    and JSON body match, and fails with the bytes sent otherwise.
+fn the_request_parts(failures: &mut Vec<String>, imp: &Implementation) {
+    let r = runner::run_one(imp, CPP_ONLY, &selftest("scenarios-cpp/request-parts.json"), &[]);
+    let wants = ["fail as declared: lacks-header, never-sent, other-body"];
+    verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
+}
+
+/// 5. A body read from a capture file, a C++ model read by role name and
+///    number with its own signals counted, and a served change: a second
+///    `/status` reply after a watch notification asks for it.
+fn a_served_change(failures: &mut Vec<String>, imp: &Implementation) {
+    let r = runner::run_one(imp, CPP_ONLY, &selftest("scenarios-cpp/served-change.json"), &[]);
+    verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
+}
+
+/// 6. Corpus cases made into scenarios: one that #286 meets, and one whose
+///    member, row count and row fail with the values #286 publishes. An
+///    empty corpus is an error, not a pass.
+fn the_corpus(failures: &mut Vec<String>, imp: &Implementation) {
+    let made = match corpus::generate(&selftest("corpus-cpp"), CPP_ONLY) {
+        Ok(made) => made,
+        Err(e) => return check(failures, false, &format!("the self-test corpus makes scenarios: {e}")),
+    };
+    check(failures, made.count == 2, &format!("two cases make two scenarios: {}", made.count));
+    let r = runner::run_one(imp, CPP_ONLY, &made.dir.join("corpus-pass.json"), &[]);
+    verdict(failures, &r, true, &["cpp-286: pass, as declared"], |o| *o == Outcome::Pass);
+    let r = runner::run_one(imp, CPP_ONLY, &made.dir.join("corpus-fail.json"), &[]);
+    let wants = ["fail as declared: contract.tailnet, exitNodes.count, peers[0]"];
+    verdict(failures, &r, true, &wants, |o| matches!(o, Outcome::Fail(f) if f.len() == 3));
+    let all = corpus::run_corpus(imp, CPP_ONLY, &selftest("corpus-cpp"), 1, None);
+    let want = "2 corpus cases matched their declarations on cpp-286 in 1 runs";
+    check(failures, all.as_deref() == Ok(want), &format!("the corpus run: {all:?}"));
+    // The count is of the cases run, not of the ids the filter spells: a
+    // repeated id runs its case once.
+    let twice = corpus::run_corpus(imp, CPP_ONLY, &selftest("corpus-cpp"), 1, Some("corpus-pass,corpus-pass"));
+    let want = "1 corpus cases matched their declarations on cpp-286 in 1 runs";
+    check(failures, twice.as_deref() == Ok(want), &format!("a filter naming one case twice: {twice:?}"));
+    let empty = PrivateRoot::new();
+    let none = corpus::run_corpus(imp, CPP_ONLY, empty.path(), 1, None);
+    check(failures, none.as_ref().is_err_and(|e| e.contains("no corpus cases")), &format!("an empty corpus: {none:?}"));
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     match Implementation::from_env() {
@@ -95,6 +139,9 @@ fn parent() -> i32 {
             the_module(&mut failures, &imp);
             an_unmatched_request(&mut failures, &imp);
             the_request_failures(&mut failures, &imp);
+            the_request_parts(&mut failures, &imp);
+            a_served_change(&mut failures, &imp);
+            the_corpus(&mut failures, &imp);
         }
     }
     finish("harness_selftest", &failures)

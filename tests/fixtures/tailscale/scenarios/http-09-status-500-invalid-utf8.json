@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "id": "http-09-status-500-invalid-utf8",
+  "requirements": ["R-HTTP-09"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Invalid UTF-8: a GET of /localapi/v0/status answered HTTP/1.1 500 Internal Server Error with Content-Length: 9 and the body bytes 62 61 64 20 FF 20 65 6E 64 gives readError exactly `/localapi/v0/status answered HTTP/1.1 500 Internal Server Error: bad \ufffd end`, one U+FFFD in place of 0xFF (the opening pass's /status, read after readErrorChanged)"
+  ],
+  "deferred": ["\"no reply is delivered\" and every failure count: phase3-only, the transport's own outcomes are not reachable through QML", "bounds and incomplete bodies, the watch cases and the backend half: phase3-only, they need the clock and the retry hook"],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 500, "reason": "Internal Server Error", "framing": "content-length", "body": { "hex": "62616420ff20656e64" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "signal": { "name": "readErrorChanged", "at_least": 1 } } },
+    { "expect": { "id": "read-error-keeps-the-daemons-words",
+      "contract": { "readError": "/localapi/v0/status answered HTTP/1.1 500 Internal Server Error: bad � end" } } }
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [ { "id": "read-error-keeps-the-daemons-words",
+                     "actual": "/localapi/v0/status answered HTTP/1.1 500 Internal Server Error" } ],
+      "reason": "#286 fails a non-2xx exchange at its headers (plugin/lib/tailscale/LocalApiClient.cpp:221-230, the reason at :227) and never reads the body, so the reason is the status line alone; the body, with its invalid byte replaced or not, never reaches readError" },
+    "rust": { "result": "pass" }
+  }
+}

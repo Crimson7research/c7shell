@@ -9,10 +9,12 @@
 #   2. the harness self-tests against the reference (harness_selftest) pass
 #   3. every scenario under tests/fixtures/tailscale/scenarios/ matches its
 #      cpp-286 declaration, 50 consecutive runs
+#   4. every parser corpus case under tests/fixtures/tailscale/corpus/
+#      matches its cpp-286 declaration, 50 consecutive runs
 # The reference build is not something the suite makes: it is
 # plugin/tests/tailscale-parity/build-reference.sh's output, read from
 # C7_QML_DIR or that script's cache. Skips, with the reason, without cargo;
-# skips checks 2 and 3 when C7_QML_DIR is unset and the cache holds no build,
+# skips checks 2 to 4 when C7_QML_DIR is unset and the cache holds no build,
 # and fails when C7_QML_DIR is set but holds no C7/qmldir.
 # tests/test-fake-tailscaled.sh compiles the harness either way.
 set -euo pipefail
@@ -71,3 +73,10 @@ run_logged 'the scenarios, 50 runs' in_reference env C7_REPEAT=50 \
 grep -qE '^[0-9]+ scenarios matched their declarations on cpp-286 in 50 runs$' "$log" \
   || { cat "$log" >&2; fail "the scenarios run did not report 50 matching runs"; }
 echo "PASS: $(grep -E 'scenarios matched' "$log")"
+
+# 4. the parser corpus, 50 consecutive runs -------------------------------------
+run_logged 'the corpus, 50 runs' in_reference env C7_REPEAT=50 \
+  cargo test --locked -q -p tailscale-parity --test corpus
+grep -qE '^[0-9]+ corpus cases matched their declarations on cpp-286 in 50 runs$' "$log" \
+  || { cat "$log" >&2; fail "the corpus run did not report 50 matching runs"; }
+echo "PASS: $(grep -E 'corpus cases matched' "$log")"

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "model-distinct",
+  "requirements": ["R-GROUP-09"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a model query with distinct_from holds when the two model members are different objects, and a failed one reports false"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "model": { "name": "exitNodes", "distinct_from": "peers" } } },
+    { "expect": { "id": "two-models", "model": { "name": "exitNodes", "distinct_from": "peers" } } },
+    { "expect": { "id": "one-model", "model": { "name": "peers", "distinct_from": "peers" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "one-model", "actual": false } ], "reason": "self-test" } }
+}

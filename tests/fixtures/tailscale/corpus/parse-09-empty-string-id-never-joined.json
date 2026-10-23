@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "parse-09-empty-string-id-never-joined",
+  "requirements": [
+    "R-PARSE-09"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "an ExitNodeStatus with an empty ID yields an empty id and an empty name: an empty id is never joined to a peer, not even one listed with an empty nodeId"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "ExitNodeStatus": {
+        "ID": "",
+        "Online": true
+      },
+      "Peer": {
+        "s": {
+          "HostName": "stranger",
+          "Online": true
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": true},
+    "peers": [
+      {"nodeId": "", "displayName": "stranger"}
+    ]
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "contract.exitNodeName",
+          "actual": "stranger"
+        }
+      ],
+      "reason": "#286 names the exit node by joining its id to the peers even when that id is empty (plugin/lib/tailscale/StatusParser.cpp:169-175), so the peer listed with an empty nodeId names it; decision 22 never joins an empty id"
+    },
+    "rust": {"result": "pass"}
+  }
+}

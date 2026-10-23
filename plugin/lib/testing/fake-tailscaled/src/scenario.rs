@@ -16,6 +16,16 @@ use crate::bytes::Bytes;
 use crate::reply::{watch_chunk, ReplySpec};
 use crate::script::{within_write_limit, Match, Script};
 
+mod check;
+pub(crate) mod files;
+mod model;
+mod request;
+
+pub use check::check_value;
+use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub use model::{role, ModelQuery, Role};
+pub use request::RequestParts;
+
 /// What an implementation lets a scenario do beyond the contract and the
 /// fake.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -93,7 +103,10 @@ pub enum Step {
     Barrier(BarrierKind),
     /// Needs the clock.
     AdvanceMs(u64),
-    Expect(Expect),
+    /// Records every counted signal under this label, for a signal
+    /// expectation's `since`.
+    Mark(String),
+    Expect(Box<Expect>),
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -115,10 +128,13 @@ pub struct Call {
 pub enum Wait {
     /// Until each member reads its value.
     Contract(BTreeMap<String, Value>),
-    /// Until the signal has fired at least this often since start.
+    /// Until the signal has fired at least this often since start, or
+    /// since the mark its `since` names.
     Signal(SignalWait),
     /// Until the fake reports this.
     Fake(FakeWait),
+    /// Until the model query holds.
+    Model(ModelQuery),
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -126,6 +142,8 @@ pub enum Wait {
 pub struct SignalWait {
     pub name: String,
     pub at_least: u64,
+    /// Count from this earlier `mark` step, not from load.
+    pub since: Option<String>,
 }
 
 /// Exactly one of `connected` (the client barrier), `recorded` (with
@@ -197,8 +215,13 @@ pub struct Expect {
     pub signal: Option<SignalCount>,
     /// Every recorded request that matches equals `raw`, and one matches.
     pub request: Option<RequestBytes>,
+    /// Every recorded request that matches has these parts, and one
+    /// matches.
+    pub request_parts: Option<RequestParts>,
     /// Exactly `count` recorded requests match.
     pub requests: Option<RequestCount>,
+    /// The model query holds.
+    pub model: Option<ModelQuery>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -206,6 +229,8 @@ pub struct Expect {
 pub struct SignalCount {
     pub name: String,
     pub count: u64,
+    /// Count from this earlier `mark` step, not from load.
+    pub since: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -265,10 +290,19 @@ impl Scenario {
     }
 
     /// Parses `path` without validating it: for a runner's child, whose
-    /// parent has already loaded it with [`Scenario::load_for`].
+    /// parent has already loaded it with [`Scenario::load_for`]. A body
+    /// `{"file": path}` is read from under the fixture root, the parent of
+    /// the scenario's directory.
     pub fn read(path: &Path) -> Result<Scenario, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+        let at = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| at(e.to_string()))?;
+        let mut value: Value = serde_json::from_str(&text).map_err(|e| at(e.to_string()))?;
+        let root = path.parent().and_then(Path::parent).ok_or_else(|| at("no fixture root above it".into()))?;
+        if !files::resolve_bodies(&mut value, root).map_err(at)? {
+            // Parsed from the text, its errors keep their line and column.
+            return serde_json::from_str(&text).map_err(|e| at(e.to_string()));
+        }
+        serde_json::from_value(value).map_err(|e| at(e.to_string()))
     }
 
     /// The capabilities its steps need.
@@ -286,7 +320,7 @@ impl Scenario {
     /// The expectations, in order.
     pub fn expects(&self) -> impl Iterator<Item = &Expect> {
         self.steps.iter().filter_map(|s| match s {
-            Step::Expect(e) => Some(e),
+            Step::Expect(e) => Some(e.as_ref()),
             _ => None,
         })
     }
@@ -317,6 +351,7 @@ impl Scenario {
         }
         self.fake.validate().map_err(|e| format!("fake.{e}"))?;
         self.validate_steps()?;
+        self.validate_marks()?;
         self.validate_declarations(implementations)
     }
 
@@ -334,6 +369,7 @@ impl Scenario {
                     check_values(values).map_err(|e| at(format!("wait.contract.{e}")))?
                 }
                 Step::Wait(Wait::Fake(f)) => check_fake_wait(f).map_err(|e| at(format!("wait.fake: {e}")))?,
+                Step::Wait(Wait::Model(q)) => q.validate().map_err(|e| at(format!("wait.model: {e}")))?,
                 Step::Expect(e) => {
                     check_expect(e).map_err(|m| at(format!("expect `{}`: {m}", e.id)))?;
                     if !ids.insert(e.id.as_str()) {
@@ -353,6 +389,30 @@ impl Scenario {
                 }
                 Step::Fake(FakeOp::PushWatchLine(b)) => within_write_limit("the chunk", watch_chunk(&b.0).len())
                     .map_err(|e| at(format!("fake.push_watch_line: {e}")))?,
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Each mark is named once, and each `since` names an earlier mark.
+    fn validate_marks(&self) -> Result<(), String> {
+        let mut marks = BTreeSet::new();
+        for (i, step) in self.steps.iter().enumerate() {
+            match step {
+                Step::Mark(label) if label.trim().is_empty() => return Err(format!("steps[{i}].mark: empty")),
+                Step::Mark(label) if !marks.insert(label.as_str()) => {
+                    return Err(format!("steps[{i}].mark: `{label}` twice"))
+                }
+                Step::Expect(e) => match e.signal.as_ref().and_then(|s| s.since.as_deref()) {
+                    Some(label) if !marks.contains(label) => {
+                        return Err(format!("steps[{i}].expect `{}`: since: no earlier mark `{label}`", e.id))
+                    }
+                    _ => {}
+                },
+                Step::Wait(Wait::Signal(SignalWait { since: Some(label), .. })) if !marks.contains(label.as_str()) => {
+                    return Err(format!("steps[{i}].wait: since: no earlier mark `{label}`"))
+                }
                 _ => {}
             }
         }
@@ -417,69 +477,4 @@ impl Scenario {
         }
         Ok(())
     }
-}
-
-/// `R-` + capital letters + `-` + two digits.
-fn is_requirement_id(id: &str) -> bool {
-    let Some(rest) = id.strip_prefix("R-") else { return false };
-    let Some((area, number)) = rest.split_once('-') else { return false };
-    !area.is_empty()
-        && area.bytes().all(|b| b.is_ascii_uppercase())
-        && number.len() == 2
-        && number.bytes().all(|b| b.is_ascii_digit())
-}
-
-/// A contract value a scenario can compare: a JSON scalar, `{"enum": name}`
-/// or `{"date": null | ISO string}`.
-pub fn check_value(value: &Value) -> Result<(), String> {
-    match value {
-        Value::Object(map) if map.len() == 1 => match map.iter().next().unwrap() {
-            (k, Value::String(_)) if k == "enum" => Ok(()),
-            (k, Value::String(_) | Value::Null) if k == "date" => Ok(()),
-            _ => Err(format!("{value} is not {{\"enum\": name}} or {{\"date\": null | string}}")),
-        },
-        Value::Object(_) | Value::Array(_) => Err(format!("{value} is not a scalar, an enum or a date")),
-        _ => Ok(()),
-    }
-}
-
-fn check_values(values: &BTreeMap<String, Value>) -> Result<(), String> {
-    if values.is_empty() {
-        return Err("empty: name at least one member".into());
-    }
-    values.iter().try_for_each(|(member, v)| check_value(v).map_err(|e| format!("{member}: {e}")))
-}
-
-fn check_fake_wait(f: &FakeWait) -> Result<(), String> {
-    let kinds = [f.connected.is_some(), f.recorded.is_some(), f.held.is_some()].iter().filter(|&&k| k).count();
-    if kinds != 1 {
-        return Err("give exactly one of connected, recorded and held".into());
-    }
-    if f.count.is_some() && f.recorded.is_none() {
-        return Err("count goes with recorded".into());
-    }
-    if let Some(m) = &f.recorded {
-        m.validate()?;
-    }
-    Ok(())
-}
-
-fn check_expect(e: &Expect) -> Result<(), String> {
-    let kinds = [e.contract.is_some(), e.signal.is_some(), e.request.is_some(), e.requests.is_some()]
-        .iter()
-        .filter(|&&k| k)
-        .count();
-    if kinds != 1 {
-        return Err("give exactly one of contract, signal, request and requests".into());
-    }
-    if let Some(values) = &e.contract {
-        check_values(values).map_err(|m| format!("contract.{m}"))?;
-    }
-    if let Some(r) = &e.request {
-        r.matcher.validate()?;
-    }
-    if let Some(r) = &e.requests {
-        r.matcher.validate()?;
-    }
-    Ok(())
 }

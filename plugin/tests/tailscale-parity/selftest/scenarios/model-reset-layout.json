@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "model-reset-layout",
+  "requirements": ["R-GROUP-07"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a model's modelReset and layoutChanged are counted, each read as 1 after the stub resets peers once and changes its layout once"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "mark": "before" },
+    { "call": { "name": "resetPeers", "args": [] } },
+    { "call": { "name": "relayoutPeers", "args": [] } },
+    { "wait": { "signal": { "name": "peers.layoutChanged", "at_least": 1, "since": "before" } } },
+    { "expect": { "id": "reset", "signal": { "name": "peers.modelReset", "count": 1, "since": "before" } } },
+    { "expect": { "id": "layout", "signal": { "name": "peers.layoutChanged", "count": 1, "since": "before" } } },
+    { "expect": { "id": "exit-no-reset", "signal": { "name": "exitNodes.modelReset", "count": 0, "since": "before" } } },
+    { "expect": { "id": "reset-twice", "signal": { "name": "peers.modelReset", "count": 2, "since": "before" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "reset-twice", "actual": 1 } ], "reason": "self-test" } }
+}

@@ -1,0 +1,133 @@
+{
+  "format": 1,
+  "id": "group-03-hand-built-order",
+  "requirements": [
+    "R-GROUP-03",
+    "R-GROUP-01"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "hand-built peers in a scrambled input order come out in the defined order: group, online before offline, display name case-insensitively, host name case-insensitively, nodeId; the set includes names equal except for case, an empty name, and peers equal except for nodeId",
+    "the host name key folds case: nH2 (display name same, host alpha) comes before nH1 (display name Same, host Beta), where a case-sensitive host compare ('Beta' < 'alpha'), a case-sensitive display name compare ('Same' < 'same') or skipping to nodeId (nH1 < nH2) each give the reverse"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        },
+        "2": {
+          "LoginName": "tagged-devices",
+          "DisplayName": "Tagged Devices"
+        },
+        "3": {
+          "LoginName": "other@example.com",
+          "DisplayName": "Other"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nO2",
+          "HostName": "zed",
+          "UserID": 3,
+          "Online": true
+        },
+        "p02": {
+          "ID": "nM5",
+          "HostName": "Bravo",
+          "UserID": 1,
+          "Online": false
+        },
+        "p03": {
+          "ID": "nM3",
+          "HostName": "",
+          "UserID": 1,
+          "Online": true
+        },
+        "p04": {
+          "ID": "nT1",
+          "HostName": "alpha",
+          "UserID": 2,
+          "Online": true
+        },
+        "p05": {
+          "ID": "nM2",
+          "HostName": "bravo",
+          "DNSName": "Alpha.example.ts.net.",
+          "UserID": 1,
+          "Online": true
+        },
+        "p06": {
+          "ID": "nM1b",
+          "HostName": "alpha",
+          "UserID": 1,
+          "Online": true
+        },
+        "p07": {
+          "ID": "nO1",
+          "HostName": "able",
+          "UserID": 3,
+          "Online": false
+        },
+        "p08": {
+          "ID": "nM1a",
+          "HostName": "alpha",
+          "UserID": 1,
+          "Online": true
+        },
+        "p09": {
+          "ID": "nM4",
+          "HostName": "ALPHA",
+          "UserID": 1,
+          "Online": false
+        },
+        "p10": {
+          "ID": "nM6",
+          "HostName": "bravo",
+          "UserID": 1,
+          "Online": false
+        },
+        "p11": {
+          "ID": "nH1",
+          "HostName": "Beta",
+          "DNSName": "Same.example.ts.net.",
+          "UserID": 1,
+          "Online": true
+        },
+        "p12": {
+          "ID": "nH2",
+          "HostName": "alpha",
+          "DNSName": "same.example.ts.net.",
+          "UserID": 1,
+          "Online": true
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"nodeId": "nM3", "displayName": "", "hostName": "", "group": 0, "online": true},
+      {"nodeId": "nM1a", "displayName": "alpha", "hostName": "alpha", "group": 0, "online": true},
+      {"nodeId": "nM1b", "displayName": "alpha", "hostName": "alpha", "group": 0, "online": true},
+      {"nodeId": "nM2", "displayName": "Alpha", "hostName": "bravo", "group": 0, "online": true},
+      {"nodeId": "nH2", "displayName": "same", "hostName": "alpha", "group": 0, "online": true},
+      {"nodeId": "nH1", "displayName": "Same", "hostName": "Beta", "group": 0, "online": true},
+      {"nodeId": "nM4", "displayName": "ALPHA", "hostName": "ALPHA", "group": 0, "online": false},
+      {"nodeId": "nM5", "displayName": "Bravo", "hostName": "Bravo", "group": 0, "online": false},
+      {"nodeId": "nM6", "displayName": "bravo", "hostName": "bravo", "group": 0, "online": false},
+      {"nodeId": "nT1", "displayName": "alpha", "hostName": "alpha", "group": 1, "online": true},
+      {"nodeId": "nO2", "displayName": "zed", "hostName": "zed", "group": 2, "online": true},
+      {"nodeId": "nO1", "displayName": "able", "hostName": "able", "group": 2, "online": false}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

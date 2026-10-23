@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "id": "parse-14-array-wrong-type",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Health\":\"bad\",\"Self\":{\"HostName\":\"h\",\"TailscaleIPs\":\"100.64.0.1\"},\"Peer\":{\"n\":{\"ID\":\"nX1CNTRL\",\"HostName\":\"x\",\"TailscaleIPs\":{\"v4\":\"100.64.0.2\"}}},\"ExitNodeStatus\":{\"ID\":\"nX1CNTRL\",\"Online\":true,\"TailscaleIPs\":\"100.64.0.2/32\"}} yields an empty health list, selfName h with empty selfIp4 and selfIp6, one peer nX1CNTRL with empty ip4 and ip6, and an exit node with id nX1CNTRL, name x and online true"
+  ],
+  "deferred": [
+    "the exit node's empty IPv4: no contract member publishes it (R-PARSE-13)"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Health": "bad",
+      "Self": {
+        "HostName": "h",
+        "TailscaleIPs": "100.64.0.1"
+      },
+      "Peer": {
+        "n": {
+          "ID": "nX1CNTRL",
+          "HostName": "x",
+          "TailscaleIPs": {
+            "v4": "100.64.0.2"
+          }
+        }
+      },
+      "ExitNodeStatus": {
+        "ID": "nX1CNTRL",
+        "Online": true,
+        "TailscaleIPs": "100.64.0.2/32"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"issues": [], "issueCount": 0, "selfName": "h", "selfIp4": "", "selfIp6": "", "exitNodeActive": true, "exitNodeId": "nX1CNTRL", "exitNodeName": "x", "exitNodeOnline": true},
+    "peers": [
+      {"nodeId": "nX1CNTRL", "ip4": "", "ip6": ""}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "id": "parse-03-self-ipv4-only",
+  "requirements": [
+    "R-PARSE-03"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "a Self with only IPv4 yields an empty selfIp6 (status-idle.json with Self.TailscaleIPs [100.115.228.122])"
+  ],
+  "status": {
+    "file": "captures/status-idle.json"
+  },
+  "edits": [
+    {
+      "op": "replace",
+      "path": "/Self/TailscaleIPs",
+      "value": [
+        "100.115.228.122"
+      ]
+    }
+  ],
+  "expect": {
+    "contract": {"selfIp4": "100.115.228.122", "selfIp6": ""}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

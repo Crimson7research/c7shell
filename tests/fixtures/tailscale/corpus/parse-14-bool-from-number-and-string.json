@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "parse-14-bool-from-number-and-string",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "the same peer with \"Online\":1,\"ExitNodeOption\":\"true\" gives online and exitNodeOption false too"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Peer": {
+        "n": {
+          "ID": "nX1CNTRL",
+          "HostName": "x",
+          "TailscaleIPs": null,
+          "Online": 1,
+          "ExitNodeOption": "true",
+          "DNSName": 5
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [
+      {"nodeId": "nX1CNTRL", "displayName": "x", "online": false, "exitNodeOption": false}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

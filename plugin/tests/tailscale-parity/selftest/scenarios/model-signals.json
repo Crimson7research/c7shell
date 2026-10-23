@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "model-signals",
+  "requirements": ["R-GROUP-06"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: each model's rowsInserted, rowsRemoved, rowsMoved, modelReset, dataChanged and layoutChanged are counted from load as <member>.<signal>, waited on and expected like any signal"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "call": { "name": "movePeer", "args": [0, 2] } },
+    { "call": { "name": "setOnline", "args": [0, true] } },
+    { "call": { "name": "removePeer", "args": [0] } },
+    { "wait": { "signal": { "name": "peers.rowsRemoved", "at_least": 1 } } },
+    { "expect": { "id": "inserted", "signal": { "name": "peers.rowsInserted", "count": 1 } } },
+    { "expect": { "id": "moved", "signal": { "name": "peers.rowsMoved", "count": 1 } } },
+    { "expect": { "id": "changed", "signal": { "name": "peers.dataChanged", "count": 1 } } },
+    { "expect": { "id": "removed", "signal": { "name": "peers.rowsRemoved", "count": 1 } } },
+    { "expect": { "id": "no-reset", "signal": { "name": "peers.modelReset", "count": 0 } } },
+    { "expect": { "id": "no-layout", "signal": { "name": "peers.layoutChanged", "count": 0 } } },
+    { "expect": { "id": "exit-untouched", "signal": { "name": "exitNodes.rowsInserted", "count": 0 } } },
+    { "expect": { "id": "exit-no-reset", "signal": { "name": "exitNodes.modelReset", "count": 0 } } },
+    { "expect": { "id": "inserted-twice", "signal": { "name": "peers.rowsInserted", "count": 2 } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "inserted-twice", "actual": 1 } ], "reason": "self-test" } }
+}

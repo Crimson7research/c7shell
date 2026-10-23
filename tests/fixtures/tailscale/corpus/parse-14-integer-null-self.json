@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "parse-14-integer-null-self",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "the same status with \"Self\":{\"UserID\":null} and the peers' UserID 0 puts both in Mine"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "UserID": null
+      },
+      "User": {
+        "7": {
+          "LoginName": "me@example.com"
+        }
+      },
+      "Peer": {
+        "a": {
+          "ID": "nA",
+          "HostName": "a",
+          "UserID": 0
+        },
+        "b": {
+          "ID": "nB",
+          "HostName": "b",
+          "UserID": 0
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [
+      {"nodeId": "nA", "group": 0, "ownerName": ""},
+      {"nodeId": "nB", "group": 0, "ownerName": ""}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

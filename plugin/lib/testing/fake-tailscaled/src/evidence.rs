@@ -180,3 +180,51 @@ fn requirement_ids(text: &str) -> Vec<String> {
     }
     out
 }
+
+/// One row of the traceability's Table C: a requirement and the Phase 2
+/// harness tests that run it on a38dbca.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HarnessRow {
+    pub id: String,
+    /// The evidence class, as evidence.json spells it.
+    pub class: String,
+    /// The ids of the scenarios that name it.
+    pub scenarios: BTreeSet<String>,
+    /// The ids of the corpus cases that name it.
+    pub corpus: BTreeSet<String>,
+}
+
+/// The rows of the table headed `Requirement | Class | Scenarios | Corpus
+/// cases | ...` under `## Table C`, in order. A test cell lists backticked
+/// ids; a cell with none (`—`) is empty.
+pub fn table_c(traceability: &str) -> Vec<HarnessRow> {
+    let mut rows = Vec::new();
+    let mut in_c = false;
+    for line in traceability.lines() {
+        if line.starts_with("## ") {
+            in_c = line.starts_with("## Table C");
+            continue;
+        }
+        if !in_c || !line.starts_with('|') {
+            continue;
+        }
+        let cells: Vec<&str> = line.trim().trim_matches('|').split('|').map(str::trim).collect();
+        let [id, class, scenarios, corpus, ..] = cells[..] else { continue };
+        let ids = requirement_ids(id);
+        if ids.len() != 1 {
+            continue;
+        }
+        rows.push(HarnessRow {
+            id: ids[0].clone(),
+            class: backticked(class).into_iter().next().unwrap_or_default(),
+            scenarios: backticked(scenarios),
+            corpus: backticked(corpus),
+        });
+    }
+    rows
+}
+
+/// Every backticked token in `cell`.
+fn backticked(cell: &str) -> BTreeSet<String> {
+    cell.split('`').skip(1).step_by(2).map(str::to_string).collect()
+}

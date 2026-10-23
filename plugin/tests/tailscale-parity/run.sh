@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the Tailscale scenarios against #286's C7 at a38dbca. Run it directly:
+# Runs the Tailscale scenarios and the parser corpus against #286's C7 at
+# a38dbca. Run it directly:
 #   plugin/tests/tailscale-parity/run.sh [--repeat N]
 # It builds the reference first (build-reference.sh, a no-op once built).
 set -euo pipefail
@@ -22,3 +23,4 @@ cd "$here/../.."
 # shellcheck source=../../../tests/fixtures/cargo-env.sh
 . "$here/../../../tests/fixtures/cargo-env.sh"
 C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_REPEAT=$repeat cargo test --locked -q -p tailscale-parity --test scenarios
+C7_IMPL=cpp-286 C7_QML_DIR=$qml C7_REPEAT=$repeat cargo test --locked -q -p tailscale-parity --test corpus

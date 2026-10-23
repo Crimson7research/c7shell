@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "group-06-offline-row-moves",
+  "requirements": ["R-GROUP-06", "R-GROUP-07"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "R-GROUP-06: with rows nAAA1CNTRL and nBBB1CNTRL both online, a served status with nAAA1CNTRL offline keeps 2 rows keyed by nodeId (nBBB1CNTRL at row 0, nAAA1CNTRL at row 1), and emits one rowsMoved, no reset, no insert and no remove, counted from QML from just before the change once the snapshot's value is seen",
+    "R-GROUP-07: the same change emits exactly one dataChanged, keeps 2 rows and emits no reset"
+  ],
+  "deferred": [
+    "R-GROUP-06: the QML delegate half (the delegate survives a re-sort, a join and a leave; a rebuilt model makes a new one): harness-on-cpp, #309",
+    "R-GROUP-07: not deferred, but not read either: which row the one dataChanged names, since the driver counts signals without their arguments (#286's tst_peermodel.cpp checks the row); the row's new values are read instead"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {"nodekey:0001": {"ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1}, "nodekey:0002": {"ID": "nBBB1CNTRL", "HostName": "bravo", "DNSName": "bravo.example.ts.net.", "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": false, "UserID": 1}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": {"json": {"BackendState": "Running", "CurrentTailnet": {"Name": "example.com"}, "Self": {"ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.", "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1}, "User": {"1": {"ID": 1, "LoginName": "me@example.com", "DisplayName": "Me"}, "2": {"ID": 2, "LoginName": "other@example.com", "DisplayName": "Other Person"}}, "Peer": {"nodekey:0001": {"ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.", "TailscaleIPs": ["100.64.0.2"], "Online": false, "ExitNodeOption": false, "UserID": 1}, "nodekey:0002": {"ID": "nBBB1CNTRL", "HostName": "bravo", "DNSName": "bravo.example.ts.net.", "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": false, "UserID": 1}}}} } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"model": {"name": "peers", "count": 2}}},
+    {"wait": {"model": {"name": "peers", "row": 0, "values": {"nodeId": "nAAA1CNTRL", "online": true}}}},
+    {"wait": {"fake": {"recorded": {"method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18"}}}},
+    {"mark": "before-change"},
+    {"fake": {"push_watch_line": "{\"State\":6}"}},
+    {"wait": {"model": {"name": "peers", "row": 1, "values": {"nodeId": "nAAA1CNTRL", "online": false}}}},
+    {"expect": {"id": "rows-kept", "model": {"name": "peers", "count": 2}}},
+    {"expect": {"id": "bravo-first", "model": {"name": "peers", "row": 0, "values": {"nodeId": "nBBB1CNTRL", "online": true}}}},
+    {"expect": {"id": "one-move", "signal": {"name": "peers.rowsMoved", "count": 1, "since": "before-change"}}},
+    {"expect": {"id": "no-reset", "signal": {"name": "peers.modelReset", "count": 0, "since": "before-change"}}},
+    {"expect": {"id": "no-insert", "signal": {"name": "peers.rowsInserted", "count": 0, "since": "before-change"}}},
+    {"expect": {"id": "no-remove", "signal": {"name": "peers.rowsRemoved", "count": 0, "since": "before-change"}}},
+    {"expect": {"id": "one-data-change", "signal": {"name": "peers.dataChanged", "count": 1, "since": "before-change"}}}
+  ],
+  "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
+}

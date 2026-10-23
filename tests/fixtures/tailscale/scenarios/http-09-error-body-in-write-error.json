@@ -8,7 +8,8 @@
     "Given a fake that answers a PATCH of /localapi/v0/prefs with HTTP/1.1 403 Forbidden and the body `prefs write access denied\\n`, writeError equals `/localapi/v0/prefs answered HTTP/1.1 403 Forbidden: prefs write access denied` (read after writeErrorChanged and the client barrier, in place of the read barrier)"
   ],
   "deferred": [
-    "the chunked 403, the 500 bodies on /status, the empty and invalid UTF-8 bodies: harness-on-cpp, #307",
+    "the chunked 403, the 500 bodies on /status, the empty and invalid UTF-8 bodies: harness-on-cpp, each its own scenario (http-09-chunked-403-in-write-error, http-09-status-500-error-member, http-09-status-500-whole-body, http-09-status-500-invalid-utf8, http-09-403-empty-body)",
+    "\"no reply is delivered\" and every failure count: phase3-only, the transport's own outcomes are not reachable through QML",
     "bounds and incomplete bodies, the watch cases and the backend half: phase3-only, they need the clock and the retry hook"
   ],
   "needs": [],

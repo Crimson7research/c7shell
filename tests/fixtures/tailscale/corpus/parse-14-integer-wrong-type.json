@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "parse-14-integer-wrong-type",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Self\":{\"UserID\":7},\"User\":{\"7\":{\"LoginName\":\"me@example.com\"}},\"Peer\":{\"a\":{\"ID\":\"nA\",\"HostName\":\"a\",\"UserID\":\"7\"},\"b\":{\"ID\":\"nB\",\"HostName\":\"b\",\"UserID\":null}}} yields exactly two peers, nA and nB; each reads user id 0, so neither is in Mine: both are in Others, each with an empty ownerName"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "UserID": 7
+      },
+      "User": {
+        "7": {
+          "LoginName": "me@example.com"
+        }
+      },
+      "Peer": {
+        "a": {
+          "ID": "nA",
+          "HostName": "a",
+          "UserID": "7"
+        },
+        "b": {
+          "ID": "nB",
+          "HostName": "b",
+          "UserID": null
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [
+      {"nodeId": "nA", "group": 2, "ownerName": ""},
+      {"nodeId": "nB", "group": 2, "ownerName": ""}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

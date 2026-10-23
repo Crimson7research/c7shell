@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "parse-07-running-peer-null",
+  "requirements": [
+    "R-PARSE-07"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"Peer\":null} has a Peer section, with no peers (read through the peers and exitNodes rows)"
+  ],
+  "deferred": [
+    "whether a Peer section is present: phase3-only, the flag is not on #286's contract"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Peer": null
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [],
+    "exitNodes": []
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "parse-11-suggestion-500-clears",
+  "requirements": ["R-PARSE-11"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A failed reply clears it: from a published nEwJFIats021CNTRL, when the fake then answers /suggest-exit-node 500 and a notification ({\"Prefs\":{}}) arrives, recommendedExitNodeId reads empty, checked once recommendedExitNodeIdChanged has fired after the push (counted from a mark just before it, so however often the opening pass fired it), so a reply that changes it to anything but empty fails at the value (one that leaves it unchanged still ends in a wait timeout: only phase 3's read barrier can tell that apart). #286 already clears it (a failure at LocalApiTailscaleBackend.cpp:449-451, a malformed body at :686-689), so the scenario is tagged parity"
+  ],
+  "deferred": [
+    "the change counts (recommendedExitNodeIdChanged exactly once), \"no retry\", the arrival-order runs and the readError and retry clauses of the malformed runs: phase3-only, they are exact counts and negatives after the idle or read barrier, and the retry hook",
+    "the Running half, nEwJFIats021CNTRL matched in exitNodes: the corpus case parse-11-suggestion-id"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/suggest-exit-node.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 500, "reason": "Internal Server Error", "body": { "json": { "error": "no preferred DERP, try again later" } } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" }, "recommendedExitNodeId": "nEwJFIats021CNTRL" } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "mark": "before-push" },
+    { "fake": { "push_watch_line": "{\"Prefs\":{}}" } },
+    { "wait": { "signal": { "name": "recommendedExitNodeIdChanged", "at_least": 1, "since": "before-push" } } },
+    { "expect": { "id": "asked-again", "precondition": true,
+      "requests": { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" }, "count": 2 } } },
+    { "expect": { "id": "cleared", "contract": { "recommendedExitNodeId": "" } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" }, "rust": { "result": "pass" } }
+}

@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "id": "served-change",
+  "requirements": ["R-GROUP-06"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: a reply body read from a capture file under the fixture root, a C++ model's rows read by role name and number, its children, its own signals counted, and a served change: a second /status reply, through a times rule, asked for by a watch notification"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" }, "times": 1,
+      "reply": { "status": 200, "body": { "file": "captures/two-peers.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {
+        "BackendState": "Running",
+        "CurrentTailnet": { "Name": "example.com" },
+        "Self": { "ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.",
+                  "TailscaleIPs": ["100.64.0.1"], "Online": true, "UserID": 1 },
+        "User": { "1": { "ID": 1, "LoginName": "me@example.com", "DisplayName": "Me" } },
+        "Peer": {
+          "nodekey:aaaa": { "ID": "nAAA1CNTRL", "HostName": "alpha", "DNSName": "alpha.example.ts.net.",
+                            "TailscaleIPs": ["100.64.0.2"], "Online": true, "ExitNodeOption": false, "UserID": 1 },
+          "nodekey:bbbb": { "ID": "nBBB1CNTRL", "HostName": "bravo", "DNSName": "bravo.example.ts.net.",
+                            "TailscaleIPs": ["100.64.0.3"], "Online": true, "ExitNodeOption": false, "UserID": 1 },
+          "nodekey:cccc": { "ID": "nCCC1CNTRL", "HostName": "charlie", "DNSName": "charlie.example.ts.net.",
+                            "TailscaleIPs": ["100.64.0.4"], "Online": true, "ExitNodeOption": true, "UserID": 1 }
+        } } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": {
+        "WantRunning": true, "RouteAll": false, "CorpDNS": true, "ExitNodeID": "", "ExitNodeAllowLANAccess": false } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "fresh", "model": { "name": "peers", "count": 0 } } },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "wait": { "model": { "name": "peers", "count": 2 } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" } } } },
+    { "expect": { "id": "first", "model": { "name": "peers", "row": 0,
+                  "values": { "hostName": "alpha", "nodeId": "nAAA1CNTRL", "online": true, "group": 0 } } } },
+    { "expect": { "id": "last", "model": { "name": "peers", "row": 1, "values": { "hostName": "charlie" } } } },
+    { "expect": { "id": "exit-node", "model": { "name": "exitNodes", "row": 0,
+                  "values": { "hostName": "charlie", "exitNodeOption": true } } } },
+    { "expect": { "id": "exit-rows", "model": { "name": "exitNodes", "count": 1 } } },
+    { "expect": { "id": "off-end", "model": { "name": "peers", "row": 99, "values": { "#257": { "undefined": true } } } } },
+    { "expect": { "id": "display", "model": { "name": "peers", "row": 0, "values": { "#0": { "undefined": true } } } } },
+    { "expect": { "id": "flat", "model": { "name": "peers", "row": 0, "has_children": false } } },
+    { "expect": { "id": "flat-rows", "model": { "name": "peers", "row": 0, "count": 0 } } },
+    { "fake": { "push_watch_line": "{\"State\":6}" } },
+    { "wait": { "model": { "name": "peers", "count": 3 } } },
+    { "wait": { "fake": { "recorded": { "method": "GET", "target": "/localapi/v0/status" }, "count": 2 } } },
+    { "expect": { "id": "inserted", "model": { "name": "peers", "row": 1, "values": { "hostName": "bravo", "nodeId": "nBBB1CNTRL" } } } },
+    { "expect": { "id": "kept", "model": { "name": "peers", "row": 2, "values": { "hostName": "charlie" } } } },
+    { "expect": { "id": "no-reset", "signal": { "name": "peers.modelReset", "count": 0 } } },
+    { "expect": { "id": "no-remove", "signal": { "name": "peers.rowsRemoved", "count": 0 } } },
+    { "expect": { "id": "exit-untouched", "signal": { "name": "exitNodes.rowsInserted", "count": 1 } } },
+    { "expect": { "id": "two-status", "requests": { "match": { "method": "GET", "path": "/localapi/v0/status" }, "count": 2 } } }
+  ],
+  "on": { "cpp-286": { "result": "pass" } }
+}

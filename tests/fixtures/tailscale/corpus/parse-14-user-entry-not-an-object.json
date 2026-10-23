@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "parse-14-user-entry-not-an-object",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "a User entry that is not an object, \"User\":{\"3\":\"Alice\"} with the same peer, gives the same ownerName, empty"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": "me",
+      "CurrentTailnet": [
+        "t"
+      ],
+      "User": {
+        "3": "Alice"
+      },
+      "Peer": {
+        "n": {
+          "ID": "nX1CNTRL",
+          "HostName": "x",
+          "UserID": 3
+        }
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [
+      {"nodeId": "nX1CNTRL", "group": 2, "ownerName": ""}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

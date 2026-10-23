@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "signal-since",
+  "requirements": ["R-GROUP-06"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a mark step records every counted signal, and a signal expectation with since counts from that mark; a failed one reports the count since the mark"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "wait": { "signal": { "name": "peers.rowsInserted", "at_least": 1 } } },
+    { "mark": "after-one" },
+    { "call": { "name": "addPeer", "args": ["echo", "n5"] } },
+    { "call": { "name": "removePeer", "args": [0] } },
+    { "wait": { "signal": { "name": "peers.rowsRemoved", "at_least": 1 } } },
+    { "mark": "after-both" },
+    { "expect": { "id": "inserted-since", "signal": { "name": "peers.rowsInserted", "count": 1, "since": "after-one" } } },
+    { "expect": { "id": "inserted-in-all", "signal": { "name": "peers.rowsInserted", "count": 2 } } },
+    { "expect": { "id": "removed-since", "signal": { "name": "peers.rowsRemoved", "count": 1, "since": "after-one" } } },
+    { "expect": { "id": "nothing-since", "signal": { "name": "peers.rowsInserted", "count": 0, "since": "after-both" } } },
+    { "expect": { "id": "reset-since", "signal": { "name": "peers.modelReset", "count": 0, "since": "after-one" } } },
+    { "expect": { "id": "wrong-since", "signal": { "name": "peers.rowsInserted", "count": 2, "since": "after-one" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "wrong-since", "actual": 1 } ], "reason": "self-test" } }
+}

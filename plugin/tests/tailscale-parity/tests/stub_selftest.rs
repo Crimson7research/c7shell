@@ -83,7 +83,8 @@ fn the_implementation(failures: &mut Vec<String>) {
 }
 
 /// 3. A pass, and the child's environment: only the keep-list, the private
-///    directories, dead buses, the platform and TS_SOCKET.
+///    directories, dead buses, the platform, a fixed zone three hours
+///    east of UTC and TS_SOCKET.
 fn a_pass_and_its_environment(failures: &mut Vec<String>) {
     let pass = run_stub("scenarios/pass.json");
     verdict(failures, &pass, true, &["stub: pass, as declared"], |o| *o == Outcome::Pass);
@@ -92,9 +93,15 @@ fn a_pass_and_its_environment(failures: &mut Vec<String>) {
     let allowed = |n: &str| {
         child::kept(n)
             || child::PRIVATE.iter().any(|(v, _)| *v == n)
-            || ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "QT_QPA_PLATFORM", "TS_SOCKET"].contains(&n)
+            || ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "QT_QPA_PLATFORM", "TS_SOCKET", "TZ"]
+                .contains(&n)
     };
     check(failures, names.iter().all(|n| allowed(n)), &format!("the child's environment is the allowlist: {names:?}"));
+    // A local time read from a zone-less date is the host's unless the
+    // child names its zone. Not UTC: there local time and UTC are the same
+    // instant, which hides a date built as local time from UTC fields.
+    let fixed = env.get("TZ").is_some_and(|v| v == "<+03>-3");
+    check(failures, fixed, &format!("the child's TZ is UTC+3 with no DST: {:?}", env.get("TZ")));
     let under_root = |k: &str| env.get(k).is_some_and(|v| v.starts_with(pass.root.to_str().unwrap()));
     for k in ["TS_SOCKET", "HOME", "XDG_RUNTIME_DIR", "TMPDIR", "PATH"] {
         check(failures, under_root(k), &format!("the child's {k} is under its private root: {:?}", env.get(k)));
@@ -227,6 +234,86 @@ fn the_wait_cap(failures: &mut Vec<String>) {
     verdict(failures, &r, false, &["C7_HARNESS_MAX_ITERATIONS"], error("C7_HARNESS_MAX_ITERATIONS"));
 }
 
+/// 11. A string list is compared as an array, in a wait and an expect; a
+///     failed comparison reports the array it read.
+fn the_array_values(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/array-values.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(["a", ""]));
+    verdict(failures, &r, true, &["fail as declared: shorter"], read);
+}
+
+/// 12. A model's rows: its count, a row's roles by name and by number, a
+///     row off the end, its children and a wait on the count; a failed
+///     model expectation reports what it read, and a role, row or member
+///     that cannot be read is an error naming it.
+fn the_model_reads(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-rows.json");
+    let wants = ["fail as declared: stale-count, wrong-children, wrong-role, wrong-row"];
+    let read = |o: &Outcome| {
+        let actual = |id: &str| match o {
+            Outcome::Fail(f) => f.iter().find(|f| f.id == id).map(|f| f.actual.clone()),
+            _ => None,
+        };
+        actual("stale-count") == Some(json!(4))
+            && actual("wrong-row") == Some(json!({ "hostName": "delta", "online": true }))
+            && actual("wrong-role") == Some(json!("n4"))
+    };
+    verdict(failures, &r, true, &wants, read);
+    for (file, what) in [
+        ("model-unknown-role", "bogus is not a role of peers"),
+        ("model-named-off-end", "peers has no row 99 to read hostName from"),
+        ("model-not-a-model", "writeError is not a model"),
+        ("model-wait-never", "wait never reached: peers has 9 rows (last read 3)"),
+    ] {
+        let r = run_stub(&format!("scenarios/{file}.json"));
+        verdict(failures, &r, false, &[what], error(what));
+    }
+}
+
+/// 13. Each model's own signals are counted from load as
+///     `<member>.<signal>`, for every model member.
+fn the_model_signals(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-signals.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: inserted-twice"], read);
+}
+
+/// 14. A mark records every counted signal, and a signal expectation
+///     `since` it counts from there; a failed one reports that count.
+fn the_signal_marks(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/signal-since.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: wrong-since"], read);
+}
+
+/// 15. Two model members are told apart as objects; the same member twice
+///     is not distinct.
+fn the_distinct_models(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-distinct.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(false));
+    verdict(failures, &r, true, &["fail as declared: one-model"], read);
+}
+
+/// 16. A signal wait `since` a mark counts from there, so it waits past
+///     what fired before the mark, and one that nothing after the mark
+///     reaches is never reached.
+fn the_signal_wait_marks(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/signal-wait-since.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: wrong-since"], read);
+    let what = "wait never reached: peers.rowsInserted fired 1 times since after-one";
+    let r = run_stub("scenarios/signal-wait-since-never.json");
+    verdict(failures, &r, false, &[what], error(what));
+}
+
+/// 17. modelReset and layoutChanged are counted when they fire, not only
+///     read as 0: the stub resets `peers` once and changes its layout once.
+fn the_model_reset_and_layout(failures: &mut Vec<String>) {
+    let r = run_stub("scenarios/model-reset-layout.json");
+    let read = |o: &Outcome| matches!(o, Outcome::Fail(f) if f.len() == 1 && f[0].actual == json!(1));
+    verdict(failures, &r, true, &["fail as declared: reset-twice"], read);
+}
+
 fn parent() -> i32 {
     let mut failures = Vec::new();
     the_bridge(&mut failures);
@@ -239,6 +326,13 @@ fn parent() -> i32 {
     the_conclusion(&mut failures);
     the_repeat_count(&mut failures);
     the_wait_cap(&mut failures);
+    the_array_values(&mut failures);
+    the_model_reads(&mut failures);
+    the_model_signals(&mut failures);
+    the_signal_marks(&mut failures);
+    the_distinct_models(&mut failures);
+    the_signal_wait_marks(&mut failures);
+    the_model_reset_and_layout(&mut failures);
     finish("stub_selftest", &failures)
 }
 

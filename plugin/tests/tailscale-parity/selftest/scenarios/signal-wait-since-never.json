@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "signal-wait-since-never",
+  "requirements": ["R-PARSE-11"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a signal wait with since ignores what fired before the mark; counted from load, this one would hold at once"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "wait": { "signal": { "name": "peers.rowsInserted", "at_least": 1 } } },
+    { "mark": "after-one" },
+    { "wait": { "signal": { "name": "peers.rowsInserted", "at_least": 1, "since": "after-one" } } },
+    { "expect": { "id": "never", "contract": { "writeError": "x" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "never", "actual": "" } ], "reason": "self-test" } }
+}

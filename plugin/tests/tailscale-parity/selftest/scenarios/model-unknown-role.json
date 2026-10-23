@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "model-unknown-role",
+  "requirements": ["R-GROUP-05"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a role name the model does not have is an error naming it"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "bogus", "model": { "name": "peers", "row": 0, "values": { "bogus": 1 } } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-14-exit-node-status-fields",
+  "requirements": [
+    "R-PARSE-14"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "{\"BackendState\":\"Running\",\"ExitNodeStatus\":{\"ID\":5,\"Online\":\"true\"}} yields an exit node with an empty id, an empty name and online false"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "ExitNodeStatus": {
+        "ID": 5,
+        "Online": "true"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "", "exitNodeName": "", "exitNodeOnline": false}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

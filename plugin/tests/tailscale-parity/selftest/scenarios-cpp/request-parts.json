@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "id": "request-parts",
+  "requirements": ["R-HTTP-02"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "runner self-test: a request_parts expectation holds on a PATCH whose start, headers and JSON body match, and fails with the bytes sent on another body or a header it lacks, and with null on a request never sent"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "json": {
+        "BackendState": "Running", "CurrentTailnet": { "Name": "example.com" },
+        "Self": { "ID": "nSELF1CNTRL", "HostName": "self", "DNSName": "self.example.ts.net.",
+                  "TailscaleIPs": ["100.64.0.1"], "Online": true }, "Peer": {} } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "json": {
+        "WantRunning": true, "RouteAll": false, "CorpDNS": true, "ExitNodeID": "", "ExitNodeAllowLANAccess": false } } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } },
+    { "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": "{}" } }
+  ] },
+  "steps": [
+    { "start": {} },
+    { "wait": { "contract": { "state": { "enum": "Running" } } } },
+    { "call": { "name": "setAcceptRoutes", "args": [true] } },
+    { "wait": { "fake": { "recorded": { "method": "PATCH", "target": "/localapi/v0/prefs" } } } },
+    { "expect": { "id": "parts", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH /localapi/v0/prefs HTTP/1.1\r\n",
+      "headers": [["host", "local-tailscaled.sock"], ["Content-Length", "36"]],
+      "body_json": { "RouteAllSet": true, "RouteAll": true } } } },
+    { "expect": { "id": "other-body", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH ",
+      "body_json": { "RouteAllSet": true, "RouteAll": false } } } },
+    { "expect": { "id": "lacks-header", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/prefs" },
+      "starts_with": "PATCH ",
+      "headers": [["Content-Type", "text/plain"]] } } },
+    { "expect": { "id": "never-sent", "request_parts": {
+      "match": { "method": "PATCH", "target": "/localapi/v0/never" },
+      "starts_with": "PATCH " } } }
+  ],
+  "on": {
+    "cpp-286": { "result": "fail",
+      "failing": [
+        { "id": "lacks-header", "actual": "PATCH /localapi/v0/prefs HTTP/1.1\r\nHost: local-tailscaled.sock\r\nContent-Type: application/json\r\nContent-Length: 36\r\n\r\n{\"RouteAll\":true,\"RouteAllSet\":true}" },
+        { "id": "never-sent", "actual": null },
+        { "id": "other-body", "actual": "PATCH /localapi/v0/prefs HTTP/1.1\r\nHost: local-tailscaled.sock\r\nContent-Type: application/json\r\nContent-Length: 36\r\n\r\n{\"RouteAll\":true,\"RouteAllSet\":true}" }
+      ],
+      "reason": "self-test" }
+  }
+}

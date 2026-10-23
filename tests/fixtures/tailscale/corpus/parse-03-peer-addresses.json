@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "id": "parse-03-peer-addresses",
+  "requirements": [
+    "R-PARSE-03"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "peer ip4 and ip6 follow the same rule: array order does not matter, a missing family yields an empty string, and each address is kept as reported"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nA1CNTRL",
+          "HostName": "a",
+          "TailscaleIPs": [
+            "fd7a:115c:a1e0::a",
+            "100.64.0.10"
+          ],
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nB1CNTRL",
+          "HostName": "b",
+          "TailscaleIPs": [
+            "100.64.0.11"
+          ],
+          "UserID": 1
+        },
+        "p03": {
+          "ID": "nC1CNTRL",
+          "HostName": "c",
+          "TailscaleIPs": [
+            "fd7a:115c:a1e0::c"
+          ],
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"nodeId": "nA1CNTRL", "ip4": "100.64.0.10", "ip6": "fd7a:115c:a1e0::a"},
+      {"nodeId": "nB1CNTRL", "ip4": "100.64.0.11", "ip6": ""},
+      {"nodeId": "nC1CNTRL", "ip4": "", "ip6": "fd7a:115c:a1e0::c"}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

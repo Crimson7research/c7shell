@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-04-negative-offset",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "A -HH:MM offset is an RFC 3339 zone as +HH:MM is (the Statement's \"Z or a +HH:MM/-HH:MM offset\"): 2027-04-11T05:36:08-03:30 yields 2027-04-11T09:06:08Z, the offset's minutes included"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "2027-04-11T05:36:08-03:30"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"keyExpiry": {"date": "2027-04-11T09:06:08.000Z"}}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "parse-04-not-a-date",
+  "requirements": [
+    "R-PARSE-04"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "soon yields an invalid keyExpiry"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "HostName": "h",
+        "KeyExpiry": "soon"
+      }
+    }
+  },
+  "expect": {
+    "contract": {"keyExpiry": {"date": null}}
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

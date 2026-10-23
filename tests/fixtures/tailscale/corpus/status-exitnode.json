@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "status-exitnode",
+  "requirements": [
+    "R-PARSE-08",
+    "R-PARSE-09",
+    "R-GROUP-09"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "R-PARSE-08: status-exitnode.json yields exit node id nEwJFIats021CNTRL and online true (exitNodeId, exitNodeOnline, exitNodeActive)",
+    "R-PARSE-09: status-exitnode.json names the exit node pentest-exit-node",
+    "R-GROUP-09: exitNodes holds exactly the peers whose exitNodeOption is true, in peers order"
+  ],
+  "status": {
+    "file": "captures/status-exitnode.json"
+  },
+  "expect": {
+    "contract": {"exitNodeActive": true, "exitNodeId": "nEwJFIats021CNTRL", "exitNodeName": "pentest-exit-node", "exitNodeOnline": true},
+    "exitNodes": [
+      {"hostName": "ip-172-31-0-10", "displayName": "host-5", "ip4": "100.98.27.43", "ip6": "fd7a:115c:a1e0::cc33:d3c6", "dnsName": "host-5.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nahR6nX67r11CNTRL", "exitNodeOption": true},
+      {"hostName": "pentest-exit-node", "displayName": "pentest-exit-node", "ip4": "100.124.183.145", "ip6": "fd7a:115c:a1e0::bff4:b239", "dnsName": "pentest-exit-node.example-tailnet.ts.net", "online": true, "group": 1, "ownerName": "", "nodeId": "nEwJFIats021CNTRL", "exitNodeOption": true}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

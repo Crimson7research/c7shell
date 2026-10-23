@@ -10,11 +10,12 @@ Phase 1 exits when every public symbol of the contract header and every
 assertion of the existing suites maps to at least one requirement, or, for an
 assertion that only checks the test's own setup, to the "Harness
 preconditions" table. Table A maps the symbols. Table B maps the tests. The
-harness table lists every setup-only assertion by `file:line`. The
-requirements reflect the owner's decisions of 2026-10-21 (the requirements'
-"Decisions (2026-10-21)" section); where a decision changed #286's behaviour,
-the #286 assertion that pinned the old behaviour maps to the `fix`
-requirement, as noted below Table B.
+harness table lists every setup-only assertion by `file:line`. Table C
+lists the Phase 2 harness tests of the R-HTTP, R-PARSE and R-GROUP
+requirements. The requirements reflect the owner's decisions of 2026-10-21
+(the requirements' "Decisions (2026-10-21)" section); where a decision
+changed #286's behaviour, the #286 assertion that pinned the old behaviour
+maps to the `fix` requirement, as noted below Table B.
 
 ## How the counts were taken
 
@@ -615,6 +616,69 @@ described the dead row, is withdrawn (decision 2).
 | ctest runs every Tailscale suite | 160-164 | 1 | R-PKG-01 |
 | Every registered test carries the `testing` label | 186-187 | 1 | R-PKG-01 |
 | The labelled tests pass 50 consecutive runs | 188-189 | 1 | R-PKG-01 |
+
+## Table C: Phase 2 harness tests (R-HTTP, R-PARSE, R-GROUP)
+
+Each R-HTTP, R-PARSE and R-GROUP requirement, with its evidence class from
+`tests/fixtures/tailscale/evidence.json` and the Phase 2 tests that run it
+against `a38dbca` through QML: the scenarios in
+`tests/fixtures/tailscale/scenarios/` and the parser corpus cases in
+`tests/fixtures/tailscale/corpus/`, each named by its `id`. Both run with
+`plugin/tests/tailscale-parity/run.sh`. A `cpp-suite` requirement's
+evidence is its #286 tests in Table B; a `phase3-only` one has no test on
+C++ and gets its Rust tests in Phase 3. The Notes column names the PR whose
+tests run the requirement, the tests declared to fail on `cpp-286` (each a
+`fix` scenario or case, failing at the value its declaration gives), and
+the classes of the clauses evidence.json defers. A `parity` scenario or
+case may name a `fix` requirement whose clause #286 already meets.
+
+`cargo test -p fake-tailscaled --test evidence`
+(`table_c_lists_the_harness_tests_of_each_http_parse_and_group_requirement`)
+checks every row against evidence.json and the test files.
+
+| Requirement | Class | Scenarios | Corpus cases | Notes |
+|---|---|---|---|---|
+| R-HTTP-01 | `harness-on-cpp` | `http-01-request-line-and-host` | — | PR #306; deferred clauses: cpp-suite |
+| R-HTTP-02 | `harness-on-cpp` | `http-02-patch-bytes` | — | PR #307; deferred clauses: cpp-suite |
+| R-HTTP-03 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-04 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-05 | `phase3-only` | — | — | Rust tests in Phase 3 |
+| R-HTTP-06 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-07 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-08 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-09 | `harness-on-cpp` | `http-09-403-empty-body`, `http-09-chunked-403-in-write-error`, `http-09-error-body-in-write-error`, `http-09-status-500-error-member`, `http-09-status-500-invalid-utf8`, `http-09-status-500-whole-body` | — | PR #306; fail on cpp-286: `http-09-chunked-403-in-write-error`, `http-09-error-body-in-write-error`, `http-09-status-500-error-member`, `http-09-status-500-invalid-utf8`, `http-09-status-500-whole-body`; deferred clauses: harness-on-cpp (#307), phase3-only |
+| R-HTTP-10 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-11 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-12 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-13 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-HTTP-14 | `phase3-only` | — | — | Rust tests in Phase 3 |
+| R-HTTP-15 | `phase3-only` | — | — | Rust tests in Phase 3 |
+| R-PARSE-01 | `phase3-only` | — | — | Rust tests in Phase 3 |
+| R-PARSE-02 | `harness-on-cpp` | — | `parse-02-health-non-strings`, `parse-02-health-null`, `status-idle` | PR #307; deferred clauses: cpp-suite |
+| R-PARSE-03 | `harness-on-cpp` | — | `parse-03-ipv6-listed-first`, `parse-03-peer-addresses`, `parse-03-self-ipv4-only`, `status-idle` | PR #307 |
+| R-PARSE-04 | `harness-on-cpp` | — | `parse-04-absent`, `parse-04-date-only`, `parse-04-fraction-dropped-not-rounded`, `parse-04-hours-only-offset`, `parse-04-nanoseconds`, `parse-04-negative-offset`, `parse-04-no-zone`, `parse-04-not-a-date`, `parse-04-offset`, `parse-04-offset-without-colon`, `parse-04-one-fraction-digit`, `parse-04-ten-fraction-digits`, `status-idle` | PR #307; fail on cpp-286: `parse-04-date-only`, `parse-04-fraction-dropped-not-rounded`, `parse-04-hours-only-offset`, `parse-04-no-zone`, `parse-04-offset-without-colon`, `parse-04-ten-fraction-digits` |
+| R-PARSE-05 | `harness-on-cpp` | — | `parse-05-self-hostname-only`, `status-idle` | PR #307; deferred clauses: cpp-suite |
+| R-PARSE-06 | `harness-on-cpp` | — | `parse-06-peer-without-id`, `status-idle` | PR #307 |
+| R-PARSE-07 | `harness-on-cpp` | — | `parse-07-entry-not-an-object`, `parse-07-entry-not-an-object-beside-a-peer`, `parse-07-needslogin-peer-null`, `parse-07-no-peer-key`, `parse-07-nostate-peer-null`, `parse-07-peer-array`, `parse-07-peer-number`, `parse-07-peer-string`, `parse-07-running-peer-empty`, `parse-07-running-peer-null`, `parse-07-stopped-peer-empty`, `parse-07-stopped-peer-null`, `status-idle` | PR #307; fail on cpp-286: `parse-07-entry-not-an-object`, `parse-07-entry-not-an-object-beside-a-peer`; deferred clauses: phase3-only |
+| R-PARSE-08 | `harness-on-cpp` | — | `parse-08-exit-node-status-null`, `status-exitnode`, `status-exitnode-offline`, `status-idle` | PR #307 |
+| R-PARSE-09 | `harness-on-cpp` | — | `parse-09-empty-id-never-joined`, `parse-09-empty-string-id-never-joined`, `parse-09-exit-peer-gone`, `parse-09-named-through-another-peer`, `parse-09-status-without-id`, `status-exitnode`, `status-exitnode-offline` | PR #307; fail on cpp-286: `parse-09-empty-id-never-joined`, `parse-09-empty-string-id-never-joined` |
+| R-PARSE-10 | `none` | — | — | withdrawn |
+| R-PARSE-11 | `harness-on-cpp` | `parse-11-suggestion-500-clears`, `parse-11-suggestion-array-clears`, `parse-11-suggestion-id-not-a-string-clears`, `parse-11-suggestion-not-json-clears` | `parse-11-suggestion-id` | PR #307; deferred clauses: phase3-only |
+| R-PARSE-12 | `harness-on-cpp` | — | `parse-12-other-health-kept`, `status-idle` | PR #307 |
+| R-PARSE-13 | `cpp-suite` | — | — | #286 tests in Table B |
+| R-PARSE-14 | `harness-on-cpp` | — | `parse-14-array-wrong-type`, `parse-14-bool-from-number-and-string`, `parse-14-exit-node-status-fields`, `parse-14-integer-null-self`, `parse-14-integer-wrong-type`, `parse-14-null-string-and-object`, `parse-14-object-wrong-type`, `parse-14-user-entry-not-an-object`, `parse-14-wrong-string-and-bool` | PR #307; deferred clauses: phase3-only |
+| R-GROUP-01 | `harness-on-cpp` | — | `group-01-tagged-test-comes-first`, `group-03-hand-built-order`, `status-idle` | PR #307 |
+| R-GROUP-02 | `harness-on-cpp` | — | `group-01-tagged-test-comes-first`, `status-idle` | PR #307 |
+| R-GROUP-03 | `harness-on-cpp` | — | `group-03-accented-names`, `group-03-full-lowercase`, `group-03-full-not-simple-lowercase`, `group-03-hand-built-order`, `group-03-outside-the-bmp`, `group-03-same-name-by-node-id`, `status-idle` | PR #307; fail on cpp-286: `group-03-full-lowercase`, `group-03-outside-the-bmp` |
+| R-GROUP-04 | `harness-on-cpp` | — | `status-idle` | PR #307; deferred clauses: cpp-suite |
+| R-GROUP-05 | `harness-on-cpp` | `group-05-flat-list` | — | PR #307 |
+| R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves`, `group-06-unmoved-row-updates` | — | PR #307; deferred clauses: harness-on-cpp (#309) |
+| R-GROUP-07 | `harness-on-cpp` | `group-06-offline-row-moves`, `group-07-only-changed-rows-announce` | — | PR #307 |
+| R-GROUP-08 | `harness-on-cpp` | `group-08-duplicate-empty-ids` | — | PR #307; deferred clauses: cpp-suite |
+| R-GROUP-09 | `harness-on-cpp` | `group-09-a-separate-model` | `status-exitnode`, `status-idle` | PR #307 |
+| R-GROUP-10 | `harness-on-cpp` | `group-10-empty-peer-object-clears`, `group-10-running-peer-null-clears` | — | PR #307; fail on cpp-286: `group-10-running-peer-null-clears`; deferred clauses: phase3-only |
+| R-GROUP-11 | `phase3-only` | — | — | Rust tests in Phase 3 |
+| R-GROUP-12 | `harness-on-cpp` | `group-12-needs-login-keeps-rows` | — | PR #307; deferred clauses: phase3-only |
 
 ## Harness preconditions
 

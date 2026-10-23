@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "model-not-a-model",
+  "requirements": ["R-GROUP-05"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a member that is not a model is an error"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "expect": { "id": "not-a-model", "model": { "name": "writeError", "count": 0 } } }
+  ],
+  "on": { "stub": { "result": "pass" } }
+}

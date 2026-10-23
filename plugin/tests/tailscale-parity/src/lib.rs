@@ -6,9 +6,12 @@
 
 pub mod child;
 pub mod contract;
+pub mod corpus;
 pub mod implementation;
+pub mod model;
 pub mod probe;
 pub mod runner;
+mod steps;
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;

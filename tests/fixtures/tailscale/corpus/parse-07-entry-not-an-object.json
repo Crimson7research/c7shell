@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "parse-07-entry-not-an-object",
+  "requirements": [
+    "R-PARSE-07"
+  ],
+  "tag": "fix",
+  "clauses": [
+    "a Peer entry that is not an object is dropped (decision 27): {\"BackendState\":\"Running\",\"Peer\":{\"k\":5}} has a Peer section and no peers (read through the peers and exitNodes rows)"
+  ],
+  "deferred": [
+    "whether a Peer section is present: phase3-only, the flag is not on #286's contract"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Peer": {
+        "k": 5
+      }
+    }
+  },
+  "expect": {
+    "contract": {"state": {"enum": "Running"}},
+    "peers": [],
+    "exitNodes": []
+  },
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "peers.count",
+          "actual": 1
+        }
+      ],
+      "reason": "#286 turns every Peer entry into a row, so an entry that is not an object becomes a row with every field empty (plugin/lib/tailscale/StatusParser.cpp:133-150, toObject() of a non-object at :134); decision 27 drops it"
+    },
+    "rust": {"result": "pass"}
+  }
+}

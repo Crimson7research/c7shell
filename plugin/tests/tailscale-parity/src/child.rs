@@ -91,7 +91,7 @@ impl Drop for PrivateRoot {
 
 /// This test binary again, with `args`, a cleared environment (the keep
 /// list, the private variables under `root`, dead buses, the offscreen
-/// platform) and then `extra`.
+/// platform, the UTC time zone) and then `extra`.
 pub fn isolated(args: &[&str], root: &PrivateRoot, extra: &[(&str, &str)]) -> Command {
     let mut cmd = Command::new(std::env::current_exe().expect("the test binary's path"));
     cmd.args(args).env_clear();
@@ -108,6 +108,12 @@ pub fn isolated(args: &[&str], root: &PrivateRoot, extra: &[(&str, &str)]) -> Co
     let dead = format!("unix:path={}/no-such-bus", root.path().display());
     cmd.env("DBUS_SESSION_BUS_ADDRESS", &dead).env("DBUS_SYSTEM_BUS_ADDRESS", &dead);
     cmd.env("QT_QPA_PLATFORM", "offscreen").env("QT_FORCE_STDERR_LOGGING", "1");
+    // Not the host's /etc/localtime: a local time read from a date-time
+    // without a zone is then the same instant on every host. Not UTC
+    // either, where local time and UTC agree and so hide a date built as
+    // local time from UTC fields. A POSIX zone, three hours east with no
+    // DST, needs no tzdata.
+    cmd.env("TZ", "<+03>-3");
     for (k, v) in extra {
         cmd.env(k, v);
     }

@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "id": "group-03-accented-names",
+  "requirements": [
+    "R-GROUP-03"
+  ],
+  "tag": "parity",
+  "clauses": [
+    "four online group-0 peers named \u00c9mile, zoe, \u00e9clair and Z\u00fcrich, in that input order, sort zoe, Z\u00fcrich, \u00e9clair, \u00c9mile"
+  ],
+  "status": {
+    "json": {
+      "BackendState": "Running",
+      "Self": {
+        "ID": "nSELF1CNTRL",
+        "HostName": "self",
+        "UserID": 1
+      },
+      "User": {
+        "1": {
+          "ID": 1,
+          "LoginName": "me@example.com",
+          "DisplayName": "Me"
+        }
+      },
+      "Peer": {
+        "p01": {
+          "ID": "nE1CNTRL",
+          "HostName": "\u00c9mile",
+          "Online": true,
+          "UserID": 1
+        },
+        "p02": {
+          "ID": "nE2CNTRL",
+          "HostName": "zoe",
+          "Online": true,
+          "UserID": 1
+        },
+        "p03": {
+          "ID": "nE3CNTRL",
+          "HostName": "\u00e9clair",
+          "Online": true,
+          "UserID": 1
+        },
+        "p04": {
+          "ID": "nE4CNTRL",
+          "HostName": "Z\u00fcrich",
+          "Online": true,
+          "UserID": 1
+        }
+      }
+    }
+  },
+  "expect": {
+    "peers": [
+      {"displayName": "zoe"},
+      {"displayName": "Z\u00fcrich"},
+      {"displayName": "\u00e9clair"},
+      {"displayName": "\u00c9mile"}
+    ]
+  },
+  "on": {
+    "cpp-286": {"result": "pass"},
+    "rust": {"result": "pass"}
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "id": "group-09-a-separate-model",
+  "requirements": ["R-GROUP-09"],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Given a fake serving status-idle.json, once the backend is Running, exitNodes has exactly 2 rows, each with exitNodeOption true, and it is a different object from peers. The rows are read once state Running is seen, with no wait on the count, so a wrong count fails at its value: R-UI-06 fills both models before any property signal, as group-10-empty-peer-object-clears relies on"
+  ],
+  "deferred": [
+    "its rows equal the peers rows filtered on exitNodeOption, in the same order: the corpus cases status-idle and status-exitnode"
+  ],
+  "needs": [],
+  "fake": { "rules": [
+    { "match": { "method": "GET", "target": "/localapi/v0/watch-ipn-bus?mask=18" },
+      "stream": { "status": 200, "framing": "chunked" } },
+    { "match": { "method": "GET", "target": "/localapi/v0/status" },
+      "reply": { "status": 200, "body": { "file": "captures/status-idle.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/prefs" },
+      "reply": { "status": 200, "body": { "file": "captures/prefs.json" } } },
+    { "match": { "method": "GET", "target": "/localapi/v0/suggest-exit-node" },
+      "reply": { "status": 200, "body": { "json": {} } } }
+  ] },
+  "steps": [
+    {"start": {}},
+    {"wait": {"contract": {"state": {"enum": "Running"}}}},
+    {"expect": {"id": "two-exit-nodes", "model": {"name": "exitNodes", "count": 2}}},
+    {"expect": {"id": "first-can-exit", "model": {"name": "exitNodes", "row": 0, "values": {"exitNodeOption": true}}}},
+    {"expect": {"id": "second-can-exit", "model": {"name": "exitNodes", "row": 1, "values": {"exitNodeOption": true}}}},
+    {"expect": {"id": "not-the-peers-object", "model": {"name": "exitNodes", "distinct_from": "peers"}}}
+  ],
+  "on": {"cpp-286": {"result": "pass"}, "rust": {"result": "pass"}}
+}

@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "signal-wait-since",
+  "requirements": ["R-PARSE-11"],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": ["runner self-test: a signal wait with since counts from that mark, so it waits past what fired before it"],
+  "needs": [],
+  "fake": { "rules": [] },
+  "steps": [
+    { "start": {} },
+    { "call": { "name": "addPeer", "args": ["delta", "n4"] } },
+    { "call": { "name": "addPeer", "args": ["echo", "n5"] } },
+    { "wait": { "signal": { "name": "peers.rowsInserted", "at_least": 2 } } },
+    { "mark": "after-two" },
+    { "call": { "name": "addPeer", "args": ["foxtrot", "n6"] } },
+    { "wait": { "signal": { "name": "peers.rowsInserted", "at_least": 1, "since": "after-two" } } },
+    { "expect": { "id": "foxtrot-in", "model": { "name": "peers", "count": 6 } } },
+    { "expect": { "id": "wrong-since", "signal": { "name": "peers.rowsInserted", "count": 3, "since": "after-two" } } }
+  ],
+  "on": { "stub": { "result": "fail", "failing": [ { "id": "wrong-since", "actual": 1 } ], "reason": "self-test" } }
+}
