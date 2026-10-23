@@ -106,10 +106,11 @@ fn run() -> Result<(), String> {
     let steps: Vec<String> = p.steps.iter().map(|s| s.name.clone()).collect();
     let mut record = Record::load_or_new(&path, &required("--source")?, &steps)?;
     let mut all = mutants(&reference)?;
+    let mut rerun = Vec::new();
     if let Some(only) = arg("--only") {
         let wanted: Vec<&str> = only.split(',').collect();
         all.retain(|m| wanted.contains(&m.id.as_str()));
-        record.mutants.retain(|e| !wanted.contains(&e.id.as_str()));
+        (rerun, record.mutants) = record.mutants.into_iter().partition(|e| wanted.contains(&e.id.as_str()));
     }
     let workers: Vec<Worker> = (0..count)
         .map(|i| Worker { tree: work.join(format!("w{i}/tree")), build: work.join(format!("w{i}/out")) })
@@ -123,6 +124,10 @@ fn run() -> Result<(), String> {
     }
     eprintln!("{} mutants, {} already recorded", all.len(), record.mutants.len());
     let ran = run_all(&workers, &all, &p, &mut record, &path)?;
+    // A mutant run again keeps its reason or its added kill, where the new
+    // outcome can carry it.
+    record.carry(&rerun);
+    record.save(&path)?;
     let s = record.summary();
     println!(
         "ran {ran}: {} mutants, {} killed, {} timeout, {} survived, {} build-failed, score {:.3}",

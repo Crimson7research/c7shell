@@ -94,7 +94,8 @@ impl Record {
     }
 
     /// The record at `path`, or a new one when there is none. A record of
-    /// another source commit is an error: its mutants are not these.
+    /// another source commit, or of another kill suite, is an error: its
+    /// mutants are not these, or were not judged by these steps.
     pub fn load_or_new(path: &Path, source: &str, kill_suite: &[String]) -> Result<Record, String> {
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
@@ -105,7 +106,28 @@ impl Record {
         if r.source != source {
             return Err(format!("{} is a record of {}, not of {source}", path.display(), r.source));
         }
+        if r.kill_suite != kill_suite {
+            return Err(format!(
+                "{} was judged by the steps {:?}, not by {kill_suite:?}",
+                path.display(),
+                r.kill_suite
+            ));
+        }
         Ok(r)
+    }
+
+    /// Gives each entry run again the annotation `old` had for it, where its
+    /// new outcome can carry it: a survivor its reason, a kill or a timeout
+    /// the added test that makes it.
+    pub fn carry(&mut self, old: &[Entry]) {
+        for e in &mut self.mutants {
+            let Some(was) = old.iter().find(|o| o.id == e.id) else { continue };
+            match e.outcome {
+                Outcome::Survived => e.reason = was.reason.clone(),
+                Outcome::Killed { .. } | Outcome::Timeout { .. } => e.killed_by_added = was.killed_by_added.clone(),
+                Outcome::BuildFailed { .. } => {}
+            }
+        }
     }
 
     /// Writes the record with its summary recomputed, through a temporary

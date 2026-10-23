@@ -29,8 +29,22 @@ fn it_is_of_a38dbca_and_mutates_every_target() {
         assert!(r.mutants.iter().any(|m| m.file == t.file), "no mutant of {}", t.file);
     }
     let mut ids: Vec<&str> = r.mutants.iter().map(|m| m.id.as_str()).collect();
+    ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), r.mutants.len(), "a mutant recorded twice");
+}
+
+/// Every site of a38dbca's targets is recorded, and the score of the suite
+/// as #286's characterisation left it stays what the baseline run measured:
+/// a run stopped part-way, or a rerun that lost an added kill's name, moves
+/// one of these. 297 is the count `mutate-cpp run` finds at a38dbca (123,
+/// 27, 46, 99 and 2, in the order of TARGETS); 192 is what the baseline run
+/// killed before this PR added any test.
+#[test]
+fn it_is_complete_and_keeps_the_baseline_it_measured() {
+    let s = baseline().summary();
+    assert_eq!(s.mutants, 297, "the record holds {} of a38dbca's 297 mutants", s.mutants);
+    assert_eq!(s.killed + s.timeout - s.killed_by_added, 192, "the baseline's kills moved: {s:?}");
 }
 
 #[test]

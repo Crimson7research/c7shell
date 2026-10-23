@@ -74,3 +74,31 @@ fn it_saves_and_loads_with_its_summary_and_refuses_another_source() {
     assert!(fresh.mutants.is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn it_refuses_a_record_of_another_kill_suite() {
+    let dir = std::env::temp_dir().join(format!("mutate-cpp-suite-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("r.json");
+    record().save(&path).unwrap();
+    let e = Record::load_or_new(&path, "abc", &["ctest".to_string(), "scenarios".to_string()]).unwrap_err();
+    assert!(e.contains("ctest") && e.contains("scenarios"), "{e}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A mutant run again keeps the annotation its new outcome can carry: a
+/// survivor its reason, a kill or a timeout the added test that makes it.
+#[test]
+fn a_rerun_keeps_the_annotations_its_new_outcome_can_carry() {
+    let mut old = record();
+    old.mutants[0].killed_by_added = Some("scenario x".into());
+    old.mutants[3].reason = Some("equivalent: why".into());
+    old.mutants[2].killed_by_added = Some("scenario t".into());
+    let mut r = record();
+    r.mutants[2].outcome = Outcome::Survived;
+    r.carry(&old.mutants);
+    assert_eq!(r.mutants[0].killed_by_added.as_deref(), Some("scenario x"));
+    assert_eq!(r.mutants[3].reason.as_deref(), Some("equivalent: why"));
+    assert_eq!(r.mutants[2].killed_by_added, None, "a survivor carries no added kill");
+    assert_eq!(r.mutants[2].reason, None, "and no reason it never had");
+}
