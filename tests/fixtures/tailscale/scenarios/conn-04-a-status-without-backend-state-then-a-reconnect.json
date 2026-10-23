@@ -1,0 +1,127 @@
+{
+  "format": 1,
+  "id": "conn-04-a-status-without-backend-state-then-a-reconnect",
+  "requirements": [
+    "R-CONN-04"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A chunked 200 `/status` of `{}` publishes nothing and is diagnosed: `readErrorChanged` fires",
+    "A reconnect follows: once `/status` answers the idle capture, `state` reaches `Running`, and then the fake has exactly one connected client, the new watch, so the first attempt's watch was closed"
+  ],
+  "deferred": [
+    "the exact `readError`, the retry and change counts and `stateChanged` 0: phase3-only, they are read after the retry barrier with paused time"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          },
+          "framing": "chunked"
+        },
+        "times": 1
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/status-idle.json"
+          },
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "signal": {
+          "name": "readErrorChanged",
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "connected": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "reconnected",
+        "contract": {
+          "tailnet": "example.com"
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

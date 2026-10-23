@@ -646,12 +646,12 @@ or is `phase3-only`.
 |---|---|---|---|---|---|
 | R-HTTP-01 | `harness-on-cpp` | `http-01-request-line-and-host` | — | — | PR #306; deferred clauses: cpp-suite |
 | R-HTTP-02 | `harness-on-cpp` | `http-02-patch-bytes` | — | — | PR #307; deferred clauses: cpp-suite |
-| R-HTTP-03 | `cpp-suite` | — | — | — | #286 tests in Table B |
-| R-HTTP-04 | `cpp-suite` | — | — | — | #286 tests in Table B |
-| R-HTTP-05 | `phase3-only` | — | — | — | Rust tests in Phase 3 |
+| R-HTTP-03 | `cpp-suite` | `http-03-a-declared-zero-delivers-nothing`, `http-03-a-reply-ends-at-its-length` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
+| R-HTTP-04 | `cpp-suite` | `http-04-a-header-before-the-framing`, `http-04-a-one-byte-chunk`, `http-04-a-watch-line-before-its-chunk-ends` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
+| R-HTTP-05 | `phase3-only` | `http-05-an-empty-size-line-fails` | — | — | Rust tests in Phase 3; backend-half clause: PR #310 |
 | R-HTTP-06 | `cpp-suite` | — | — | — | #286 tests in Table B |
-| R-HTTP-07 | `cpp-suite` | — | — | — | #286 tests in Table B |
-| R-HTTP-08 | `cpp-suite` | — | — | — | #286 tests in Table B |
+| R-HTTP-07 | `cpp-suite` | `http-07-a-chunked-body-without-its-last-chunk-fails` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
+| R-HTTP-08 | `cpp-suite` | `http-08-a-300-fails`, `http-08-a-head-that-is-not-http-fails`, `http-08-a-status-line-without-a-reason`, `http-08-an-empty-head-fails` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
 | R-HTTP-09 | `harness-on-cpp` | `http-09-403-empty-body`, `http-09-chunked-403-in-write-error`, `http-09-error-body-in-write-error`, `http-09-status-500-error-member`, `http-09-status-500-invalid-utf8`, `http-09-status-500-whole-body` | — | — | PR #306; fail on cpp-286: `http-09-chunked-403-in-write-error`, `http-09-error-body-in-write-error`, `http-09-status-500-error-member`, `http-09-status-500-invalid-utf8`, `http-09-status-500-whole-body`; deferred clauses: harness-on-cpp (#307), phase3-only |
 | R-HTTP-10 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-HTTP-11 | `cpp-suite` | — | — | — | #286 tests in Table B |
@@ -678,7 +678,7 @@ or is `phase3-only`.
 | R-GROUP-03 | `harness-on-cpp` | — | `group-03-accented-names`, `group-03-full-lowercase`, `group-03-full-not-simple-lowercase`, `group-03-hand-built-order`, `group-03-outside-the-bmp`, `group-03-same-name-by-node-id`, `status-idle` | — | PR #307; fail on cpp-286: `group-03-full-lowercase`, `group-03-outside-the-bmp` |
 | R-GROUP-04 | `harness-on-cpp` | — | `status-idle` | — | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-05 | `harness-on-cpp` | `group-05-flat-list` | — | — | PR #307 |
-| R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves`, `group-06-unmoved-row-updates` | — | `group-06-delegates-survive` | PR #307; deferred clauses: harness-on-cpp (#309) |
+| R-GROUP-06 | `harness-on-cpp` | `group-06-join-and-leave`, `group-06-offline-row-moves`, `group-06-the-first-row-leaving-moves-nothing`, `group-06-unmoved-row-updates` | — | `group-06-delegates-survive` | PR #307; deferred clauses: harness-on-cpp (#309); `group-06-the-first-row-leaving-moves-nothing`: PR #310 |
 | R-GROUP-07 | `harness-on-cpp` | `group-06-offline-row-moves`, `group-07-only-changed-rows-announce` | — | — | PR #307 |
 | R-GROUP-08 | `harness-on-cpp` | `group-08-duplicate-empty-ids` | — | — | PR #307; deferred clauses: cpp-suite |
 | R-GROUP-09 | `harness-on-cpp` | `group-09-a-separate-model` | `status-exitnode`, `status-idle` | — | PR #307 |
@@ -687,13 +687,13 @@ or is `phase3-only`.
 | R-GROUP-12 | `harness-on-cpp` | `group-12-needs-login-keeps-rows` | — | — | PR #307; deferred clauses: phase3-only |
 | R-WATCH-01 | `harness-on-cpp` | `watch-01-mask-18` | — | — | PR #308; deferred clauses: cpp-suite |
 | R-WATCH-02 | `cpp-suite` | — | — | — | #286 tests in Table B |
-| R-WATCH-03 | `cpp-suite` | — | — | — | #286 tests in Table B |
+| R-WATCH-03 | `cpp-suite` | `watch-03-a-blank-line-emits-nothing` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
 | R-WATCH-04 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-WATCH-05 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-WATCH-06 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-WATCH-07 | `phase3-only` | — | — | — | Rust tests in Phase 3 |
 | R-WATCH-08 | `harness-on-cpp` | `watch-08-a-notification-starts-a-pass` | — | — | PR #308; deferred clauses: cpp-suite |
-| R-WATCH-09 | `cpp-suite` | — | — | — | #286 tests in Table B |
+| R-WATCH-09 | `cpp-suite` | `watch-09-a-line-that-is-not-json-starts-a-pass` | — | — | #286 tests in Table B; backend-half clause: PR #310 |
 | R-WATCH-10 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-WATCH-11 | `harness-on-cpp` | `watch-11-status-and-prefs-publish-together` | — | — | PR #308; deferred clauses: phase3-only |
 | R-WATCH-12 | `cpp-suite` | — | — | — | #286 tests in Table B |
@@ -703,7 +703,7 @@ or is `phase3-only`.
 | R-CONN-01 | `harness-on-cpp` | `conn-01-connects-at-ts-socket` | — | — | PR #308; deferred clauses: phase3-only |
 | R-CONN-02 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-CONN-03 | `harness-on-cpp` | `conn-03-reasons-differ-1`, `conn-03-reasons-differ-2`, `conn-03-reasons-differ-3` | — | — | PR #308; deferred clauses: phase3-only |
-| R-CONN-04 | `phase3-only` | — | — | — | Rust tests in Phase 3 |
+| R-CONN-04 | `phase3-only` | `conn-04-a-status-without-backend-state-then-a-reconnect` | — | — | Rust tests in Phase 3; backend-half clause: PR #310 |
 | R-CONN-05 | `cpp-suite` | — | — | — | #286 tests in Table B |
 | R-CONN-06 | `harness-on-cpp` | `conn-06-losing-tailscaled-sets-no-state` | — | — | PR #308; deferred clauses: phase3-only |
 | R-CONN-07 | `cpp-suite` | — | — | — | #286 tests in Table B |

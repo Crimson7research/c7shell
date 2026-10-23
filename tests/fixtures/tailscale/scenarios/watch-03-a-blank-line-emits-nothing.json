@@ -1,0 +1,147 @@
+{
+  "format": 1,
+  "id": "watch-03-a-blank-line-emits-nothing",
+  "requirements": [
+    "R-WATCH-03"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From `Running`, with only the watch connected, the fake pushes an empty line and then `{\"State\":6}`: the empty line emits nothing and holds nothing back, so the fake records a second GET of `/status`, and `state` still reads `Running`"
+  ],
+  "deferred": [
+    "every event count: cpp-suite, the transport's own events are read after the read barrier"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/status-idle.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/watch-ipn-bus?mask=18"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "connected": 1
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 1
+        }
+      }
+    },
+    {
+      "fake": {
+        "push_watch_line": ""
+      }
+    },
+    {
+      "fake": {
+        "push_watch_line": "{\"State\":6}"
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 2
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "still-running",
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

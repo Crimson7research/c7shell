@@ -137,7 +137,7 @@ fn harness_on_cpp_entries_say_what_runs_and_what_is_deferred() {
         assert!(r.tag == "parity" || r.tag == "fix", "{}: harness-on-cpp is for parity and fix", r.id);
         assert!(r.needs.is_empty(), "{}: what runs on C++ needs nothing", r.id);
         assert!(r.runs.as_deref().is_some_and(|s| !s.trim().is_empty()), "{}: say which clauses run", r.id);
-        assert!(matches!(r.pr, Some(306..=309)), "{}: name the Phase 2 PR (306 to 309) whose scenarios run it", r.id);
+        assert!(matches!(r.pr, Some(306..=310)), "{}: name the Phase 2 PR (306 to 310) whose scenarios run it", r.id);
         assert!(r.reason.is_none(), "{}: a reason is for phase3-only", r.id);
     }
     for r in &ev.requirements {
@@ -146,7 +146,7 @@ fn harness_on_cpp_entries_say_what_runs_and_what_is_deferred() {
             match d.class {
                 EvidenceClass::HarnessOnCpp => {
                     assert!(d.needs.is_empty(), "{}: deferred `{}` runs on C++, so it needs nothing", r.id, d.clause);
-                    assert!(matches!(d.pr, Some(306..=309)), "{}: deferred `{}` names its PR", r.id, d.clause);
+                    assert!(matches!(d.pr, Some(306..=310)), "{}: deferred `{}` names its PR", r.id, d.clause);
                 }
                 EvidenceClass::CppSuite => assert!(!d.needs.is_empty(), "{}: `{}` names its needs", r.id, d.clause),
                 EvidenceClass::Phase3Only => {
@@ -321,6 +321,14 @@ fn every_requirement_of_308_has_a_scenario() {
 fn every_requirement_of_309_has_a_view_test() {
     let missing = not_run_by(309, &named_by_tests(true));
     assert!(missing.is_empty(), "assigned to #309, but no view test runs: {missing:?}");
+}
+
+/// Every requirement #310 runs on a38dbca, the backend halves its
+/// mutation baseline added, is named by a scenario.
+#[test]
+fn every_requirement_of_310_has_a_scenario() {
+    let missing = not_run_by_a_test(310);
+    assert!(missing.is_empty(), "assigned to #310, but no scenario runs: {missing:?}");
 }
 
 #[test]

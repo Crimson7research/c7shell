@@ -1,0 +1,158 @@
+{
+  "format": 1,
+  "id": "watch-09-a-line-that-is-not-json-starts-a-pass",
+  "requirements": [
+    "R-WATCH-09"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "From `Running`, with only the watch connected, the fake pushes `{\"State\":6}` and, once the fake has recorded the second GET of `/status`, the line `\"Version\":\"1\"}`, which is not JSON: it starts a pass of its own, so the fake records a third GET of `/status`"
+  ],
+  "deferred": [
+    "the exact GET counts after the idle barrier: cpp-suite, a skipped line is told apart only after the idle barrier"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/status-idle.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/watch-ipn-bus?mask=18"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "connected": 1
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 1
+        }
+      }
+    },
+    {
+      "fake": {
+        "push_watch_line": "{\"State\":6}"
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 2
+        }
+      }
+    },
+    {
+      "fake": {
+        "push_watch_line": "\"Version\":\"1\"}"
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/status"
+          },
+          "count": 3
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "still-running",
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

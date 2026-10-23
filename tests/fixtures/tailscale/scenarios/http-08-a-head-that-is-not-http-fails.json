@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "id": "http-08-a-head-that-is-not-http-fails",
+  "requirements": [
+    "R-HTTP-08"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The status line `XTTP/1.1 200 OK` to `/status`, with the idle capture as its body, is not `HTTP/x NNN` and fails: once `readErrorChanged` has fired, `readError` contains `/localapi/v0/status answered` and `state` reads `NoState`"
+  ],
+  "deferred": [
+    "the numeric status and the counts: cpp-suite, the transport's own outcomes are not reachable through QML"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status_line": "XTTP/1.1 200 OK",
+          "body": {
+            "file": "captures/status-idle.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "signal": {
+          "name": "readErrorChanged",
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "diagnosed",
+        "contract": {
+          "readError": {
+            "contains": "/localapi/v0/status answered"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "lost",
+        "contract": {
+          "state": {
+            "enum": "NoState"
+          }
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

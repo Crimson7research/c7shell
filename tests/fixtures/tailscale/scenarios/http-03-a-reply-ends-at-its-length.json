@@ -1,0 +1,97 @@
+{
+  "format": 1,
+  "id": "http-03-a-reply-ends-at-its-length",
+  "requirements": [
+    "R-HTTP-03"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A 200 `/status` with the idle capture under its own `Content-Length`, after which the fake keeps the connection open, is delivered once its declared bytes have arrived: `state` reaches `Running` and `tailnet` reads `example.com`, with no close to end the body"
+  ],
+  "deferred": [
+    "the reply's exact bytes and the counts: cpp-suite, the transport's own outcomes are not reachable through QML"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/status-idle.json"
+          },
+          "then": "keep-open"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "delivered-before-the-close",
+        "contract": {
+          "tailnet": "example.com"
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

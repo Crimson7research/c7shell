@@ -1,0 +1,266 @@
+{
+  "format": 1,
+  "id": "group-06-the-first-row-leaving-moves-nothing",
+  "requirements": [
+    "R-GROUP-06"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "Over alpha and bravo, a served status with bravo alone leaves 1 row, bravo, and emits one rowsRemoved, no rowsMoved and no reset, counted from QML from just before the change once the row count reads 1: the first row leaves rather than being moved past"
+  ],
+  "deferred": [],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {
+              "BackendState": "Running",
+              "CurrentTailnet": {
+                "Name": "example.com"
+              },
+              "Self": {
+                "ID": "nSELF1CNTRL",
+                "HostName": "self",
+                "DNSName": "self.example.ts.net.",
+                "TailscaleIPs": [
+                  "100.64.0.1"
+                ],
+                "Online": true,
+                "UserID": 1
+              },
+              "User": {
+                "1": {
+                  "ID": 1,
+                  "LoginName": "me@example.com",
+                  "DisplayName": "Me"
+                }
+              },
+              "Peer": {
+                "nodekey:nALPHA1CNTRL": {
+                  "ID": "nALPHA1CNTRL",
+                  "HostName": "alpha",
+                  "DNSName": "alpha.example.ts.net.",
+                  "TailscaleIPs": [
+                    "100.64.0.2"
+                  ],
+                  "Online": true,
+                  "ExitNodeOption": false,
+                  "UserID": 1
+                },
+                "nodekey:nBRAVO1CNTRL": {
+                  "ID": "nBRAVO1CNTRL",
+                  "HostName": "bravo",
+                  "DNSName": "bravo.example.ts.net.",
+                  "TailscaleIPs": [
+                    "100.64.0.3"
+                  ],
+                  "Online": true,
+                  "ExitNodeOption": false,
+                  "UserID": 1
+                }
+              }
+            }
+          }
+        },
+        "times": 1
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {
+              "BackendState": "Running",
+              "CurrentTailnet": {
+                "Name": "example.com"
+              },
+              "Self": {
+                "ID": "nSELF1CNTRL",
+                "HostName": "self",
+                "DNSName": "self.example.ts.net.",
+                "TailscaleIPs": [
+                  "100.64.0.1"
+                ],
+                "Online": true,
+                "UserID": 1
+              },
+              "User": {
+                "1": {
+                  "ID": 1,
+                  "LoginName": "me@example.com",
+                  "DisplayName": "Me"
+                }
+              },
+              "Peer": {
+                "nodekey:nBRAVO1CNTRL": {
+                  "ID": "nBRAVO1CNTRL",
+                  "HostName": "bravo",
+                  "DNSName": "bravo.example.ts.net.",
+                  "TailscaleIPs": [
+                    "100.64.0.3"
+                  ],
+                  "Online": true,
+                  "ExitNodeOption": false,
+                  "UserID": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "model": {
+          "name": "peers",
+          "count": 2
+        }
+      }
+    },
+    {
+      "wait": {
+        "model": {
+          "name": "peers",
+          "row": 0,
+          "values": {
+            "hostName": "alpha"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "recorded": {
+            "method": "GET",
+            "target": "/localapi/v0/watch-ipn-bus?mask=18"
+          }
+        }
+      }
+    },
+    {
+      "wait": {
+        "fake": {
+          "connected": 1
+        }
+      }
+    },
+    {
+      "mark": "before-change"
+    },
+    {
+      "fake": {
+        "push_watch_line": "{\"State\":6}"
+      }
+    },
+    {
+      "wait": {
+        "model": {
+          "name": "peers",
+          "count": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "bravo-stays",
+        "model": {
+          "name": "peers",
+          "row": 0,
+          "values": {
+            "hostName": "bravo",
+            "nodeId": "nBRAVO1CNTRL"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "one-remove",
+        "signal": {
+          "name": "peers.rowsRemoved",
+          "count": 1,
+          "since": "before-change"
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "no-move",
+        "signal": {
+          "name": "peers.rowsMoved",
+          "count": 0,
+          "since": "before-change"
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "no-reset",
+        "signal": {
+          "name": "peers.modelReset",
+          "count": 0,
+          "since": "before-change"
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
