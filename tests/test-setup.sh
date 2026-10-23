@@ -78,16 +78,18 @@ grep -qx 'PrivilegeElevationCommand=run0' "$au" || fail "a commented-out default
 if ((EUID != 0)); then
   for case in '200:#AURHelper=paru:cannot read' '444:#AURHelper=paru:cannot write' '444:PrivilegeElevationCommand=doas:'; do
     IFS=: read -r mode body says <<<"$case"
-    printf '%s\n' "$body" > "$au"; chmod "$mode" "$au"
-    out=$("$setup" 2>&1) || true
-    chmod 600 "$au"
-    [[ $(cat "$au") == "$body" ]] || fail "setup changed a mode $mode arch-update.conf:\n$(cat "$au")"
-    if [[ -n $says ]]; then
-      grep -qF "$says $au" <<<"$out" || fail "setup did not say '$says' for a mode $mode arch-update.conf:\n$out"
-    else
-      grep -qF "$au" <<<"$out" && fail "setup spoke about a read-only arch-update.conf it had nothing to add to:\n$out"
-    fi
-    grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a mode $mode arch-update.conf:\n$out"
+    for how in '' --dry-run; do
+      printf '%s\n' "$body" > "$au"; chmod "$mode" "$au"
+      out=$("$setup" $how 2>&1) || true
+      chmod 600 "$au"
+      [[ $(cat "$au") == "$body" ]] || fail "setup $how changed a mode $mode arch-update.conf:\n$(cat "$au")"
+      if [[ -n $says ]]; then
+        grep -qF "$says $au" <<<"$out" || fail "setup $how did not say '$says' for a mode $mode arch-update.conf:\n$out"
+      else
+        grep -qF "$au" <<<"$out" && fail "setup $how spoke about a read-only arch-update.conf it had nothing to add to:\n$out"
+      fi
+      grep -qF 'Permission denied' <<<"$out" && fail "setup $how stopped on a mode $mode arch-update.conf:\n$out"
+    done
   done
   printf 'PrivilegeElevationCommand=run0\n' > "$au"
 fi
@@ -211,6 +213,12 @@ if ((EUID != 0)); then
   chmod 600 "$pc"
   [[ $(cat "$pc") == $'[options]\nDevel' ]] || fail "setup appended to a paru.conf it cannot read:\n$(cat "$pc")"
   grep -qF "cannot read $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+  chmod 200 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "cannot read $pc" <<<"$out" || fail "--dry-run did not say it would skip an unreadable paru.conf:\n$out"
+  grep -F "would: append" <<<"$out" | grep -qF "$pc" \
+    && fail "--dry-run would append to an unreadable paru.conf:\n$out"
   # Read-only, as in a dotfiles store: setup says so and carries on, where an
   # append would stop it before the rc files and the manifest.
   printf '[bin]\nSudo = doas\n' > "$pc"; chmod 444 "$pc"
