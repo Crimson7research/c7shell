@@ -377,16 +377,26 @@ fi
 # paru the same way: its [bin] Sudo is what `paru -Syu` runs pacman through.
 # paru reads ~/.config/paru/paru.conf INSTEAD of /etc/paru.conf, not on top of
 # it, so a new user file starts as a copy of the system one -- otherwise the
-# options there (Devel, BottomUp, ...) would silently stop applying.
+# options there (Devel, Provides, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
 pc_dir=$(dirname -- "$pc")
 paru_sysconf=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
 paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
-paru_bottomup_re='^[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
+# has_bottomup <file> -- whether paru reads BottomUp from <file>: a bare
+# BottomUp, or BottomUp = <value>, inside an [options] section.
+has_bottomup() {
+  awk '/^[[:space:]]*\[/ { opts = /^[[:space:]]*\[options\][[:space:]]*$/; next }
+       opts && /^[[:space:]]*BottomUp[[:space:]]*(=.*)?$/ { found = 1 }
+       END { exit !found }' "$1" 2>/dev/null
+}
+# The nearest directory on the way to paru.conf that is there already: where
+# setup would create paru/ or paru.conf.
+pc_base=$pc_dir
+while [[ ! -e $pc_base && $pc_base != / ]]; do pc_base=$(dirname -- "$pc_base"); done
 # A user file setup cannot read is one it cannot check, so every run would
 # append the same lines again. One it cannot write -- read-only, as in a
-# dotfiles store, a symlink to nothing yet, or not there yet in a directory
-# setup cannot write -- would stop setup before the rc files and the manifest,
+# dotfiles store, a symlink to nothing yet, or not there yet where setup
+# cannot create it -- would stop setup before the rc files and the manifest,
 # so it is named only when it lacks a line setup adds. Either way setup adds
 # nothing to it.
 paru=0
@@ -394,8 +404,8 @@ if command -v paru >/dev/null; then
   if [[ -e $pc && ! -r $pc ]]; then
     printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]] \
-       || [[ ! -e $pc && -d $pc_dir && ! ( -w $pc_dir && -x $pc_dir ) ]]; then
-    grep -qs "$paru_sudo_re" "$pc" && grep -qsE "$paru_bottomup_re" "$pc" \
+       || [[ ! -e $pc && -d $pc_base && ! ( -w $pc_base && -x $pc_base ) ]]; then
+    grep -qs "$paru_sudo_re" "$pc" && has_bottomup "$pc" \
       || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
     paru=1
@@ -422,7 +432,7 @@ fi
 # dry run made no copy, so it asks the system file.
 pc_src=$pc
 ((dry)) && [[ ! -e $pc ]] && pc_src=$paru_sysconf
-if ((paru)) && ! grep -qsE "$paru_bottomup_re" "$pc_src"; then
+if ((paru)) && ! has_bottomup "$pc_src"; then
   printf 'setting BottomUp in %s   (paru lists AUR search results first)\n' "$pc"
   if ((dry)); then
     printf '  would: append [options] BottomUp to %s\n' "$pc"

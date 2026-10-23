@@ -120,6 +120,11 @@ for line in '#BottomUp' '  # BottomUp' 'BottomUp # mine'; do
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
   (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "'$line' was taken for a BottomUp that is set:\n$(cat "$pc")"
 done
+# BottomUp is an [options] key; under [bin] paru rejects it.
+printf '[bin]\nBottomUp\nSudo = doas\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+[[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc" | sort -u) == $'[bin]\n[options]' ]] \
+  || fail "a BottomUp under [bin] was taken for one that is set:\n$(cat "$pc")"
 for line in '  BottomUp' 'BottomUp=true'; do
   printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -146,11 +151,11 @@ PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || t
 printf '[bin]\nSudo = doas\n' > "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
 [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "--dry-run wrote paru.conf:\n$(cat "$pc")"
-grep -qF 'would: append [options] BottomUp' <<<"$out" || fail "--dry-run did not name the BottomUp it would add:\n$out"
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" || fail "--dry-run did not name the BottomUp it would add:\n$out"
 # An existing user file is what paru reads, whatever the system file says.
 printf '[options]\nBottomUp\n' > "$tmp/bottomup-paru.conf"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
-grep -qF 'would: append [options] BottomUp' <<<"$out" \
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
   || fail "--dry-run asked the system file about a user file that lacks BottomUp:\n$out"
 printf '[options]\nBottomUp\n[bin]\nSudo = doas\n' > "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
@@ -159,12 +164,12 @@ rm -f -- "$pc"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
 grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the system file already has:\n$out"
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
-grep -qF 'would: append [options] BottomUp' <<<"$out" \
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
   || fail "--dry-run did not name the BottomUp a copy of the system file lacks:\n$out"
 # With no system file either, the real run appends to a new file, and the dry
 # run says it would.
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf "$setup" --dry-run 2>&1) || true
-grep -qF 'would: append [options] BottomUp' <<<"$out" \
+grep -qF "would: append [options] BottomUp to $pc" <<<"$out" \
   || fail "--dry-run did not name the BottomUp a new paru.conf gets:\n$out"
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
@@ -209,6 +214,15 @@ if ((EUID != 0)); then
     grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a mode $mode paru directory:\n$out"
     grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a mode $mode paru directory:\n$out"
   done
+  # And one whose directory is not there yet, under a read-only ~/.config.
+  rmdir -- "$(dirname -- "$pc")"; chmod 555 "$XDG_CONFIG_HOME"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 755 "$XDG_CONFIG_HOME"
+  [[ ! -e $(dirname -- "$pc") ]] || fail "setup made a paru directory under a read-only ~/.config"
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a paru.conf under a read-only ~/.config:\n$out"
+  grep -qE 'paru.*(Permission denied|cannot create)' <<<"$out" \
+    && fail "setup stopped on a paru.conf under a read-only ~/.config:\n$out"
+  mkdir -p -- "$(dirname -- "$pc")"
 fi
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
@@ -395,7 +409,7 @@ if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'
 
 # A BottomUp setup did not add, such as one copied from /etc/paru.conf, is
 # the user's and goes unlisted.
-printf '[options]\nBottomUp\n' > "$un/conf/paru/paru.conf"
+printf '[options]\nBottomUp\n# not %s\n' "$bottomup_marker" > "$un/conf/paru/paru.conf"
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
 grep -qF 'BottomUp block' <<<"$out" && fail "uninstall listed a BottomUp setup never added:\n$out"
 cp "$tmp/pc.orig" "$un/conf/paru/paru.conf"
