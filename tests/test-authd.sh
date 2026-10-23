@@ -18,8 +18,9 @@ tmp=$(mktemp -d)
 daemon_pid=''
 helper_pids=()   # anything else started in the background, blocked or not
 cleanup() {
-  [[ -n $daemon_pid ]] && kill "$daemon_pid" 2>/dev/null
-  # Most have exited already; under set -e a failed kill would end the trap.
+  # Any of these may have exited already; under set -e a failed kill would
+  # end the trap before the rest of it ran.
+  [[ -n $daemon_pid ]] && kill "$daemon_pid" 2>/dev/null || true
   ((${#helper_pids[@]})) && kill "${helper_pids[@]}" 2>/dev/null || true
   rm -rf -- "$tmp"
 }
@@ -149,6 +150,7 @@ $(cat "$out")"
 send "{\"cmd\":\"respond\",\"id\":\"$req\",\"secret\":\"hunter2\"}"
 wait_for '"ev":"close"' 'the request closing'
 
+wait_until 'c7-askpass to exit after its answer' gone "$askpass_pid"
 wait "$askpass_pid" || fail "c7-askpass exited non-zero after a successful answer:
 $(cat "$tmp/askpass.err")"
 [[ $(cat "$tmp/secret.out") == hunter2 ]] \
@@ -183,6 +185,7 @@ done
 $(cat "$out")"
 
 send "{\"cmd\":\"cancel\",\"id\":\"$req2\"}"
+wait_until 'a cancelled c7-askpass to exit' gone "$askpass2"
 rc=0; wait "$askpass2" || rc=$?
 ((rc != 0)) || fail 'a cancelled prompt still handed sudo a password'
 [[ ! -s $tmp/secret2.out ]] || fail 'a cancelled prompt wrote something to stdout'
@@ -251,6 +254,7 @@ grep -q "\"ev\":\"prompt\",\"id\":\"$queued_id\"" "$out" \
   && fail "a sudo request still in the queue sent a prompt over the one on screen:
 $(cat "$out")"
 send "{\"cmd\":\"cancel\",\"id\":\"$last_id\"}"
+wait_until 'the cancelled third caller to exit' gone "$last_pid"
 wait "$last_pid" 2>/dev/null || true
 
 # The raw clients below take turns with the test through fifos. The test opens
@@ -339,6 +343,8 @@ grep -q '"askpass":""' "$tmp/second.out" \
   || fail "the second daemon claimed a socket it does not serve: $(cat "$tmp/second.out")"
 grep -q 'already serving' "$tmp/second.err" \
   || fail "the second daemon did not say why it serves no askpass: $(cat "$tmp/second.err")"
+kill -0 "$daemon_pid" 2>/dev/null || fail "the first daemon did not survive the second one's probe:
+$(cat "$err")"
 
 # Nor does a daemon told not to serve one at all.
 authd_once --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null
@@ -365,7 +371,8 @@ C7_AUTHD_ASKPASS_RETRY_MS=100 \
   "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- &
 later_pid=$!; helper_pids+=("$later_pid")
 exec 6> "$tmp/later.cmds"
-probes() { (($(cat "$tmp/probes" 2>/dev/null || echo 0) >= $1)); }
+# The holder rewrites the file, so it can be read empty in between.
+probes() { local n; n=$(cat "$tmp/probes" 2>/dev/null) || true; ((${n:-0} >= $1)); }
 dump=$tmp/later.err wait_until 'five probes of a live holder' probes 5
 [[ $(stat -c %i "$tmp/handover.sock") == "$ino" ]] \
   || fail "the later daemon took the socket over while its holder was alive: $(cat "$tmp/later.err")"
@@ -470,6 +477,7 @@ done
 $(cat "$out")"
 
 exec 9>&-           # EOF on the command channel: the shell has gone
+wait_until 'c7-askpass to be refused as the shell goes' gone "$askpass3"
 rc=0; wait "$askpass3" || rc=$?
 ((rc != 0)) || fail 'the daemon shut down without refusing the prompt it was holding'
 

@@ -85,7 +85,10 @@ MAX_TRIES = 3
 # How often a daemon that found the askpass socket held by another checks
 # whether that one has gone, so it can serve the socket itself. The test
 # shortens it; nothing else should.
-ASKPASS_RETRY_MS = int(os.environ.get("C7_AUTHD_ASKPASS_RETRY_MS") or 2000)
+try:
+    ASKPASS_RETRY_MS = max(10, int(os.environ.get("C7_AUTHD_ASKPASS_RETRY_MS") or 2000))
+except ValueError:
+    ASKPASS_RETRY_MS = 2000
 
 AGENT_XML = """
 <node>
@@ -712,6 +715,11 @@ class Daemon:
             root=True,
         )
         req.conn = conn
+        # The reader thread gave it a 10 s timeout, and a socket with a timeout
+        # waits out even MSG_DONTWAIT. Blocking again, the hang-up watch's
+        # non-blocking recv returns at once; the one reply is a few bytes,
+        # which a unix socket's buffer always takes.
+        conn.settimeout(None)
         # A caller that gives up -- a Ctrl-C'd `sudo -A` -- closes its end of
         # the socket. Without a watch its prompt stayed on screen with nobody
         # to answer it, and blocked every request queued behind it.

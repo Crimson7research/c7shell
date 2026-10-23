@@ -178,6 +178,17 @@ ListView {
 | `AppsBackend` (`Apps`) | desktop entries |
 | `TerminalBackend`, `ClipboardBackend` | kitty, wl-clipboard |
 
+`AuthBackend` replaces `bin/c7-authd`, and keeps the askpass socket's rules
+that `tests/test-authd.sh` pins:
+
+- a caller sends one request line, then only reads; closing or half-closing
+  its end withdraws the request;
+- only the head of the queue is activated, and a sudo request prompts with its
+  activation;
+- a full backlog is a live listener, and only a socket that refuses the
+  connect is stale;
+- a daemon removes only the socket it bound.
+
 ## Why
 
 - **Swappable integrations.** The UI depends on a contract c7shell owns, never
