@@ -17,9 +17,7 @@ and the shell draws all of them with the same 280px panel
 Protocol with the shell: NDJSON, one object per line, events on stdout and
 commands on stdin. Services/AuthService.qml is the only reader.
 
-  out {"ev":"ready","polkit":BOOL,"askpass":PATH|"","user":NAME}  "" = no socket served
-                                                            at start; a later takeover
-                                                            is logged, not re-announced
+  out {"ev":"ready","polkit":BOOL,"askpass":PATH|"","user":NAME}
   out {"ev":"request","id":ID,"kind":"polkit"|"sudo",...}   a prompt to draw
   out {"ev":"active","id":ID}                               it is now the head
   out {"ev":"prompt","id":ID,"text":T,"echo":BOOL}          PAM wants an answer
@@ -31,6 +29,11 @@ commands on stdin. Services/AuthService.qml is the only reader.
   out {"ev":"close","id":ID,"ok":BOOL}                      gone from the queue
   in  {"cmd":"respond","id":ID,"secret":S}
   in  {"cmd":"cancel","id":ID}
+
+"askpass" in ready is the socket this daemon serves, or "" for none, as of
+start: a later takeover of the socket is logged, not re-announced. Only the
+head of the queue prompts, and only after its "active", which clears the
+prompt on screen; a sudo request's prompt comes with its activation.
 
 A polkit request can run two PAM sessions on its one cookie, so a finger and
 a typed password are both live at once. pam_fprintd waits on the reader and
@@ -224,8 +227,14 @@ class Daemon:
         self.emit(ev="active", id=req.id)
         if req.kind == "polkit":
             self.begin_session(req)
-        # A sudo request needs nothing started: the prompt text arrived with
-        # the request and the answer goes straight back down the socket.
+            return
+        # A sudo request has no PAM conversation to wait for: the prompt text
+        # arrived with the request and the answer goes straight back down the
+        # socket, so the field is live the moment it is on screen. Sent here,
+        # not when it queued: the shell clears its prompt on "active", and a
+        # queued one's prompt would have landed on the prompt then on screen.
+        req.pending_prompt = True
+        self.emit(ev="prompt", id=req.id, text=req.fields["detail"] or "Password:", echo=False)
 
     def close(self, req, ok):
         if req.closed:
@@ -558,6 +567,11 @@ class Daemon:
         report. Non-blocking, so the probe never stalls this main loop.
         Anything at the path that is not a socket -- a file, a fifo, a
         directory -- is somebody's, not a stale socket, and is reported too."""
+        # sockaddr_un holds 108 bytes with the terminator. Checked here, not left
+        # to bind: the socket is bound under a short name and renamed, and the
+        # rename would put it where no client can connect.
+        if len(os.fsencode(self.sock_path)) > 107:
+            raise OSError(errno.ENAMETOOLONG, "too long for a unix socket", self.sock_path)
         try:
             mode = os.lstat(self.sock_path).st_mode
         except FileNotFoundError:
@@ -610,23 +624,32 @@ class Daemon:
         return False
 
     def _bind_askpass(self):
-        try:
-            os.unlink(self.sock_path)
-        except FileNotFoundError:
-            pass
-        except OSError as err:
-            log(f"cannot clear a stale {self.sock_path}: {err}")
+        # Bound and listening under a private name, then renamed into place:
+        # a probe never finds the socket before it accepts (and so never takes
+        # a starting daemon's socket for a stale one), and a stale socket is
+        # replaced in one step.
+        # A short name beside it, so a path near AF_UNIX's length limit fits.
+        tmp = os.path.join(os.path.dirname(self.sock_path), f".{os.getpid()}")
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            srv.bind(self.sock_path)
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            srv.bind(tmp)
+            os.chmod(tmp, 0o600)
+            srv.listen(4)
+            os.rename(tmp, self.sock_path)
         except OSError:
             srv.close()
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
             raise
-        os.chmod(self.sock_path, 0o600)
         # What shutdown removes: only this socket, never one another daemon
         # bound at the same path after both found it free in the same instant.
         self.sock_ino = os.stat(self.sock_path).st_ino
-        srv.listen(4)
         srv.setblocking(False)
         self.srv = srv
         self.askpass_ok = True
@@ -697,10 +720,6 @@ class Daemon:
             GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
             self._on_askpass_gone, req)
         self.push(req)
-        # A sudo prompt has no PAM conversation of its own to wait for: the
-        # field is live the moment it is drawn.
-        req.pending_prompt = True
-        self.emit(ev="prompt", id=req.id, text=req.fields["detail"] or "Password:", echo=False)
         return False
 
     def _on_askpass_gone(self, chan, cond, req):

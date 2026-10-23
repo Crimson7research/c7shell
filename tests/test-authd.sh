@@ -239,52 +239,72 @@ wait_for "\"ev\":\"close\",\"id\":\"$head_id\",\"ok\":false" 'the prompt of a ca
   || fail "a queued caller giving up re-activated the prompt on screen:
 $(cat "$out")"
 wait_for "\"ev\":\"active\",\"id\":\"$last_id\"" 'the queue to move past a caller that gave up'
+# A sudo prompt is live only once it is on screen. The shell clears its prompt
+# on "active", so the one promoted here needs its "prompt" after that -- and
+# one still queued must not send one over the prompt on screen.
+line_of() { grep -n -- "$1" "$out" | tail -1 | cut -d: -f1; }
+wait_for "\"ev\":\"prompt\",\"id\":\"$last_id\"" 'the promoted request to prompt'
+(($(line_of "\"ev\":\"prompt\",\"id\":\"$last_id\"") > $(line_of "\"ev\":\"active\",\"id\":\"$last_id\""))) \
+  || fail "a sudo request promoted to the head got no prompt after it became active:
+$(cat "$out")"
+grep -q "\"ev\":\"prompt\",\"id\":\"$queued_id\"" "$out" \
+  && fail "a sudo request still in the queue sent a prompt over the one on screen:
+$(cat "$out")"
 send "{\"cmd\":\"cancel\",\"id\":\"$last_id\"}"
 wait "$last_pid" 2>/dev/null || true
 
+# The raw clients below take turns with the test through fifos. The test opens
+# each read-write, so no open ever waits for the other end, and it reads with a
+# time limit: a client that died early is a named FAIL, not a hang.
+handshake() { mkfifo "$tmp/$1"; exec {fd}<>"$tmp/$1"; printf -v "$2" %s "$fd"; }
+heard() { read -t 10 -r _ <&"$1" || fail "no word from $2"; }
+
 # Anything a caller sends after its request is not it leaving: the request
 # stays open and still gets its answer.
-mkfifo "$tmp/go" "$tmp/sent"
+handshake go go_fd; handshake sent sent_fd
 chatty_id=$(next_id)
 python3 - "$sock" "$tmp/go" "$tmp/sent" > "$tmp/chatty.out" 9>&- <<'PY' &
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.connect(sys.argv[1])
 s.sendall(json.dumps({"prompt": "Password:", "command": "chatty"}).encode() + b"\n")
-open(sys.argv[2]).read()          # the test says when the request is on screen
+go, sent = open(sys.argv[2]), open(sys.argv[3], "w")
+go.readline()                     # the test says when the request is on screen
 s.sendall(b"more\n")
-open(sys.argv[3], "w").write("sent\n")   # ...and hears when the bytes are out
+sent.write("sent\n"); sent.flush()   # ...and hears when the bytes are out
 print(json.loads(s.makefile().readline()).get("secret", ""))
 PY
-chatty_pid=$!
-helper_pids+=("$chatty_pid")
+chatty_pid=$!; helper_pids+=("$chatty_pid")
 wait_for "\"ev\":\"active\",\"id\":\"$chatty_id\"" 'a caller that keeps talking to become active'
-echo go > "$tmp/go"
-read -r _ < "$tmp/sent"
+echo go >&"$go_fd"
+heard "$sent_fd" 'the talking caller'
 send "{\"cmd\":\"respond\",\"id\":\"$chatty_id\",\"secret\":\"hunter3\"}"
+wait_until 'the talking caller to get its answer' gone "$chatty_pid"
 wait "$chatty_pid" || true
 [[ $(cat "$tmp/chatty.out") == hunter3 ]] \
   || fail "bytes after a request were taken for the caller leaving:
 $(cat "$out")"
 # A caller that talked first and then hangs up still takes its prompt with it.
 talker_id=$(next_id)
-mkfifo "$tmp/go2" "$tmp/sent2"
+handshake go2 go2_fd; handshake sent2 sent2_fd
 python3 - "$sock" "$tmp/go2" "$tmp/sent2" 9>&- <<'PY' &
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.connect(sys.argv[1])
 s.sendall(json.dumps({"prompt": "Password:", "command": "talker"}).encode() + b"\n")
-open(sys.argv[2]).read()
+go, sent = open(sys.argv[2]), open(sys.argv[3], "w")
+go.readline()
 s.sendall(b"more\n")
-open(sys.argv[3], "w").write("sent\n")
-open(sys.argv[2]).read()          # the bytes are out; now leave
+sent.write("sent\n"); sent.flush()
+go.readline()                     # the bytes are out; now leave
 s.close()
 PY
 talker_pid=$!; helper_pids+=("$talker_pid")
 wait_for "\"ev\":\"active\",\"id\":\"$talker_id\"" 'a talking caller to become active'
-echo go > "$tmp/go2"
-read -r _ < "$tmp/sent2"
-echo go > "$tmp/go2"
+echo go >&"$go2_fd"
+heard "$sent2_fd" 'the caller that talks and then hangs up'
+echo go >&"$go2_fd"
+wait_until 'the caller that hangs up to exit' gone "$talker_pid"
 wait "$talker_pid" || true
 wait_for "\"ev\":\"close\",\"id\":\"$talker_id\",\"ok\":false" 'a caller that talked and then hung up to close'
 
@@ -301,9 +321,9 @@ print(repr(s.recv(4096)))          # still reading: EOF once the daemon lets go
 PY
 half_pid=$!; helper_pids+=("$half_pid")
 wait_for "\"ev\":\"close\",\"id\":\"$half_id\",\"ok\":false" 'a caller that shut down its writing half to close'
+wait_until 'the half-closed caller to be let go' gone "$half_pid"
 wait "$half_pid" || true
 [[ $(cat "$tmp/half.out") == "b''" ]] || fail "a half-closed caller was not let go: $(cat "$tmp/half.out")"
-
 
 # --- 6c. a second daemon leaves the first one's socket alone -------------
 # A second shell, or a stray restart, starts another c7-authd. Taking over the
