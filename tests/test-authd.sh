@@ -56,11 +56,25 @@ stderr:
 $(cat "$err")"
 }
 
-# wait_for for any file and any test: polls until the check passes.
+# wait_for for any file and any test: polls until the check passes. Set dump
+# to a file to have its contents, as they are at the timeout, in the FAIL.
 wait_until() {
   local label=$1 i; shift
   for ((i = 0; i < 200; i++)); do "$@" && return 0; sleep 0.05; done
-  fail "timed out waiting for $label"
+  fail "timed out waiting for $label${dump:+
+$(cat "$dump" 2>&1)}"
+}
+gone() { ! kill -0 "$1" 2>/dev/null; }
+# A daemon run to completion. One that does not exit is a named FAIL, not a
+# suite that hangs. Callers redirect its stderr to a file, so the FAIL goes to
+# the test's own stderr, saved as fd 3.
+exec 3>&2
+authd_once() {
+  local rc=0
+  # -k: the daemon handles SIGTERM in its main loop, which a hang has stopped.
+  timeout -k 2 10 "$authd" "$@" 9>&- || rc=$?
+  ((rc != 124 && rc != 137)) || { exec 2>&3; fail "c7-authd $* did not exit"; }
+  return "$rc"
 }
 
 event_id() {
@@ -290,10 +304,6 @@ wait_for "\"ev\":\"close\",\"id\":\"$half_id\",\"ok\":false" 'a caller that shut
 wait "$half_pid" || true
 [[ $(cat "$tmp/half.out") == "b''" ]] || fail "a half-closed caller was not let go: $(cat "$tmp/half.out")"
 
-# Every caller above is gone, so every socket the daemon held for them is
-# closed: a hang-up must not leak the caller's socket.
-(($(ls "/proc/$daemon_pid/fd" | wc -l) == fds_before)) \
-  || fail "the daemon holds $(($(ls "/proc/$daemon_pid/fd" | wc -l) - fds_before)) more fds than before its callers came and went"
 
 # --- 6c. a second daemon leaves the first one's socket alone -------------
 # A second shell, or a stray restart, starts another c7-authd. Taking over the
@@ -301,7 +311,7 @@ wait "$half_pid" || true
 # new sudo can reach it, and the socket it removes on the way out is then the
 # new daemon's. The second one serves no askpass and says so.
 ino=$(stat -c %i "$sock")
-"$authd" --no-polkit --socket "$sock" < /dev/null > "$tmp/second.out" 2> "$tmp/second.err" 9>&-
+authd_once --no-polkit --socket "$sock" < /dev/null > "$tmp/second.out" 2> "$tmp/second.err"
 [[ -S $sock && $(stat -c %i "$sock") == "$ino" ]] \
   || fail "a second daemon replaced or removed the first one's socket:
 $(cat "$tmp/second.err")"
@@ -311,33 +321,40 @@ grep -q 'already serving' "$tmp/second.err" \
   || fail "the second daemon did not say why it serves no askpass: $(cat "$tmp/second.err")"
 
 # Nor does a daemon told not to serve one at all.
-"$authd" --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null 9>&-
+authd_once --no-polkit --no-askpass --socket "$tmp/unused.sock" < /dev/null > "$tmp/noaskpass.out" 2>/dev/null
 grep -q '"askpass":""' "$tmp/noaskpass.out" \
   || fail "--no-askpass still named a socket: $(cat "$tmp/noaskpass.out")"
 
-# A second daemon takes the socket over once the first one is gone: a restarted
-# shell's daemon can start while the old one is still on its way out.
-mkfifo "$tmp/first.cmds" "$tmp/later.cmds"
-"$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/first.cmds" > "$tmp/first.out" 2>/dev/null 9>&- &
-first_pid=$!; helper_pids+=("$first_pid")
-exec 7> "$tmp/first.cmds"
-wait_until 'the first daemon to bind its socket' test -S "$tmp/handover.sock"
-C7_AUTHD_ASKPASS_RETRY_MS=200 \
-  "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- 7>&- &
+# A second daemon takes the socket over once its holder is gone: a restarted
+# shell's daemon can start while the old one is still on its way out. The
+# holder here counts the retries' probes, so "still alive" is waited for, not
+# slept through.
+python3 - "$tmp/handover.sock" "$tmp/probes" 9>&- <<'PY' &
+import socket, sys
+srv = socket.socket(socket.AF_UNIX); srv.bind(sys.argv[1]); srv.listen(8)
+n = 0
+while True:
+    c, _ = srv.accept(); c.close(); n += 1
+    open(sys.argv[2], "w").write(f"{n}\n")
+PY
+holder_pid=$!; helper_pids+=("$holder_pid")
+wait_until 'the holder to bind its socket' test -S "$tmp/handover.sock"
+ino=$(stat -c %i "$tmp/handover.sock")
+mkfifo "$tmp/later.cmds"
+C7_AUTHD_ASKPASS_RETRY_MS=100 \
+  "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- &
 later_pid=$!; helper_pids+=("$later_pid")
 exec 6> "$tmp/later.cmds"
-wait_until 'the later daemon to find the socket held' grep -q 'already serving' "$tmp/later.err"
-# Its retries leave the socket alone while the first daemon is alive: five
-# retry periods pass with the same socket in place.
-ino=$(stat -c %i "$tmp/handover.sock")
-sleep 1
+probes() { (($(cat "$tmp/probes" 2>/dev/null || echo 0) >= $1)); }
+dump=$tmp/later.err wait_until 'five probes of a live holder' probes 5
 [[ $(stat -c %i "$tmp/handover.sock") == "$ino" ]] \
   || fail "the later daemon took the socket over while its holder was alive: $(cat "$tmp/later.err")"
-exec 7>&-        # the first daemon's shell goes away, and the daemon with it
-wait_until "the later daemon to take the socket over: $(cat "$tmp/later.err")" \
-  grep -q 'serving askpass at' "$tmp/later.err"
-[[ -S $tmp/handover.sock ]] || fail "the later daemon said it took the socket over, but there is none"
+kill "$holder_pid"; wait "$holder_pid" 2>/dev/null || true   # its socket file stays, refusing
+dump=$tmp/later.err wait_until 'the later daemon to take the socket over' grep -q 'serving askpass at' "$tmp/later.err"
+[[ -S $tmp/handover.sock && $(stat -c %i "$tmp/handover.sock") != "$ino" ]] \
+  || fail "the later daemon said it took the socket over, but did not bind it"
 exec 6>&-
+wait_until 'the later daemon to exit' gone "$later_pid"
 wait "$later_pid" 2>/dev/null || true
 [[ ! -e $tmp/handover.sock ]] || fail 'a daemon that took a socket over left it behind on exit'
 
@@ -360,7 +377,7 @@ PY
 busy_pid=$!; helper_pids+=("$busy_pid")
 wait_until 'the busy listener to fill its backlog' test -e "$tmp/busy.ready"
 ino=$(stat -c %i "$tmp/busy.sock")
-"$authd" --no-polkit --socket "$tmp/busy.sock" < /dev/null > "$tmp/busy.out" 2> "$tmp/busy.err" 9>&-
+authd_once --no-polkit --socket "$tmp/busy.sock" < /dev/null > "$tmp/busy.out" 2> "$tmp/busy.err"
 [[ $(stat -c %i "$tmp/busy.sock") == "$ino" ]] \
   || fail "a listener with a full backlog was taken for a stale socket: $(cat "$tmp/busy.err")"
 grep -q 'already serving' "$tmp/busy.err" || fail "a busy listener was not named: $(cat "$tmp/busy.err")"
@@ -378,23 +395,35 @@ rm -f -- "$tmp/owner.sock"
 python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$tmp/owner.sock"
 ino=$(stat -c %i "$tmp/owner.sock")
 exec 5>&-
+wait_until 'the owner daemon to exit' gone "$owner_pid"
 wait "$owner_pid" 2>/dev/null || true
 [[ -e $tmp/owner.sock && $(stat -c %i "$tmp/owner.sock") == "$ino" ]] \
   || fail 'a daemon on its way out removed a socket another had bound in its place'
 
-# A path too long for a unix socket is a mistake to report, not a daemon
-# already serving it.
-long=$tmp/$(printf 'x%.0s' {1..120}).sock
-rc=0; "$authd" --no-polkit --socket "$long" < /dev/null > /dev/null 2> "$tmp/long.err" 9>&- || rc=$?
-grep -q 'already serving' "$tmp/long.err" && fail "a path too long for a socket was taken for a live daemon: $(cat "$tmp/long.err")"
-((rc != 0)) || fail "a daemon started on a path too long for a socket: $(cat "$tmp/long.err")"
+# A path the daemon cannot use -- too long for a unix socket, under a file,
+# or a directory itself -- is reported as what it is. The daemon carries on
+# without askpass: it may still be the session's polkit agent.
+: > "$tmp/plainfile"; mkdir "$tmp/adir"
+for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/adir"; do
+  authd_once --no-polkit --socket "$bad" < /dev/null > "$tmp/bad.out" 2> "$tmp/bad.err" \
+    || fail "a daemon given an unusable socket path failed: $(cat "$tmp/bad.err")"
+  grep -q 'already serving' "$tmp/bad.err" && fail "an unusable path was taken for a live daemon: $(cat "$tmp/bad.err")"
+  grep -q 'cannot serve askpass' "$tmp/bad.err" || fail "an unusable path was not reported: $(cat "$tmp/bad.err")"
+  grep -q '"askpass":""' "$tmp/bad.out" || fail "a daemon named a socket it could not serve: $(cat "$tmp/bad.out")"
+done
+[[ -d $tmp/adir ]] || fail 'the daemon removed a directory standing at its socket path'
 
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"
-"$authd" --no-polkit --socket "$tmp/stale.sock" < /dev/null > "$tmp/stale.out" 2> "$tmp/stale.err" 9>&-
+authd_once --no-polkit --socket "$tmp/stale.sock" < /dev/null > "$tmp/stale.out" 2> "$tmp/stale.err"
 grep -qF "\"askpass\":\"$tmp/stale.sock\"" "$tmp/stale.out" \
   || fail "a daemon did not take over a stale socket: $(cat "$tmp/stale.out") $(cat "$tmp/stale.err")"
 grep -q 'already serving' "$tmp/stale.err" && fail "a stale socket was taken for a live daemon: $(cat "$tmp/stale.err")"
+
+# Every caller above is gone, and so is the second daemon's probe, so every
+# socket the daemon held for them is closed: nothing leaks a descriptor.
+(($(ls "/proc/$daemon_pid/fd" | wc -l) == fds_before)) \
+  || fail "the daemon holds $(($(ls "/proc/$daemon_pid/fd" | wc -l) - fds_before)) more fds than before its callers came and went"
 
 # --- 7. losing the shell releases every caller ----------------------------
 # The daemon is a child of qs. If qs dies while a prompt is up, sudo must be

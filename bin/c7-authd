@@ -187,6 +187,8 @@ class Daemon:
         self.authority = None
         self.polkit_ok = False
         self.askpass_ok = False     # this daemon owns the socket at sock_path
+        self.sock_ino = None        # ...and this is its inode, once bound
+        self.retry_error = ""       # last reason a takeover could not bind
         if with_askpass:
             self._serve_askpass()
         if with_polkit:
@@ -547,8 +549,9 @@ class Daemon:
         """Whether a daemon is listening on sock_path. Only a refused connect,
         or no file at all, means nobody is: a socket left by a daemon that
         died. A full backlog -- a daemon alive but not accepting, stalled or
-        stopped -- is a listener, and so is anything else that is not a clean
-        refusal. Non-blocking, so the probe never stalls this main loop."""
+        stopped -- is a listener. Any other error is about the path itself (too
+        long, under a file, no permission) and is raised for the caller to
+        report. Non-blocking, so the probe never stalls this main loop."""
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         probe.setblocking(False)
         try:
@@ -556,9 +559,7 @@ class Daemon:
             return True
         except (ConnectionRefusedError, FileNotFoundError):
             return False
-        except OSError as err:
-            if err.errno is None:
-                raise       # not about the socket at all: a path too long
+        except BlockingIOError:
             return True
         finally:
             probe.close()
@@ -569,21 +570,28 @@ class Daemon:
         # socket the first removes on the way out would then be this one's.
         # It takes the socket over once the first one has gone: a restarted
         # shell's daemon can start while the old one is still on its way out.
-        if self._askpass_answered():
-            log(f"another c7-authd is already serving {self.sock_path}; serving no askpass while it does")
-            GLib.timeout_add(ASKPASS_RETRY_MS, self._retry_askpass)
-            return
-        self._bind_askpass()
-
-    def _retry_askpass(self):
-        if self._askpass_answered():
-            return True
+        # A path it cannot use at all is reported, and the daemon carries on
+        # without askpass: it may still be the session's polkit agent.
         try:
+            if self._askpass_answered():
+                log(f"another c7-authd is already serving {self.sock_path}; serving no askpass while it does")
+                GLib.timeout_add(ASKPASS_RETRY_MS, self._retry_askpass)
+                return
             self._bind_askpass()
         except OSError as err:
-            # The path is in the way -- a directory, or no permission to it:
-            # keep checking rather than give up on askpass for good.
-            log(f"cannot serve askpass at {self.sock_path} yet: {err}")
+            log(f"cannot serve askpass at {self.sock_path}: {err}")
+
+    def _retry_askpass(self):
+        try:
+            if self._askpass_answered():
+                return True
+            self._bind_askpass()
+        except OSError as err:
+            # The path went bad meanwhile: keep checking rather than give up on
+            # askpass for good, and say so once, not every period.
+            if str(err) != self.retry_error:
+                self.retry_error = str(err)
+                log(f"cannot serve askpass at {self.sock_path} yet: {err}")
             return True
         log(f"serving askpass at {self.sock_path}: the daemon that held it has gone")
         return False
@@ -596,7 +604,11 @@ class Daemon:
         except OSError as err:
             log(f"cannot clear a stale {self.sock_path}: {err}")
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        srv.bind(self.sock_path)
+        try:
+            srv.bind(self.sock_path)
+        except OSError:
+            srv.close()
+            raise
         os.chmod(self.sock_path, 0o600)
         # What shutdown removes: only this socket, never one another daemon
         # bound at the same path after both found it free in the same instant.
