@@ -277,7 +277,7 @@ s.sendall(json.dumps({"prompt": "Password:", "command": "talker"}).encode() + b"
 open(sys.argv[2]).read()
 s.sendall(b"more\n")
 open(sys.argv[3], "w").write("sent\n")
-open(sys.argv[2]).read()          # the test has seen the bytes land; now leave
+open(sys.argv[2]).read()          # the bytes are out; now leave
 s.close()
 PY
 talker_pid=$!; helper_pids+=("$talker_pid")
@@ -403,8 +403,10 @@ wait "$owner_pid" 2>/dev/null || true
 # A path the daemon cannot use -- too long for a unix socket, under a file,
 # or a directory itself -- is reported as what it is. The daemon carries on
 # without askpass: it may still be the session's polkit agent.
+# A file or a fifo at the path is somebody's, not a stale socket: it stays.
 : > "$tmp/plainfile"; mkdir "$tmp/adir"
-for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/adir"; do
+echo precious > "$tmp/afile"; mkfifo "$tmp/afifo"
+for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/adir" "$tmp/afile" "$tmp/afifo"; do
   authd_once --no-polkit --socket "$bad" < /dev/null > "$tmp/bad.out" 2> "$tmp/bad.err" \
     || fail "a daemon given an unusable socket path failed: $(cat "$tmp/bad.err")"
   grep -q 'already serving' "$tmp/bad.err" && fail "an unusable path was taken for a live daemon: $(cat "$tmp/bad.err")"
@@ -412,6 +414,8 @@ for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/
   grep -q '"askpass":""' "$tmp/bad.out" || fail "a daemon named a socket it could not serve: $(cat "$tmp/bad.out")"
 done
 [[ -d $tmp/adir ]] || fail 'the daemon removed a directory standing at its socket path'
+[[ $(cat "$tmp/afile") == precious ]] || fail 'the daemon replaced a file standing at its socket path'
+[[ -p $tmp/afifo ]] || fail 'the daemon replaced a fifo standing at its socket path'
 
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"

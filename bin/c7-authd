@@ -18,6 +18,8 @@ Protocol with the shell: NDJSON, one object per line, events on stdout and
 commands on stdin. Services/AuthService.qml is the only reader.
 
   out {"ev":"ready","polkit":BOOL,"askpass":PATH|"","user":NAME}  "" = no socket served
+                                                            at start; a later takeover
+                                                            is logged, not re-announced
   out {"ev":"request","id":ID,"kind":"polkit"|"sudo",...}   a prompt to draw
   out {"ev":"active","id":ID}                               it is now the head
   out {"ev":"prompt","id":ID,"text":T,"echo":BOOL}          PAM wants an answer
@@ -56,11 +58,13 @@ Requires python-gobject and polkit (both already depends= of c7shell).
 """
 
 import argparse
+import errno
 import json
 import os
 import pwd
 import grp
 import socket
+import stat
 import sys
 import threading
 
@@ -551,7 +555,16 @@ class Daemon:
         died. A full backlog -- a daemon alive but not accepting, stalled or
         stopped -- is a listener. Any other error is about the path itself (too
         long, under a file, no permission) and is raised for the caller to
-        report. Non-blocking, so the probe never stalls this main loop."""
+        report. Non-blocking, so the probe never stalls this main loop.
+        Anything at the path that is not a socket -- a file, a fifo, a
+        directory -- is somebody's, not a stale socket, and is reported too."""
+        try:
+            mode = os.lstat(self.sock_path).st_mode
+        except FileNotFoundError:
+            return False
+        if not stat.S_ISSOCK(mode):
+            raise OSError(errno.EEXIST, "something that is not a socket is in the way",
+                          self.sock_path)
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         probe.setblocking(False)
         try:
