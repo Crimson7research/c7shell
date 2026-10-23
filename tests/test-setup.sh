@@ -21,6 +21,8 @@ export C7SHELL_STATE=$tmp/state
 export XDG_STATE_HOME=$tmp/xdg-state
 export XDG_DATA_HOME=$tmp/data
 export HOME=$tmp/home
+# Never the host's /etc/paru.conf: the paru checks below name their own.
+export C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf
 mkdir -p "$HOME"
 mkdir -p "$C7SHELL_SHARE"/{hypr,quickshell/c7shell,xdg-desktop-portal}
 echo v1 > "$C7SHELL_SHARE/hypr/hyprland.lua"
@@ -78,6 +80,17 @@ sysconf=$tmp/etc-paru.conf
 printf '[options]\nC7TestMarker\n' > "$sysconf"
 paru_bin=$tmp/paru-bin
 mkdir -p "$paru_bin"; printf '#!/bin/sh\n' > "$paru_bin/paru"; chmod +x "$paru_bin/paru"
+# Without paru, setup writes no paru.conf: a PATH with every command but paru.
+no_paru=$tmp/no-paru-bin; mkdir -p "$no_paru"
+IFS=: read -ra dirs <<<"$PATH"
+for d in "${dirs[@]}"; do
+  for f in "$d"/*; do
+    [[ ${f##*/} == paru || -e $no_paru/${f##*/} || ! -x $f ]] || ln -s -- "$f" "$no_paru/"
+  done
+done
+out=$(PATH=$no_paru C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+[[ ! -e $XDG_CONFIG_HOME/paru ]] || fail "setup wrote a paru config without paru:\n$(ls -R "$XDG_CONFIG_HOME/paru")"
+grep -qF 'paru.conf' <<<"$out" && fail "setup tried to write a paru config without paru:\n$out"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'Sudo = run0' "$pc" || fail "paru was not pointed at run0:\n$(cat "$pc" 2>&1)"
 grep -qx 'C7TestMarker' "$pc" || fail "the new paru.conf dropped the system file's options:\n$(cat "$pc")"
@@ -88,9 +101,29 @@ PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || t
 (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "paru.conf lacks BottomUp, or has it twice:\n$(cat "$pc")"
 [[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc") == '[options]' ]] \
   || fail "BottomUp is outside [options]:\n$(cat "$pc")"
+grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
+  || fail "the BottomUp setup added carries no marker:\n$(cat "$pc")"
 printf '[options]\n#BottomUp\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned back on:\n$(cat "$pc")"
+# paru also takes `BottomUp = <value>`, and that is a choice already made.
+printf '[options]\nBottomUp = true\n' > "$pc"
+PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+[[ $(grep BottomUp "$pc") == 'BottomUp = true' ]] \
+  || fail "BottomUp was added beside a BottomUp = line:\n$(cat "$pc")"
+# A dry run names the BottomUp it would add and writes nothing; with no user
+# file yet it asks the system file, which the real run copies first.
+printf '[bin]\nSudo = doas\n' > "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+[[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "--dry-run wrote paru.conf:\n$(cat "$pc")"
+grep -qF 'would: append [options] BottomUp' <<<"$out" || fail "--dry-run did not name the BottomUp it would add:\n$out"
+rm -f -- "$pc"
+printf '[options]\nBottomUp\n' > "$tmp/bottomup-paru.conf"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/bottomup-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the system file already has:\n$out"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
+grep -qF 'would: append [options] BottomUp' <<<"$out" \
+  || fail "--dry-run did not name the BottomUp a copy of the system file lacks:\n$out"
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -q run0 "$pc" && fail "a paru Sudo the user chose was overwritten:\n$(cat "$pc")"
@@ -256,7 +289,8 @@ echo edited > "$un/conf/quickshell/c7shell/shell.qml"
 # Beside an edited file, a .new is what the user was told to merge.
 echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
 mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
-printf '[bin]\nSudo = run0\n\n[options]\nBottomUp\n' > "$un/conf/paru/paru.conf.keep"
+printf '[bin]\nSudo = run0\n\n# c7shell: BottomUp (paru lists AUR search results first)\n[options]\nBottomUp\n' \
+  > "$un/conf/paru/paru.conf.keep"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
 # What the shell itself writes, and what an upgrade backs up per file: in no
@@ -278,6 +312,13 @@ printf '[Mouse]\ncursorTheme=Bibata\n' > "$un/conf/kcminputrc"
 cp "$un/conf/arch-update/arch-update.conf" "$tmp/au.orig"; cp "$un/conf/paru/paru.conf" "$tmp/pc.orig"
 
 if u --uninstall --force >/dev/null 2>&1; then fail 'uninstall accepted --force'; fi
+
+# A BottomUp setup did not add, such as one copied from /etc/paru.conf, is
+# the user's and goes unlisted.
+printf '[options]\nBottomUp\n' > "$un/conf/paru/paru.conf"
+out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
+grep -qF 'BottomUp in' <<<"$out" && fail "uninstall listed a BottomUp setup never added:\n$out"
+cp "$tmp/pc.orig" "$un/conf/paru/paru.conf"
 
 out=$(u --uninstall --dry-run 2>&1) || fail "uninstall --dry-run failed:\n$out"
 [[ -f $un/conf/hypr/hyprland.lua && -f $un/conf/hypr/hyprland.lua.new && -f $un/state/manifest ]] \
