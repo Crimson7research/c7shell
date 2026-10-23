@@ -144,6 +144,22 @@ fn confirm(w: &Worker, step: &Step, detail: String) -> Result<Outcome, String> {
     }
 }
 
+/// Copies each of `files` back into `w`'s tree from `reference` where they
+/// differ, as a run stopped mid-mutant leaves one behind; returns those it
+/// copied.
+pub fn restore(w: &Worker, reference: &Path, files: &[&str]) -> Result<Vec<String>, String> {
+    let mut copied = Vec::new();
+    for f in files {
+        let (from, to) = (reference.join(f), w.tree.join(f));
+        let want = std::fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
+        if std::fs::read(&to).ok().as_deref() != Some(want.as_slice()) {
+            std::fs::write(&to, &want).map_err(|e| format!("{}: {e}", to.display()))?;
+            copied.push(f.to_string());
+        }
+    }
+    Ok(copied)
+}
+
 /// The unmutated tree in `w` builds and passes every step: the kill suite
 /// is sound there, so a failure under a mutant is the mutant's.
 pub fn sanity(w: &Worker, p: &Pipeline) -> Result<(), String> {

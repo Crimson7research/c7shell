@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 
 use mutate_cpp::record::Record;
-use mutate_cpp::run::{run_all, sanity, Mutant, Pipeline, Step, Worker};
+use mutate_cpp::run::{restore, run_all, sanity, Mutant, Pipeline, Step, Worker};
 use mutate_cpp::{query, targets};
 
 fn arg(name: &str) -> Option<String> {
@@ -114,7 +114,11 @@ fn run() -> Result<(), String> {
     let workers: Vec<Worker> = (0..count)
         .map(|i| Worker { tree: work.join(format!("w{i}/tree")), build: work.join(format!("w{i}/out")) })
         .collect();
+    let files: Vec<&str> = targets::TARGETS.iter().map(|t| t.file).collect();
     for w in &workers {
+        for f in restore(w, &reference.join("tree"), &files)? {
+            eprintln!("{}: restored {f}, left mutated by a stopped run", w.tree.display());
+        }
         sanity(w, &p)?;
     }
     eprintln!("{} mutants, {} already recorded", all.len(), record.mutants.len());

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use mutate_cpp::record::{Outcome, Record};
-use mutate_cpp::run::{run_all, run_mutant, sanity, Mutant, Pipeline, Step, Worker};
+use mutate_cpp::run::{restore, run_all, run_mutant, sanity, Mutant, Pipeline, Step, Worker};
 
 /// A private directory, removed when dropped.
 struct Dir(PathBuf);
@@ -171,4 +171,19 @@ fn the_unmutated_tree_must_pass_every_step_before_any_mutant_runs() {
     fs::write(w.tree.join("a.txt"), "check a != b\nlimit 3\n").unwrap();
     let e = sanity(&w, &pipeline()).unwrap_err();
     assert!(e.contains("fast") && e.contains("FAIL equality"), "{e}");
+}
+
+#[test]
+fn restore_copies_each_file_back_from_the_reference_after_a_run_was_stopped() {
+    let d = Dir::new("restore");
+    let w = worker(&d);
+    let reference = d.0.join("reference");
+    fs::create_dir_all(&reference).unwrap();
+    fs::write(reference.join("a.txt"), SOURCE).unwrap();
+    fs::write(w.tree.join("a.txt"), "check a != b\nlimit 3\n").unwrap();
+    let restored_files = restore(&w, &reference, &["a.txt"]).unwrap();
+    assert_eq!(restored_files, ["a.txt"]);
+    assert!(restored(&w));
+    assert!(restore(&w, &reference, &["a.txt"]).unwrap().is_empty(), "an unchanged file is left alone");
+    assert!(restore(&w, &reference, &["missing.txt"]).is_err());
 }
