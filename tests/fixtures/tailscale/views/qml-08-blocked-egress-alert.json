@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "qml-08-blocked-egress-alert",
+  "requirements": [
+    "R-QML-08"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With an offline `pentest-exit-node`, the alert is visible, its text contains the name as plain text, and it sits above `ts-self-name`"
+  ],
+  "body": "qml_08_blocked_alert",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

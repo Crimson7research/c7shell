@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "qml-23-identity-rows",
+  "requirements": [
+    "R-QML-23"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "`ts-self-name` shows `omega` as plain text",
+    "`ts-self-ip4` is titled with the IPv4, and clicking it copies the IPv4"
+  ],
+  "deferred": [
+    "the identifier scan of `quickshell/c7shell/`: phase3-only, a repository scan, not reachable through QML; #286 has no test of it"
+  ],
+  "body": "qml_23_identity_rows",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

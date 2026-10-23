@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "qml-05-nothing-last-known-while-no-state",
+  "requirements": [
+    "R-QML-05"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "After `Running` with peers and a blocked exit node, `NoState` shows no visible `ts-self-ip4` or `ts-blocked-alert`, and `ts-state` reads \"no daemon\"",
+    "With `ts-devices-row` clicked open and peers seeded, `NoState` shows no visible `ts-peer` and no visible `ts-devices-card`",
+    "With the exit sub-card open, `NoState` shows no visible `ts-exit-card`; with the settings sub-card open, no visible `ts-settings-card`",
+    "With one health entry, `NoState` shows no visible `ts-issue` and no visible `ts-issue-count`",
+    "Each other state gives its phrase, and a blocked exit node in `Running` reads \"exit node unreachable\"",
+    "Setup: each hidden part is checked visible in `Running` first"
+  ],
+  "body": "qml_05_nothing_last_known",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

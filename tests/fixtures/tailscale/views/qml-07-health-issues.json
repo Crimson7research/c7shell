@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "qml-07-health-issues",
+  "requirements": [
+    "R-QML-07"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With one non-suppressed health string, exactly one `ts-issue` shows that text as plain text, and `ts-issue-count` reads \"1 issue detected…\""
+  ],
+  "body": "qml_07_health_issues",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "ui-16-one-explanation-for-two-failures",
+  "requirements": [
+    "R-UI-16"
+  ],
+  "tag": "fix",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "View half: with `state` `NoState`, both errors non-empty and `writable` false, the panel's visible Texts and its tooltips' Texts containing either error are exactly one, `ts-read-error`",
+    "`ts-connect-tip` reads `tailscaled is not answering, so there is nothing to ask`",
+    "Setting `readError` empty and `state` `Running` makes `ts-connect-tip` contain `writeError` and hides `ts-read-error`"
+  ],
+  "deferred": [
+    "the backend half: phase3-only, it is read after the retry and read barriers"
+  ],
+  "body": "ui_16_one_explanation",
+  "on": {
+    "cpp-286": {
+      "result": "fail",
+      "failing": [
+        {
+          "id": "one-explanation",
+          "actual": [
+            "ts-connect-tip",
+            "ts-read-error"
+          ]
+        },
+        {
+          "id": "tip-not-answering",
+          "actual": "tailscaled refused the change: it takes orders only from root or its operator. Run c7shell-bootstrap to name this user. (/localapi/v0/prefs answered HTTP/1.1 403 Forbidden)"
+        }
+      ],
+      "reason": "#286's connect tip puts the write's explanation first, ahead of the no-daemon phrase (quickshell/c7shell/Modules/Popovers/TailscalePopover.qml:322-327), so with both errors set the panel explains twice: ts-read-error and the tip's refusal (decision 7)"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
