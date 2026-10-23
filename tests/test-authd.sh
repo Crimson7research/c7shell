@@ -216,12 +216,14 @@ wait_for "\"ev\":\"request\",\"id\":\"$last_id\"" 'the third caller to queue'
 # and stop accepting the password already being typed.
 hang_up "$queued_pid"
 wait_for "\"ev\":\"close\",\"id\":\"$queued_id\",\"ok\":false" 'a queued caller that gave up to close'
-(($(grep -c "\"ev\":\"active\",\"id\":\"$head_id\"" "$out") == 1)) \
-  || fail "a queued caller giving up re-activated the prompt on screen:
-$(cat "$out")"
 # The one on screen gives up: it closes, and the queue moves on.
 hang_up "$head_pid"
 wait_for "\"ev\":\"close\",\"id\":\"$head_id\",\"ok\":false" 'the prompt of a caller that gave up to close'
+# Counted only now: a wrong re-activation would have been written straight
+# after the queued caller's close, and the head's close came later still.
+(($(grep -c "\"ev\":\"active\",\"id\":\"$head_id\"" "$out") == 1)) \
+  || fail "a queued caller giving up re-activated the prompt on screen:
+$(cat "$out")"
 wait_for "\"ev\":\"active\",\"id\":\"$last_id\"" 'the queue to move past a caller that gave up'
 send "{\"cmd\":\"cancel\",\"id\":\"$last_id\"}"
 wait "$last_pid" 2>/dev/null || true
@@ -252,6 +254,7 @@ wait "$chatty_pid" || true
 $(cat "$out")"
 # A caller that talked first and then hangs up still takes its prompt with it.
 talker_id=$(next_id)
+mkfifo "$tmp/go2" "$tmp/sent2"
 python3 - "$sock" "$tmp/go2" "$tmp/sent2" 9>&- <<'PY' &
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -264,13 +267,28 @@ open(sys.argv[2]).read()          # the test has seen the bytes land; now leave
 s.close()
 PY
 talker_pid=$!; helper_pids+=("$talker_pid")
-mkfifo "$tmp/go2" "$tmp/sent2"
 wait_for "\"ev\":\"active\",\"id\":\"$talker_id\"" 'a talking caller to become active'
 echo go > "$tmp/go2"
 read -r _ < "$tmp/sent2"
 echo go > "$tmp/go2"
 wait "$talker_pid" || true
 wait_for "\"ev\":\"close\",\"id\":\"$talker_id\",\"ok\":false" 'a caller that talked and then hung up to close'
+
+# A caller that shuts down only its writing half withdraws too: it has said
+# all it will, and the socket is the contract.
+half_id=$(next_id)
+python3 - "$sock" > "$tmp/half.out" 9>&- <<'PY' &
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sys.argv[1])
+s.sendall(json.dumps({"prompt": "Password:", "command": "half"}).encode() + b"\n")
+s.shutdown(socket.SHUT_WR)
+print(repr(s.recv(4096)))          # still reading: EOF once the daemon lets go
+PY
+half_pid=$!; helper_pids+=("$half_pid")
+wait_for "\"ev\":\"close\",\"id\":\"$half_id\",\"ok\":false" 'a caller that shut down its writing half to close'
+wait "$half_pid" || true
+[[ $(cat "$tmp/half.out") == "b''" ]] || fail "a half-closed caller was not let go: $(cat "$tmp/half.out")"
 
 # Every caller above is gone, so every socket the daemon held for them is
 # closed: a hang-up must not leak the caller's socket.
@@ -304,10 +322,17 @@ mkfifo "$tmp/first.cmds" "$tmp/later.cmds"
 first_pid=$!; helper_pids+=("$first_pid")
 exec 7> "$tmp/first.cmds"
 wait_until 'the first daemon to bind its socket' test -S "$tmp/handover.sock"
-"$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- 7>&- &
+C7_AUTHD_ASKPASS_RETRY_MS=200 \
+  "$authd" --no-polkit --socket "$tmp/handover.sock" < "$tmp/later.cmds" > "$tmp/later.out" 2> "$tmp/later.err" 9>&- 7>&- &
 later_pid=$!; helper_pids+=("$later_pid")
 exec 6> "$tmp/later.cmds"
 wait_until 'the later daemon to find the socket held' grep -q 'already serving' "$tmp/later.err"
+# Its retries leave the socket alone while the first daemon is alive: five
+# retry periods pass with the same socket in place.
+ino=$(stat -c %i "$tmp/handover.sock")
+sleep 1
+[[ $(stat -c %i "$tmp/handover.sock") == "$ino" ]] \
+  || fail "the later daemon took the socket over while its holder was alive: $(cat "$tmp/later.err")"
 exec 7>&-        # the first daemon's shell goes away, and the daemon with it
 wait_until "the later daemon to take the socket over: $(cat "$tmp/later.err")" \
   grep -q 'serving askpass at' "$tmp/later.err"
@@ -340,6 +365,29 @@ ino=$(stat -c %i "$tmp/busy.sock")
   || fail "a listener with a full backlog was taken for a stale socket: $(cat "$tmp/busy.err")"
 grep -q 'already serving' "$tmp/busy.err" || fail "a busy listener was not named: $(cat "$tmp/busy.err")"
 kill "$busy_pid" 2>/dev/null || true
+
+# A daemon removes only the socket it bound. If another took the path over --
+# two daemons that both found it free in the same instant -- the one leaving
+# must not remove the other's.
+mkfifo "$tmp/owner.cmds"
+"$authd" --no-polkit --socket "$tmp/owner.sock" < "$tmp/owner.cmds" > /dev/null 2>/dev/null 9>&- &
+owner_pid=$!; helper_pids+=("$owner_pid")
+exec 5> "$tmp/owner.cmds"
+wait_until 'the owner to bind its socket' test -S "$tmp/owner.sock"
+rm -f -- "$tmp/owner.sock"
+python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$tmp/owner.sock"
+ino=$(stat -c %i "$tmp/owner.sock")
+exec 5>&-
+wait "$owner_pid" 2>/dev/null || true
+[[ -e $tmp/owner.sock && $(stat -c %i "$tmp/owner.sock") == "$ino" ]] \
+  || fail 'a daemon on its way out removed a socket another had bound in its place'
+
+# A path too long for a unix socket is a mistake to report, not a daemon
+# already serving it.
+long=$tmp/$(printf 'x%.0s' {1..120}).sock
+rc=0; "$authd" --no-polkit --socket "$long" < /dev/null > /dev/null 2> "$tmp/long.err" 9>&- || rc=$?
+grep -q 'already serving' "$tmp/long.err" && fail "a path too long for a socket was taken for a live daemon: $(cat "$tmp/long.err")"
+((rc != 0)) || fail "a daemon started on a path too long for a socket: $(cat "$tmp/long.err")"
 
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"

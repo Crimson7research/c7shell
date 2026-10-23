@@ -76,8 +76,9 @@ AGENT_PATH = "/io/crimson7/c7shell/PolkitAgent"
 # caller; the design's "n of 3" counter is this number.
 MAX_TRIES = 3
 # How often a daemon that found the askpass socket held by another checks
-# whether that one has gone, so it can serve the socket itself.
-ASKPASS_RETRY_SECS = 2
+# whether that one has gone, so it can serve the socket itself. The test
+# shortens it; nothing else should.
+ASKPASS_RETRY_MS = int(os.environ.get("C7_AUTHD_ASKPASS_RETRY_MS") or 2000)
 
 AGENT_XML = """
 <node>
@@ -555,7 +556,9 @@ class Daemon:
             return True
         except (ConnectionRefusedError, FileNotFoundError):
             return False
-        except OSError:
+        except OSError as err:
+            if err.errno is None:
+                raise       # not about the socket at all: a path too long
             return True
         finally:
             probe.close()
@@ -568,7 +571,7 @@ class Daemon:
         # shell's daemon can start while the old one is still on its way out.
         if self._askpass_answered():
             log(f"another c7-authd is already serving {self.sock_path}; serving no askpass while it does")
-            GLib.timeout_add_seconds(ASKPASS_RETRY_SECS, self._retry_askpass)
+            GLib.timeout_add(ASKPASS_RETRY_MS, self._retry_askpass)
             return
         self._bind_askpass()
 
@@ -578,8 +581,8 @@ class Daemon:
         try:
             self._bind_askpass()
         except OSError as err:
-            # Another waiting daemon got there first, or the path is in the
-            # way: keep checking rather than give up on askpass for good.
+            # The path is in the way -- a directory, or no permission to it:
+            # keep checking rather than give up on askpass for good.
             log(f"cannot serve askpass at {self.sock_path} yet: {err}")
             return True
         log(f"serving askpass at {self.sock_path}: the daemon that held it has gone")
@@ -595,6 +598,9 @@ class Daemon:
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         srv.bind(self.sock_path)
         os.chmod(self.sock_path, 0o600)
+        # What shutdown removes: only this socket, never one another daemon
+        # bound at the same path after both found it free in the same instant.
+        self.sock_ino = os.stat(self.sock_path).st_ino
         srv.listen(4)
         srv.setblocking(False)
         self.srv = srv
@@ -717,7 +723,8 @@ class Daemon:
             self.deny(req)
         if self.askpass_ok:
             try:
-                os.unlink(self.sock_path)
+                if os.stat(self.sock_path).st_ino == self.sock_ino:
+                    os.unlink(self.sock_path)
             except OSError:
                 pass
         self.loop.quit()
