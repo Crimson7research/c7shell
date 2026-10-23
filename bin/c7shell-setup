@@ -382,7 +382,7 @@ pc=$conf/paru/paru.conf
 pc_dir=$(dirname -- "$pc")
 paru_sysconf=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
 paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
-paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp([[:space:]=].*)?$'
+paru_bottomup_re='^[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
 # A user file setup cannot read is one it cannot check, so every run would
 # append the same lines again. One it cannot write -- read-only, as in a
 # dotfiles store, a symlink to nothing yet, or not there yet in a directory
@@ -413,12 +413,13 @@ if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
 fi
 
 # BottomUp prints `paru <term>` search results bottom to top, the AUR's first
-# (paru.conf(5)). Arch's /etc/paru.conf sets it and the copy above carries it
-# over; a user paru.conf from before setup gets it here. A commented-out
-# #BottomUp, a BottomUp = <value>, or one with a comment after it, is a choice
-# and stays. paru reads a second [options] section as more options. The marker
-# line above it is how --uninstall tells this BottomUp from one the user or
-# /etc/paru.conf set. A dry run made no copy, so it asks the system file.
+# (paru.conf(5)). paru ships /etc/paru.conf with #BottomUp commented out, so
+# the copy above and any user file without the option get it here. Only a line
+# paru reads as BottomUp -- bare or with "= <value>" -- counts as set: a
+# commented one is paru's own default, and paru rejects a comment after an
+# option. paru reads a second [options] section as more options. The marker
+# line above it is how --uninstall tells this BottomUp from one the user set. A
+# dry run made no copy, so it asks the system file.
 pc_src=$pc
 ((dry)) && [[ ! -e $pc ]] && pc_src=$paru_sysconf
 if ((paru)) && ! grep -qsE "$paru_bottomup_re" "$pc_src"; then

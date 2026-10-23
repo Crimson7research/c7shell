@@ -87,7 +87,9 @@ grep -qx '# mine' "$HOME/.zshrc" || fail 'adding the sudo line lost what was in 
 # system file's options, since paru reads one or the other, never both
 pc=$XDG_CONFIG_HOME/paru/paru.conf
 sysconf=$tmp/etc-paru.conf
-printf '[options]\nC7TestMarker\n' > "$sysconf"
+# As paru ships it (paru.conf at v2.1.0): BottomUp is there, commented out.
+printf '[options]\nC7TestMarker\n#BottomUp\n' > "$sysconf"
+bottomup_marker='# c7shell: BottomUp (paru lists AUR search results first)'
 paru_bin=$tmp/paru-bin
 mkdir -p "$paru_bin"; printf '#!/bin/sh\n' > "$paru_bin/paru"; chmod +x "$paru_bin/paru"
 # Without paru, setup writes no paru.conf.
@@ -100,21 +102,25 @@ grep -qx 'Sudo = run0' "$pc" || fail "paru was not pointed at run0:\n$(cat "$pc"
 grep -qx 'C7TestMarker' "$pc" || fail "the new paru.conf dropped the system file's options:\n$(cat "$pc")"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 (($(grep -c '^Sudo' "$pc") == 1)) || fail "a rerun added a second paru Sudo line:\n$(cat "$pc")"
-# BottomUp lists AUR search results first, as Arch's own paru.conf does; a
-# system file without it still gets it, once, and paru reads it as an option.
+# BottomUp lists AUR search results first. paru ships it commented out, so the
+# copy of the system file gets it, once, where paru reads it as an option.
 (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "paru.conf lacks BottomUp, or has it twice:\n$(cat "$pc")"
 [[ $(sed -n '/^\[/h; /^BottomUp$/{x;p;}' "$pc") == '[options]' ]] \
   || fail "BottomUp is outside [options]:\n$(cat "$pc")"
-grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
+grep -qxF "$bottomup_marker" "$pc" \
   || fail "the BottomUp setup added carries no marker:\n$(cat "$pc")"
-printf '[options]\n#BottomUp\n' > "$pc"
-PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
-grep -qx 'BottomUp' "$pc" && fail "a BottomUp the user commented out was turned back on:\n$(cat "$pc")"
 # A longer word is some other option, not BottomUp.
 printf '[options]\nBottomUpX\n#BottomUp_old\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'BottomUp' "$pc" || fail "BottomUpX was taken for BottomUp:\n$(cat "$pc")"
-for line in '  # BottomUp' '  BottomUp' 'BottomUp # mine' 'BottomUp=true'; do
+# Only a line paru reads as BottomUp counts as set. Commented out is paru's
+# own default, and paru rejects a comment after an option.
+for line in '#BottomUp' '  # BottomUp' 'BottomUp # mine'; do
+  printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
+  PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
+  (($(grep -cx 'BottomUp' "$pc") == 1)) || fail "'$line' was taken for a BottomUp that is set:\n$(cat "$pc")"
+done
+for line in '  BottomUp' 'BottomUp=true'; do
   printf '[options]\n%s\n[bin]\nSudo = doas\n' "$line" > "$pc"
   PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
   [[ $(grep -c BottomUp "$pc") == 1 ]] || fail "BottomUp was added beside '$line':\n$(cat "$pc")"
@@ -128,7 +134,7 @@ grep -qx 'Devel' "$pc" && grep -qx 'Sudo = run0' "$pc" \
 printf '[bin]\nSudo = doas' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -qx 'Sudo = doas' "$pc" \
-  && grep -qxF '# c7shell: BottomUp (paru lists AUR search results first)' "$pc" \
+  && grep -qxF "$bottomup_marker" "$pc" \
   || fail "the BottomUp append ran into a last line with no newline:\n$(cat "$pc")"
 # paru also takes `BottomUp = <value>`, and that is a choice already made.
 printf '[options]\nBottomUp = true\n' > "$pc"
@@ -155,6 +161,11 @@ grep -qF 'BottomUp' <<<"$out" && fail "--dry-run would add a BottomUp the system
 out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" --dry-run 2>&1) || true
 grep -qF 'would: append [options] BottomUp' <<<"$out" \
   || fail "--dry-run did not name the BottomUp a copy of the system file lacks:\n$out"
+# With no system file either, the real run appends to a new file, and the dry
+# run says it would.
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$tmp/no-such-paru.conf "$setup" --dry-run 2>&1) || true
+grep -qF 'would: append [options] BottomUp' <<<"$out" \
+  || fail "--dry-run did not name the BottomUp a new paru.conf gets:\n$out"
 printf '[bin]\nSudo = doas\n' > "$pc"
 PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" >/dev/null 2>&1 || true
 grep -q run0 "$pc" && fail "a paru Sudo the user chose was overwritten:\n$(cat "$pc")"
@@ -363,8 +374,7 @@ echo merging > "$un/conf/quickshell/c7shell/shell.qml.new"
 mkdir -p "$un/conf/quickshell/c7shell.bak-1" "$XDG_DATA_HOME/c7shell/scripts"
 # PATH has no paru, so setup wrote no paru.conf here; this is the one it would.
 mkdir -p "$un/conf/paru"
-printf '[bin]\nSudo = run0\n\n# c7shell: BottomUp (paru lists AUR search results first)\n[options]\nBottomUp\n' \
-  > "$un/conf/paru/paru.conf"
+printf '[bin]\nSudo = run0\n\n%s\n[options]\nBottomUp\n' "$bottomup_marker" > "$un/conf/paru/paru.conf"
 echo v2 > "$un/conf/hypr/hyprland.lua.new"
 echo mine > "$un/conf/hypr/monitors.lua"
 # What the shell itself writes, and what an upgrade backs up per file: in no
