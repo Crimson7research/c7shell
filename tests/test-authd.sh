@@ -435,8 +435,8 @@ wait "$owner_pid" 2>/dev/null || true
 # without askpass: it may still be the session's polkit agent.
 # A file or a fifo at the path is somebody's, not a stale socket: it stays.
 : > "$tmp/plainfile"; mkdir "$tmp/adir"
-echo precious > "$tmp/afile"; mkfifo "$tmp/afifo"
-for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/adir" "$tmp/afile" "$tmp/afifo"; do
+echo precious > "$tmp/afile"; mkfifo "$tmp/afifo"; ln -s -- "$tmp/nowhere" "$tmp/alink"
+for bad in "$tmp/$(printf 'x%.0s' {1..120}).sock" "$tmp/plainfile/a.sock" "$tmp/adir" "$tmp/afile" "$tmp/afifo" "$tmp/alink"; do
   authd_once --no-polkit --socket "$bad" < /dev/null > "$tmp/bad.out" 2> "$tmp/bad.err" \
     || fail "a daemon given an unusable socket path failed: $(cat "$tmp/bad.err")"
   grep -q 'already serving' "$tmp/bad.err" && fail "an unusable path was taken for a live daemon: $(cat "$tmp/bad.err")"
@@ -446,6 +446,8 @@ done
 [[ -d $tmp/adir ]] || fail 'the daemon removed a directory standing at its socket path'
 [[ $(cat "$tmp/afile") == precious ]] || fail 'the daemon replaced a file standing at its socket path'
 [[ -p $tmp/afifo ]] || fail 'the daemon replaced a fifo standing at its socket path'
+[[ -L $tmp/alink && $(readlink -- "$tmp/alink") == "$tmp/nowhere" ]] \
+  || fail 'the daemon replaced a symlink standing at its socket path'
 
 # The private name a daemon binds under before renaming is its own; a file
 # already there under that name is somebody else's, and stays. The pid is

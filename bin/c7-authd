@@ -569,7 +569,8 @@ class Daemon:
         long, under a file, no permission) and is raised for the caller to
         report. Non-blocking, so the probe never stalls this main loop.
         Anything at the path that is not a socket -- a file, a fifo, a
-        directory -- is somebody's, not a stale socket, and is reported too."""
+        directory, a symlink -- is somebody's, not a stale socket, and is
+        reported too."""
         # sockaddr_un holds 108 bytes with the terminator. Checked here, not left
         # to bind: the socket is bound under a short name and renamed, and the
         # rename would put it where no client can connect.
