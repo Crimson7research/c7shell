@@ -17,6 +17,7 @@ use crate::reply::{watch_chunk, ReplySpec};
 use crate::script::{within_write_limit, Match, Script};
 
 mod check;
+mod declare;
 pub(crate) mod files;
 mod handlers;
 mod kept;
@@ -26,6 +27,7 @@ mod request;
 
 pub use check::check_value;
 use check::{check_expect, check_fake_wait, check_values, is_requirement_id};
+pub(crate) use declare::{validate_declarations, Declared};
 pub use handlers::HandlerCheck;
 pub use kept::{Keep, KeptCheck};
 pub use members::{Assign, MEMBER_TYPES};
@@ -379,7 +381,17 @@ impl Scenario {
         check::validate_marks(&self.steps)?;
         kept::validate_keeps(&self.steps)?;
         handlers::validate_handlers(&self.steps)?;
-        self.validate_declarations(implementations)
+        let declared = Declared { tag: self.tag, needs: &self.needs, on: &self.on };
+        validate_declarations(&declared, implementations, &|id| self.failing_id(id))
+    }
+
+    /// Whether a declared failing `id` is an expect that may fail.
+    fn failing_id(&self, id: &str) -> Result<(), String> {
+        let e = self.expects().find(|e| e.id == id).ok_or_else(|| format!("failing: no expect `{id}`"))?;
+        if e.precondition {
+            return Err(format!("failing: `{id}` is a precondition, which is setup, never the declared failure"));
+        }
+        Ok(())
     }
 
     fn validate_steps(&self) -> Result<(), String> {
@@ -425,65 +437,6 @@ impl Scenario {
                 Step::Fake(FakeOp::PushWatchLine(b)) => within_write_limit("the chunk", watch_chunk(&b.0).len())
                     .map_err(|e| at(format!("fake.push_watch_line: {e}")))?,
                 _ => {}
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_declarations(&self, implementations: &[Implementation<'_>]) -> Result<(), String> {
-        if let Some((name, _)) = implementations.iter().find(|(n, _)| !self.on.contains_key(*n)) {
-            return Err(format!("on.{name}: missing"));
-        }
-        if let Some(name) = self.on.keys().find(|k| !implementations.iter().any(|(n, _)| n == k)) {
-            return Err(format!("on.{name}: not an implementation the runner knows"));
-        }
-        for (name, capabilities) in implementations {
-            self.validate_declaration(name, capabilities, &self.on[*name]).map_err(|e| format!("on.{name}: {e}"))?;
-        }
-        Ok(())
-    }
-
-    fn validate_declaration(&self, name: &str, capabilities: &[Capability], d: &Declaration) -> Result<(), String> {
-        let runnable = self.needs.iter().all(|n| capabilities.contains(n));
-        match (d.result, runnable) {
-            (Verdict::CannotRun, true) => {
-                return Err(format!("cannot-run, but {name} has every capability this scenario needs"))
-            }
-            (Verdict::Pass | Verdict::Fail, false) => {
-                return Err(format!("{:?} declared, but {name} lacks some of {:?}", d.result, self.needs))
-            }
-            _ => {}
-        }
-        match d.result {
-            Verdict::Pass if d.failing.is_some() => return Err("failing: only a fail declares failing".into()),
-            Verdict::Fail => self.validate_failing(d.failing.as_deref())?,
-            Verdict::CannotRun if d.failing.is_some() => return Err("failing: cannot-run declares none".into()),
-            _ => {}
-        }
-        if d.result != Verdict::Pass && d.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
-            return Err("reason: a fail or cannot-run says why".into());
-        }
-        match (self.tag, name, d.result) {
-            (Tag::Fix, "cpp-286", Verdict::Pass) => Err("a fix cannot pass on #286; declare fail or cannot-run".into()),
-            (Tag::Parity, "cpp-286", Verdict::Fail) => Err("a parity scenario cannot fail on #286".into()),
-            (_, "rust", Verdict::Fail) => Err("the rewrite is declared to pass, or cannot-run until it can".into()),
-            _ => Ok(()),
-        }
-    }
-
-    fn validate_failing(&self, failing: Option<&[Failing]>) -> Result<(), String> {
-        let failing = failing.filter(|f| !f.is_empty()).ok_or("failing: a fail names the failing expectations")?;
-        let mut seen = BTreeSet::new();
-        for f in failing {
-            let e = self.expects().find(|e| e.id == f.id).ok_or_else(|| format!("failing: no expect `{}`", f.id))?;
-            if e.precondition {
-                return Err(format!(
-                    "failing: `{}` is a precondition, which is setup, never the declared failure",
-                    f.id
-                ));
-            }
-            if !seen.insert(f.id.as_str()) {
-                return Err(format!("failing: `{}` named twice", f.id));
             }
         }
         Ok(())
