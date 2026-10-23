@@ -10,6 +10,7 @@
 pub mod bodies;
 pub mod run;
 pub mod tree;
+pub mod ui;
 
 use fake_tailscaled::scenario::Failing;
 use serde_json::{json, Value};
@@ -46,6 +47,8 @@ impl Target for &str {
 #[derive(Debug, Default)]
 pub struct Views {
     pub failing: Vec<Failing>,
+    /// The views directory the tree was built from, for a static scan.
+    pub views: std::path::PathBuf,
 }
 
 impl Views {
@@ -68,6 +71,16 @@ impl Views {
     pub fn check(&mut self, id: &str, holds: bool, actual: Value) {
         if !holds {
             self.failing.push(Failing { id: id.to_string(), actual });
+        }
+    }
+
+    /// Setup, not acceptance: `Err(what)` when `holds` is false, so a
+    /// staging that did not take is an error, never the declared failure.
+    pub fn require(&self, holds: bool, what: &str) -> Result<(), String> {
+        if holds {
+            Ok(())
+        } else {
+            Err(format!("precondition: {what}"))
         }
     }
 
@@ -115,6 +128,23 @@ impl Views {
             Value::Null => Ok(None),
             v => el(&v).map(Some),
         }
+    }
+
+    /// The driver's `Date.now()`, in ms since the epoch.
+    pub fn now(&self) -> Result<f64, String> {
+        let v = self.request(json!({ "op": "now" }))?;
+        v.as_f64().ok_or_else(|| format!("now answered {v}"))
+    }
+
+    /// Counts `signal` of `t` from here on.
+    pub fn watch(&self, t: impl Target, signal: &str) -> Result<(), String> {
+        self.request(json!({ "op": "watch", "target": t.target(), "signal": signal })).map(|_| ())
+    }
+
+    /// How often `signal` of `t` has fired since [`Views::watch`].
+    pub fn fired(&self, t: impl Target, signal: &str) -> Result<u64, String> {
+        let v = self.request(json!({ "op": "fired", "target": t.target(), "signal": signal }))?;
+        v.as_u64().ok_or_else(|| format!("fired answered {v}"))
     }
 
     /// Member `name` of `t` as a string, or an error naming what it was.

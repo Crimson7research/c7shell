@@ -412,6 +412,48 @@ The captures are #286's (`plugin/lib/tailscale/tests/fixtures/` at
 node keys, numeric node ids and the tailnet's stable id were replaced with
 made-up values too.
 
+## The view tests (#309)
+
+`tests/fixtures/tailscale/views/` holds one header per view test: a
+scenario's `format`, `id`, `requirements`, `tag`, `evidence`, `clauses`,
+`deferred` and `on`, and `body`, the name of a Rust function in
+`src/views/bodies/`. The format is
+`plugin/lib/testing/fake-tailscaled/src/views.rs`. A view test runs #286's
+views, never #286's C++: the bar pill and the Tailscale popover over a QML
+stand-in for `Tailscale` that a test sets as the backend would and whose
+actions only record their calls (R-QML-25).
+
+```sh
+views=$(plugin/tests/tailscale-parity/build-reference.sh --views)
+cd plugin
+cargo test --locked -p tailscale-parity --test view_selftest
+C7_IMPL=cpp-286 C7_VIEWS_DIR=$views cargo test --locked -p tailscale-parity --test views
+```
+
+`C7_SCENARIOS` and `C7_REPEAT` work as for the scenarios.
+
+Each view test's child builds an import tree in its private `TMPDIR`
+(`src/views/tree.rs`): the view files `VIEW_FILES` names, copied from
+`C7_VIEWS_DIR`; the stand-ins under `qml/standins/` (`C7.Tailscale`, the
+Quickshell clipboard, the radios and services at rest, `GlassPopover`,
+`Tooltip`, `ProgressRing` and `BatteryIndicator`); and the theme stand-in,
+whose `PaletteStore` is generated from the views' own `palette.json` and
+whose `iconsDir` is the views' icons. `qml/views-driver.qml` loads the pill
+and the popover in a window and answers commands by name; it knows no
+`ts-` name. An object reaches Rust as a handle numbered by identity, so the
+same delegate is the same `El`.
+
+A body (`Views` in `src/views/mod.rs`, the shared lookups in
+`src/views/ui.rs`) sets the stand-in, clicks and types, and records each
+acceptance clause with `check(id, holds, actual)`. Every `set` and `invoke`
+is followed by the layout barrier, five `forceLayout()` passes over the
+popover and the pill, so every read after it has settled; a recorded call
+is read when the click returns. Setup that did not take is `require`, an
+error. A lookup that finds no element, or two where one is needed, is an
+error unless the clause is about that count. Any line of the child's log
+naming a `.qml` file is an error (R-QML-26, R-QML-27). `tests/views.rs`
+fails when a body is named by no header.
+
 ## Add an implementation
 
 Add its name and capabilities to `IMPLEMENTATIONS` in

@@ -38,3 +38,7 @@ harness = false
 [[test]]
 name = "corpus"
 harness = false
+
+[[test]]
+name = "views"
+harness = false

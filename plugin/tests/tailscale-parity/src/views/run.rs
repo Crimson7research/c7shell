@@ -231,7 +231,7 @@ fn run_child(bodies: &[(&'static str, Body)], header: &Path, views: &Path, tree_
         Ok(l) => l,
         Err(e) => return Outcome::Error(e),
     };
-    let mut v = Views::new();
+    let mut v = Views { views: views.to_path_buf(), ..Views::new() };
     let result = body(&mut v);
     drop(loaded);
     match result {

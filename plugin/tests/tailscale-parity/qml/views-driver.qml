@@ -14,11 +14,14 @@
 // children and contentItem, whose objectName is `name`, or all when it is
 // null), {"op": "layout"} (the layout barrier: five forceLayout() passes
 // over the popover's and the pill's descendants), {"op": "calls"} (the
-// stand-in's recorded calls since the last, taken) and {"op": "focus"}
-// (the window's active focus item). A value or argument {"handle": n} is
-// that object, {"target": t} the object `t` names, {"enum": key}
-// Tailscale's enum value `key`, and {"date_from_now_ms": n} a Date n ms
-// from now. The answer is {"value": ...} or {"error": "..."}.
+// stand-in's recorded calls since the last, taken), {"op": "focus"} (the
+// window's active focus item), {"op": "now"} (Date.now()), and
+// {"op": "watch", "target", "signal"} then {"op": "fired", "target",
+// "signal"} (how often that signal has fired since it was watched). A value
+// or argument {"handle": n} is that object, {"target": t} the object `t`
+// names, {"enum": key} Tailscale's enum value `key`, {"date_ms": n} the
+// Date at n ms since the epoch and {"date_from_now_ms": n} a Date n ms from
+// now. The answer is {"value": ...} or {"error": "..."}.
 import QtQuick
 import QtQuick.Window
 import Quickshell
@@ -49,6 +52,9 @@ Window {
 
     // The stand-in's calls since the last `calls`.
     property var calls: []
+
+    // "<handle>.<signal>" -> times fired since `watch`.
+    property var fired: ({})
 
     Connections {
         target: Tailscale
@@ -160,6 +166,8 @@ Window {
                 throw new Error(v["enum"] + " is not an enum value of Tailscale");
             return n;
         }
+        if ("date_ms" in v)
+            return new Date(v.date_ms);
         if ("date_from_now_ms" in v)
             return new Date(Date.now() + v.date_from_now_ms);
         const out = {};
@@ -227,6 +235,26 @@ Window {
         }
         case "focus":
             return encode(root.activeFocusItem);
+        case "now":
+            return Date.now();
+        case "watch": {
+            const o = resolve(c.target);
+            const s = member(o, c.signal);
+            const key = handle(o).handle + "." + c.signal;
+            if (!(key in root.fired)) {
+                root.fired[key] = 0;
+                s.connect(function () {
+                    root.fired[key] += 1;
+                });
+            }
+            return null;
+        }
+        case "fired": {
+            const key = handle(resolve(c.target)).handle + "." + c.signal;
+            if (!(key in root.fired))
+                throw new Error(c.signal + " is not watched");
+            return root.fired[key];
+        }
         default:
             throw new Error("unknown op " + c.op);
         }

@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "qml-01-no-slot-without-tailscaled",
+  "requirements": [
+    "R-QML-01"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "With `state` `NoState`, `readError` empty and an active, online exit node named `pentest-exit-node` set underneath, after the layout barrier the slot is not visible and no visible text equals `pentest-exit-node`"
+  ],
+  "deferred": [
+    "the backend half: three retry barriers on paused time: cpp-suite, tests/tailscale-qml-test.qml::run"
+  ],
+  "body": "qml_01_no_slot",
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

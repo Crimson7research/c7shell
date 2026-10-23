@@ -39,6 +39,17 @@ fn ops(v: &mut Views) -> Result<(), String> {
     let anchor = v.object("PopoverManager", "anchorItem")?;
     v.check("target-arg", anchor.is_some() && anchor == v.object("pop.panel", "parent")?, json!(null));
     v.check("plain-text", v.get("Text", "PlainText")?.is_number(), v.get("Text", "PlainText")?);
+    let now = v.now()?;
+    v.set("Tailscale", "keyExpiry", json!({ "date_ms": 86_400_000 }))?;
+    let at = v.get("Tailscale", "keyExpiry")?;
+    v.check("date-ms", at == json!({ "date": "1970-01-02T00:00:00.000Z" }), at);
+    v.check("now", now > 1.0e12 && v.now()? >= now, json!(now));
+    v.watch("Tailscale", "stateChanged")?;
+    v.set("Tailscale", "state", json!({ "enum": "Stopped" }))?;
+    v.set("Tailscale", "state", json!({ "enum": "Running" }))?;
+    v.check("fired", v.fired("Tailscale", "stateChanged")? == 2, json!(v.fired("Tailscale", "stateChanged")?));
+    let unwatched = v.fired("Tailscale", "issuesChanged").unwrap_err();
+    v.check("unwatched", unwatched.contains("is not watched"), json!(unwatched));
     delegates(v)?;
     let input = v.find("pop", Some("ts-input"))?[0];
     v.invoke(input, "forceActiveFocus", json!([]))?;
