@@ -1,0 +1,20 @@
+[package]
+name = "mutate-cpp"
+version = "0.0.0"
+description = "Mutates #286's Tailscale C++ one site at a time and records which mutants the Phase 2 suite kills"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "mutate_cpp"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "mutate-cpp"
+path = "src/main.rs"
