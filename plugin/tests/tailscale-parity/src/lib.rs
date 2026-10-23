@@ -12,6 +12,7 @@ pub mod model;
 pub mod probe;
 pub mod runner;
 mod steps;
+pub mod views;
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;

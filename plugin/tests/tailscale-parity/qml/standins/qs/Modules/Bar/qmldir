@@ -1,0 +1,4 @@
+module qs.Modules.Bar
+StatusPill 1.0 StatusPill.qml
+QuickSlot 1.0 QuickSlot.qml
+BatteryIndicator 1.0 BatteryIndicator.qml

@@ -17,13 +17,16 @@ without rust-lld.
 
 ```sh
 plugin/tests/tailscale-parity/build-reference.sh
+plugin/tests/tailscale-parity/build-reference.sh --views
 ```
 
 It builds #286's `C7` at `a38dbca` with #286's own CMake, from that commit's
-`plugin/` tree extracted with `git archive` under
+`plugin/` and `quickshell/c7shell/` trees extracted with `git archive` under
 `${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference/`, and prints
 the directory to pass as `C7_QML_DIR` as its last line. A second run rebuilds
-nothing. `C7_REFERENCE_CACHE` moves the cache. It only reads the repository:
+nothing. With `--views` it builds nothing and prints the directory to pass
+as `C7_VIEWS_DIR`: #286's `quickshell/c7shell/`, the views the view tests
+run. `C7_REFERENCE_CACHE` moves the cache. It only reads the repository:
 it registers no worktree and fetches nothing. When the commit is missing it
 fails and names the `git fetch` to run.
 

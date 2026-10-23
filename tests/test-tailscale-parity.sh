@@ -4,8 +4,8 @@
 # Run it directly: tests/test-tailscale-parity.sh
 #
 # Checks, in order:
-#   1. the harness self-tests that need no reference (stub_selftest) pass
-#      against the QML-only stub C7
+#   1. the harness self-tests that need no reference pass: stub_selftest
+#      against the QML-only stub C7, view_selftest against the stub views
 #   2. the harness self-tests against the reference (harness_selftest) pass
 #   3. every scenario under tests/fixtures/tailscale/scenarios/ matches its
 #      cpp-286 declaration, 50 consecutive runs
@@ -48,6 +48,7 @@ in_plugin() { (cd "$plugin" && "$@"); }
 
 # 1. the stub self-tests -------------------------------------------------------
 run_logged 'the stub self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test stub_selftest
+run_logged 'the view self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test view_selftest
 echo "PASS: the harness self-tests that need no reference pass on the stub"
 
 sha=a38dbcae841a1134514f68cba8f5b98d4efddb68

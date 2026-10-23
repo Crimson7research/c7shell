@@ -24,6 +24,10 @@ name = "stub_selftest"
 harness = false
 
 [[test]]
+name = "view_selftest"
+harness = false
+
+[[test]]
 name = "harness_selftest"
 harness = false
 
