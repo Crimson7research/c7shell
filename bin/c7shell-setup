@@ -379,19 +379,25 @@ fi
 # it, so a new user file starts as a copy of the system one -- otherwise the
 # options there (Devel, BottomUp, ...) would silently stop applying.
 pc=$conf/paru/paru.conf
+paru_sudo_re='^[[:space:]]*Sudo[[:space:]]*='
+paru_bottomup_re='^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$'
 # A user file setup cannot read is one it cannot check, so every run would
-# append the same lines again; one it cannot write, such as a read-only
-# dotfiles store, would stop setup before the rc files and the manifest. Either
-# way it adds nothing to it.
+# append the same lines again. One it cannot write -- read-only, as in a
+# dotfiles store, or a symlink to nothing yet -- would stop setup before the rc
+# files and the manifest, so it is named only when it lacks a line setup adds.
+# Either way setup adds nothing to it.
 paru=0
 if command -v paru >/dev/null; then
-  if [[ -e $pc && ! ( -r $pc && -w $pc ) ]]; then
-    printf 'c7shell-setup: cannot read or write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
+  if [[ -e $pc && ! -r $pc ]]; then
+    printf 'c7shell-setup: cannot read %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
+  elif [[ -L $pc && ! -e $pc ]] || [[ -e $pc && ! -w $pc ]]; then
+    grep -qs "$paru_sudo_re" "$pc" && grep -qsE "$paru_bottomup_re" "$pc" \
+      || printf 'c7shell-setup: cannot write %s, so its Sudo and BottomUp are left as they are\n' "$pc" >&2
   else
     paru=1
   fi
 fi
-if ((paru)) && ! grep -qs '^[[:space:]]*Sudo[[:space:]]*=' "$pc"; then
+if ((paru)) && ! grep -qs "$paru_sudo_re" "$pc"; then
   printf 'setting Sudo = run0 in %s   (paru prompts through polkit)\n' "$pc"
   run mkdir -p -- "$(dirname -- "$pc")"
   if ((dry)); then
@@ -412,7 +418,7 @@ fi
 # run made no copy, so it asks the system file.
 pc_src=$pc
 ((dry)) && [[ ! -e $pc ]] && pc_src=${C7SHELL_PARU_SYSCONF:-/etc/paru.conf}
-if ((paru)) && ! grep -qsE '^[[:space:]]*#?[[:space:]]*BottomUp[[:space:]]*(=.*)?$' "$pc_src"; then
+if ((paru)) && ! grep -qsE "$paru_bottomup_re" "$pc_src"; then
   printf 'setting BottomUp in %s   (paru lists AUR search results first)\n' "$pc"
   if ((dry)); then
     printf '  would: append [options] BottomUp to %s\n' "$pc"

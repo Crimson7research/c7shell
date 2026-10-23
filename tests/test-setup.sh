@@ -6,6 +6,8 @@ set -euo pipefail
 . "$(dirname -- "$0")/fixtures/harness.sh"
 setup=$here/../bin/c7shell-setup
 mktmp
+# A setup run that stops this test outside a check still names the line.
+trap 'printf "FAIL: line %s: %s exited non-zero\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 export C7SHELL_SHARE=$tmp/share
 export XDG_CONFIG_HOME=$tmp/conf
@@ -150,16 +152,29 @@ if ((EUID != 0)); then
   out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
   chmod 600 "$pc"
   [[ $(cat "$pc") == $'[options]\nDevel' ]] || fail "setup appended to a paru.conf it cannot read:\n$(cat "$pc")"
-  grep -qF "cannot read or write $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
+  grep -qF "cannot read $pc" <<<"$out" || fail "setup did not say it skipped an unreadable paru.conf:\n$out"
   # Read-only, as in a dotfiles store: setup says so and carries on, where an
   # append would stop it before the rc files and the manifest.
   printf '[bin]\nSudo = doas\n' > "$pc"; chmod 444 "$pc"
   out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
   chmod 600 "$pc"
   [[ $(cat "$pc") == $'[bin]\nSudo = doas' ]] || fail "setup changed a read-only paru.conf:\n$(cat "$pc")"
-  grep -qF "cannot read or write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru.conf:\n$out"
+  grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a read-only paru.conf:\n$out"
   grep -qF 'Permission denied' <<<"$out" && fail "setup stopped on a read-only paru.conf:\n$out"
+  # A read-only file that already has both needs nothing, so nothing is said.
+  printf '[options]\nBottomUp\n[bin]\nSudo = run0\n' > "$pc"; chmod 444 "$pc"
+  out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+  chmod 600 "$pc"
+  grep -qF "$pc" <<<"$out" && fail "setup spoke about a read-only paru.conf it had nothing to add to:\n$out"
 fi
+# A dangling symlink, such as one into a dotfiles tree not checked out yet, is
+# a file setup cannot write: it says so and carries on.
+rm -f -- "$pc"; ln -s -- "$tmp/no-such-dotfile" "$pc"
+out=$(PATH=$paru_bin:$PATH C7SHELL_PARU_SYSCONF=$sysconf "$setup" 2>&1) || true
+[[ -L $pc && ! -e $pc ]] || fail "setup wrote through a dangling paru.conf symlink"
+grep -qF "cannot write $pc" <<<"$out" || fail "setup did not say it skipped a dangling paru.conf symlink:\n$out"
+grep -qF 'dangling' <<<"$out" && fail "setup stopped on a dangling paru.conf symlink:\n$out"
+rm -f -- "$pc"
 [[ $(cat "$XDG_CONFIG_HOME/hypr/hyprland.lua") == v1 ]] || fail 'hypr not installed'
 [[ $(cat "$XDG_CONFIG_HOME/quickshell/c7shell/shell.qml") == v1 ]] || fail 'quickshell not installed'
 [[ $(cat "$XDG_CONFIG_HOME/xdg-desktop-portal/hyprland-portals.conf") == v1 ]] || fail 'portal config not installed'

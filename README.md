@@ -413,10 +413,11 @@ Everything else stays, and it lists all of it:
   `xdg-desktop-portal`: the shell's own state such as `displays-state.json`
   and `appearance.json`, per-file `.bak-<stamp>` copies, and your own files.
   While any of them is there, the next `c7shell-setup` skips that part;
-- the run0 lines in your arch-update and paru configs, the `BottomUp` setup
-  added to your paru config, the files the theme export rewrote (`kdeglobals`,
-  `kcminputrc`, the GTK `settings.ini` files, `imv/config`, `C7Shell.colors`)
-  and the GNOME `color-scheme` setting, which other desktops read too;
+- the run0 lines in your arch-update and paru configs, the `BottomUp` block
+  that setup added to your paru config, the files the theme export rewrote
+  (`kdeglobals`, `kcminputrc`, the GTK `settings.ini` files, `imv/config`,
+  `C7Shell.colors`) and the GNOME `color-scheme` setting, which other desktops
+  read too;
 - `.bak-<stamp>` backups of whole parts, and `~/.local/share/c7shell/scripts`.
 
 The manifest keeps the rows of the files that stay, so a later setup or upgrade
