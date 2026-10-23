@@ -7,7 +7,8 @@
     "The transport is not reachable through QML. Its own outcomes (reply, failure, status code, token, socket-absent flag, event, started, ended) are outside-module. The request bytes it sends are not: the fake records them when a backend pass or action sends them, as R-HTTP-01 renders its criterion through the opening pass.",
     "Values of one published snapshot are read once a positive wait has seen that snapshot (a value or a change signal), because the contract stores everything before it announces anything (R-UI-06, R-WATCH-11). A negative, an unchanged value or an exact count where more could still arrive needs the read, idle or retry barrier, so it is deferred.",
     "A deferred clause of a parity requirement is cpp-suite when Table B maps #286 tests to the requirement, and names those tests; otherwise it is phase3-only with its reason.",
-    "pr names the Phase 2 PR whose scenarios run the clauses: 306 (this one), 307 (R-HTTP, R-PARSE, R-GROUP), 308 (R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC, the backend half of R-FAKE-03) or 309 (views and view halves). A later PR may move an entry only by editing this file, with the reason in its commit message."
+    "pr names the Phase 2 PR whose scenarios run the clauses: 306 (this one), 307 (R-HTTP, R-PARSE, R-GROUP), 308 (R-WATCH, R-CONN, R-WRITE, R-UI, R-SEC, the backend half of R-FAKE-03), 309 (views and view halves) or 310 (the backend halves the mutation baseline against a38dbca added). A later PR may move an entry only by editing this file, with the reason in its commit message.",
+    "A cpp-suite or phase3-only requirement may carry a harness-on-cpp deferred clause: a backend half that runs on a38dbca through QML by positive waits while the entry's own clauses need #286's tests or a Phase 3 capability. #310 added these where its mutation baseline found a survivor that half kills; the entry's class stays what its own clauses are."
   ],
   "requirements": [
     {
@@ -61,6 +62,14 @@
       ],
       "tests": [
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::getReturnsTheBodyWithoutHeaders"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half: a `/status` under its own `Content-Length` on a connection the fake keeps open reaches `Running`; one declaring `Content-Length: 0` before the idle capture's bytes, kept open, gives a `readError` containing `/localapi/v0/status answered`",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -75,6 +84,14 @@
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::getReassemblesAChunkedBody",
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::joinsAWatchLineSplitAcrossChunks",
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::waitsForAChunkSizeLineSplitAcrossReads"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half: a chunked `/status` behind a `Content-Type` header, and one sent as a 1-byte and a 31419-byte chunk, reach `Running`; on the watch, a line whose chunk lacks its closing CRLF, and one followed by a size line whose data has not arrived, each start a pass at once (positive waits on the next GET of `/status`)",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -85,7 +102,15 @@
         "outside-module",
         "read-barrier"
       ],
-      "reason": "no #286 test and cannot run on C++: the transport's own outcomes (reply, failure, status, token, flag, event, started, ended) are not reachable through QML, and each count and \"no reply\" is read after the read barrier"
+      "reason": "no #286 test and cannot run on C++: the transport's own outcomes (reply, failure, status, token, flag, event, started, ended) are not reachable through QML, and each count and \"no reply\" is read after the read barrier; only the backend half runs on C++, as its deferred clause",
+      "deferred": [
+        {
+          "clause": "the backend half: a chunked `/status` whose body starts with an empty size line, and one whose chunk data is not followed by CRLF (`2\\r\\nabXY`), each then a close, give a `readError` containing `/localapi/v0/status`",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
+      ]
     },
     {
       "id": "R-HTTP-06",
@@ -109,6 +134,14 @@
       ],
       "tests": [
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::failsWhenTheConnectionClosesBeforeTheResponseHeaders"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half: a chunked `/status` closed before its zero chunk gives a non-empty `readError`",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -122,6 +155,14 @@
       "tests": [
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::failsOnANonSuccessStatus",
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::patchFailsWhenTailscaledRefusesTheWrite"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half: `/status` answered `HTTP/1.1 300 Multiple Choices` or `XTTP/1.1 200 OK` gives a `readError` carrying its status line; `HTTP/1.1 200` with no reason phrase reaches `Running`",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -607,6 +648,14 @@
       "tests": [
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::emitsOneEventPerCompleteLine",
         "plugin/lib/tailscale/tests/tst_localapiclient.cpp::neverEmitsAPartialLine"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half: an empty line pushed before `{\"State\":6}` holds nothing back, and a line is delivered once its newline has arrived, before its chunk's closing CRLF or the data of the chunk after it, so the fake records the next GET of `/status` each time",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -693,6 +742,14 @@
       "tests": [
         "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::aNotificationCarryingNothingThisModuleReadsDoesNotRefresh",
         "plugin/src/backends/tailscale/tests/tst_localapitailscalebackend.cpp::refreshesOnANotificationItDoesNotRecognise"
+      ],
+      "deferred": [
+        {
+          "clause": "the backend half's positive clause: a line that is not JSON, pushed after one that started a pass, starts a pass of its own (a positive wait on the third GET of `/status`)",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
       ]
     },
     {
@@ -884,7 +941,15 @@
         "read-barrier",
         "outside-module"
       ],
-      "reason": "cannot run on C++: every clause is read after the retry barrier, the issue-order count is a transport test hook, and #286 publishes no `readError` here for a positive wait to reach"
+      "reason": "cannot run on C++: every acceptance clause is read after the retry barrier, and the issue-order count is a transport test hook; only the positive waits of its deferred clause run on C++",
+      "deferred": [
+        {
+          "clause": "the backend half: a chunked `{}` fires `readErrorChanged`, and the reconnect it schedules brings `state` to `Running` once `/status` answers the idle capture (positive waits)",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
+        }
+      ]
     },
     {
       "id": "R-CONN-05",
@@ -916,6 +981,12 @@
             "read-barrier"
           ],
           "reason": "negatives after the retry barrier, and paused time"
+        },
+        {
+          "clause": "the backend half after a `/status` of `{}`: once the reconnect reaches `Running`, the fake has exactly one connected client, the new watch, so the lost attempt's watch was stopped",
+          "class": "harness-on-cpp",
+          "needs": [],
+          "pr": 310
         }
       ]
     },

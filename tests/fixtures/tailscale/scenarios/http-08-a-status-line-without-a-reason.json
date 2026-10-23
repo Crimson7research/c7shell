@@ -1,0 +1,97 @@
+{
+  "format": 1,
+  "id": "http-08-a-status-line-without-a-reason",
+  "requirements": [
+    "R-HTTP-08"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "The status line `HTTP/1.1 200`, with no reason phrase, is `HTTP/x NNN` and succeeds: `state` reaches `Running` and `tailnet` reads `example.com`"
+  ],
+  "deferred": [
+    "the counts: cpp-suite, the transport's own outcomes are not reachable through QML"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "reason": "",
+          "body": {
+            "file": "captures/status-idle.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "contract": {
+          "state": {
+            "enum": "Running"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "accepted",
+        "contract": {
+          "tailnet": "example.com"
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

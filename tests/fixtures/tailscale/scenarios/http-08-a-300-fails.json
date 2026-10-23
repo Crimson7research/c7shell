@@ -1,0 +1,98 @@
+{
+  "format": 1,
+  "id": "http-08-a-300-fails",
+  "requirements": [
+    "R-HTTP-08"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "`HTTP/1.1 300 Multiple Choices` to `/status`, with the idle capture as its body, is outside 200-299 and fails: once `readErrorChanged` has fired, `readError` contains `HTTP/1.1 300`"
+  ],
+  "deferred": [
+    "the numeric status and the counts: cpp-suite, the transport's own outcomes are not reachable through QML"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 300,
+          "reason": "Multiple Choices",
+          "body": {
+            "file": "captures/status-idle.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "signal": {
+          "name": "readErrorChanged",
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "diagnosed",
+        "contract": {
+          "readError": {
+            "contains": "HTTP/1.1 300"
+          }
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}

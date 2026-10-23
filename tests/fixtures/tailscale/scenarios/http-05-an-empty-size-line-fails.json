@@ -1,0 +1,102 @@
+{
+  "format": 1,
+  "id": "http-05-an-empty-size-line-fails",
+  "requirements": [
+    "R-HTTP-05"
+  ],
+  "tag": "parity",
+  "evidence": "harness-on-cpp",
+  "clauses": [
+    "A 200 `/status` declaring `Transfer-Encoding: chunked` whose body starts with an empty size line (`\\r\\n0\\r\\n\\r\\n`), then a close: once `readErrorChanged` has fired, `readError` contains `/localapi/v0/status`, the path a framing failure names"
+  ],
+  "deferred": [
+    "the failure and reply counts: phase3-only, the transport's own outcomes are read after the read barrier"
+  ],
+  "needs": [],
+  "fake": {
+    "rules": [
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/watch-ipn-bus?mask=18"
+        },
+        "stream": {
+          "status": 200,
+          "framing": "chunked"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/status"
+        },
+        "reply": {
+          "status": 200,
+          "headers": [
+            [
+              "Transfer-Encoding",
+              "chunked"
+            ]
+          ],
+          "body": "\r\n0\r\n\r\n",
+          "framing": "none"
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/prefs"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "file": "captures/prefs.json"
+          }
+        }
+      },
+      {
+        "match": {
+          "method": "GET",
+          "target": "/localapi/v0/suggest-exit-node"
+        },
+        "reply": {
+          "status": 200,
+          "body": {
+            "json": {}
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "start": {}
+    },
+    {
+      "wait": {
+        "signal": {
+          "name": "readErrorChanged",
+          "at_least": 1
+        }
+      }
+    },
+    {
+      "expect": {
+        "id": "diagnosed",
+        "contract": {
+          "readError": {
+            "contains": "/localapi/v0/status"
+          }
+        }
+      }
+    }
+  ],
+  "on": {
+    "cpp-286": {
+      "result": "pass"
+    },
+    "rust": {
+      "result": "pass"
+    }
+  }
+}
