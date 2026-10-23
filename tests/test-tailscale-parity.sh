@@ -6,7 +6,9 @@
 #
 # Checks, in order:
 #   1. the harness self-tests that need no reference pass: stub_selftest
-#      against the QML-only stub C7, view_selftest against the stub views
+#      against the QML-only stub C7, view_selftest against the stub views;
+#      and the mutation tool's tests (#310), its committed baseline record
+#      among them
 #   2. every view test under tests/fixtures/tailscale/views/ matches its
 #      cpp-286 declaration on #286's views, 50 consecutive runs
 #   3. the harness self-tests against the reference (harness_selftest) pass
@@ -55,6 +57,8 @@ in_plugin() { (cd "$plugin" && "$@"); }
 run_logged 'the stub self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test stub_selftest
 run_logged 'the view self-tests' in_plugin cargo test --locked -q -p tailscale-parity --test view_selftest
 echo "PASS: the harness self-tests that need no reference pass on the stub"
+run_logged 'the mutation tool tests' in_plugin cargo test --locked -q -p mutate-cpp
+echo "PASS: the mutation tool's tests pass, and the baseline record holds every survivor's reason"
 
 sha=a38dbcae841a1134514f68cba8f5b98d4efddb68
 cache=${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-reference}/$sha
