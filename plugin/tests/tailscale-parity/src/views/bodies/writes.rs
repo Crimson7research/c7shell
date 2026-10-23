@@ -8,10 +8,24 @@ use crate::views::{El, Views};
 
 const TRANSIENT: &str = "the connection closed before the response headers";
 
-/// Whether `o`'s title is drawn in `Theme.textDisabled` and it does not
-/// light up under the pointer.
-fn dead(v: &Views, o: El) -> Result<bool, String> {
-    Ok(v.get(o, "titleColor")? == v.theme("textDisabled")? && !v.flag(o, "hoverable")?)
+/// Whether `o` reads as `refused` says: its title in `Theme.textDisabled`
+/// and not lit under the pointer when refused, neither when not.
+fn reads_as(v: &Views, o: El, refused: bool) -> Result<bool, String> {
+    let dimmed = v.get(o, "titleColor")? == v.theme("textDisabled")?;
+    Ok(dimmed == refused && v.flag(o, "hoverable")? != refused)
+}
+
+/// `o`'s title colour and hover, for an actual value.
+fn looks(v: &Views, o: El) -> Result<serde_json::Value, String> {
+    Ok(json!({ "titleColor": v.get(o, "titleColor")?, "hoverable": v.get(o, "hoverable")? }))
+}
+
+/// Whether the visible write-error lines `texts` are exactly one, holding
+/// the refusal and naming `c7shell-bootstrap`.
+fn explains_refusal(texts: &serde_json::Value) -> bool {
+    texts.as_array().is_some_and(|t| {
+        t.len() == 1 && t[0].as_str().is_some_and(|t| t.contains(REFUSAL) && t.contains("c7shell-bootstrap"))
+    })
 }
 
 /// The number of calls in a `calls()` reading.
@@ -41,16 +55,17 @@ fn exit_card(v: &mut Views, id: &str, refused: bool) -> Result<(), String> {
     v.check(&format!("{id}-label"), label.contains("read-only") == refused, json!(label));
     let why = v.panel_shown("ts-exit-write-error")?;
     let texts = v.each(&why, "text")?;
-    let explained =
-        why.len() == 1 && texts[0].as_str().is_some_and(|t| t.contains(REFUSAL) && t.contains("c7shell-bootstrap"));
-    v.check(&format!("{id}-exit-why"), explained == refused && (refused || why.is_empty()), texts);
+    let holds = if refused { explains_refusal(&texts) } else { why.is_empty() };
+    v.check(&format!("{id}-exit-why"), holds, texts);
     let rows = v.panel_shown("ts-exit-row")?;
     v.check(&format!("{id}-three-rows"), rows.len() == 3, json!(rows.len()));
     let mut all = true;
+    let mut seen = Vec::new();
     for o in &rows {
-        all &= dead(v, *o)? == refused;
+        all &= reads_as(v, *o, refused)?;
+        seen.push(looks(v, *o)?);
     }
-    v.check(&format!("{id}-rows"), all, v.each(&rows, "titleColor")?);
+    v.check(&format!("{id}-rows"), all, json!(seen));
     let lan = v.panel_one("ts-exit-lan-switch")?;
     v.check(&format!("{id}-lan-switch"), v.flag(lan, "enabled")? != refused, v.get(lan, "enabled")?);
     v.take_calls()?;
@@ -70,12 +85,11 @@ fn settings_card(v: &mut Views, id: &str, refused: bool) -> Result<(), String> {
     v.set("pop", "expanded", json!("settings"))?;
     let why = v.panel_shown("ts-settings-write-error")?;
     let texts = v.each(&why, "text")?;
-    let explained =
-        why.len() == 1 && texts[0].as_str().is_some_and(|t| t.contains(REFUSAL) && t.contains("c7shell-bootstrap"));
-    v.check(&format!("{id}-settings-why"), explained == refused && (refused || why.is_empty()), texts);
+    let holds = if refused { explains_refusal(&texts) } else { why.is_empty() };
+    v.check(&format!("{id}-settings-why"), holds, texts);
     for name in ["ts-settings-routes", "ts-settings-dns"] {
         let row = v.panel_one(name)?;
-        v.check(&format!("{id}-{name}"), dead(v, row)? == refused, v.get(row, "titleColor")?);
+        v.check(&format!("{id}-{name}"), reads_as(v, row, refused)?, looks(v, row)?);
         let switch = v.panel_one(&format!("{name}-switch"))?;
         v.check(&format!("{id}-{name}-switch"), v.flag(switch, "enabled")? != refused, v.get(switch, "enabled")?);
     }
@@ -106,11 +120,11 @@ pub fn qml_20_dead_after_a_refusal(v: &mut Views) -> Result<(), String> {
     let line =
         why.len() == 1 && texts[0].as_str().is_some_and(|t| t.contains(TRANSIENT) && !t.contains("c7shell-bootstrap"));
     v.check("transient-line", line, texts);
-    let mut live = true;
+    let mut enabled = Vec::new();
     for name in ["ts-settings-routes-switch", "ts-settings-dns-switch"] {
-        live &= v.flag(v.panel_one(name)?, "enabled")?;
+        enabled.push(v.flag(v.panel_one(name)?, "enabled")?);
     }
-    v.check("transient-live", live, json!(live));
+    v.check("transient-live", enabled.iter().all(|e| *e), json!(enabled));
     v.take_calls()?;
     v.invoke(v.panel_one("ts-settings-routes")?, "clicked", json!([]))?;
     let calls = v.calls()?;

@@ -242,11 +242,11 @@ Window {
             const s = member(o, c.signal);
             const key = handle(o).handle + "." + c.signal;
             if (!(key in root.fired)) {
-                root.fired[key] = 0;
                 s.connect(function () {
                     root.fired[key] += 1;
                 });
             }
+            root.fired[key] = 0;
             return null;
         }
         case "fired": {

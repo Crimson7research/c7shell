@@ -166,15 +166,18 @@ fn no_process(v: &mut Views) -> Result<(), String> {
     Ok(())
 }
 
-/// The chevron's rotation, the panel's height and the root rows' shown.
+/// The chevron's rotation and the panel's height.
 fn fold_state(v: &Views, chevron: El) -> Result<(f64, f64), String> {
     Ok((v.number(chevron, "rotation")?, v.number("pop.panel", "height")?))
 }
 
-/// Whether `name`'s input has the focus, and is the window's focus item.
-fn focused(v: &Views, name: &str) -> Result<bool, String> {
+/// Whether `name`'s input has the focus and is the window's focus item,
+/// as `holds`, with what each reads.
+fn focused(v: &Views, name: &str) -> Result<Value, String> {
     let input = v.panel_one(name)?;
-    Ok(v.flag(input, "activeFocus")? && v.focus()? == Some(input))
+    let (active, window) = (v.flag(input, "activeFocus")?, v.focus()?);
+    let holds = active && window == Some(input);
+    Ok(json!({ "holds": holds, "activeFocus": active, "window": window.map(|e| e.0), "input": input.0 }))
 }
 
 /// R-QML-12: one sub-card at a time folds out between its row and the
@@ -199,7 +202,8 @@ pub fn qml_12_sub_cards(v: &mut Views) -> Result<(), String> {
     let (turn, height) = fold_state(v, chevron)?;
     v.check("grows", height > shut, json!({ "shut": shut, "open": height }));
     v.check("chevron-turns", turn != shut_turn, json!(turn));
-    v.check("search-focused", focused(v, "ts-peer-search-input")?, json!(false));
+    let focus = focused(v, "ts-peer-search-input")?;
+    v.check("search-focused", focus["holds"] == json!(true), focus);
     let card = v.y_in_panel(v.panel_one("ts-devices-card")?)?;
     let row = v.y_in_panel(v.panel_one("ts-devices-row")?)?;
     let next = v.y_in_panel(v.panel_one("ts-exit-row-entry")?)?;
@@ -215,7 +219,7 @@ pub fn qml_12_sub_cards(v: &mut Views) -> Result<(), String> {
     v.check("height-back", (height - shut).abs() < 1.0, json!({ "shut": shut, "again": height }));
     v.invoke(v.panel_one("ts-devices-row")?, "clicked", json!([]))?;
     let again = v.peer_row("tango")?;
-    v.check("same-delegate", again == tango, json!(null));
+    v.check("same-delegate", again == tango, json!({ "before": tango.0, "after": again.0 }));
     v.check("state-kept", v.flag(again, "copied")?, v.get(again, "copied")?);
     exit_folds_devices(v)?;
     settings_card(v)
@@ -224,10 +228,12 @@ pub fn qml_12_sub_cards(v: &mut Views) -> Result<(), String> {
 /// Opening exit from an open device list folds devices away.
 fn exit_folds_devices(v: &mut Views) -> Result<(), String> {
     v.invoke(v.panel_one("ts-exit-row-entry")?, "clicked", json!([]))?;
-    v.check("exit-keeps-root", v.flag(v.panel_one("ts-self-name")?, "visible")?, json!(false));
+    let root_row = v.get(v.panel_one("ts-self-name")?, "visible")?;
+    v.check("exit-keeps-root", root_row == json!(true), root_row);
     let rows = v.panel_shown("ts-peer")?.len();
     v.check("exit-folds-devices", rows == 0, json!(rows));
-    v.check("exit-search-focused", focused(v, "ts-exit-search-input")?, json!(false));
+    let focus = focused(v, "ts-exit-search-input")?;
+    v.check("exit-search-focused", focus["holds"] == json!(true), focus);
     Ok(())
 }
 
@@ -240,7 +246,8 @@ fn settings_card(v: &mut Views) -> Result<(), String> {
     let (shut_turn, shut) = fold_state(v, chevron)?;
     let row = v.panel_one("ts-settings-row")?;
     v.invoke(row, "clicked", json!([]))?;
-    v.check("settings-keeps-root", v.flag(v.panel_one("ts-self-name")?, "visible")?, json!(false));
+    let root_row = v.get(v.panel_one("ts-self-name")?, "visible")?;
+    v.check("settings-keeps-root", root_row == json!(true), root_row);
     let peers = v.panel_shown("ts-peer")?.len();
     v.check("settings-no-peer", peers == 0, json!(peers));
     let (turn, height) = fold_state(v, chevron)?;
@@ -275,7 +282,8 @@ pub fn qml_13_device_search(v: &mut Views) -> Result<(), String> {
     v.check("tango-one-row", titles == json!(["tango"]), titles);
     v.check("tango-count", v.get(count, "text")? == json!("1"), v.get(count, "text")?);
     v.check("tango-mine-only", heads == ["my devices"], json!(heads));
-    v.check("tango-matched", v.panel_shown("ts-peer-no-match")?.is_empty(), json!(false));
+    let no_match = v.panel_shown("ts-peer-no-match")?.len();
+    v.check("tango-matched", no_match == 0, json!(no_match));
     v.set(search, "text", json!("workstation"))?;
     let heads = headings(v)?;
     v.check("workstation-others-only", heads == ["other users"], json!(heads));
@@ -283,11 +291,14 @@ pub fn qml_13_device_search(v: &mut Views) -> Result<(), String> {
     let (titles, heads) = titles_and_headings(v)?;
     v.check("nothing-no-rows", titles == json!([]), titles);
     v.check("nothing-no-headings", heads.is_empty(), json!(heads));
-    v.check("nothing-says-no-match", v.panel_shown("ts-peer-no-match")?.len() == 1, json!(false));
-    v.check("nothing-not-empty", v.panel_shown("ts-peer-empty")?.is_empty(), json!(false));
+    let no_match = v.panel_shown("ts-peer-no-match")?.len();
+    v.check("nothing-says-no-match", no_match == 1, json!(no_match));
+    let empty = v.panel_shown("ts-peer-empty")?.len();
+    v.check("nothing-not-empty", empty == 0, json!(empty));
     v.set(search, "text", json!(""))?;
     v.seed("Tailscale.peers", &json!([]))?;
-    v.check("empty-not-no-match", v.panel_shown("ts-peer-no-match")?.is_empty(), json!(false));
+    let no_match = v.panel_shown("ts-peer-no-match")?.len();
+    v.check("empty-not-no-match", no_match == 0, json!(no_match));
     v.seed("Tailscale.peers", &tailnet_peers())?;
     let rows = v.panel_shown("ts-peer")?.len();
     v.check("back-to-4", rows == 4, json!(rows));
@@ -361,7 +372,9 @@ pub fn group_06_delegates_survive(v: &mut Views) -> Result<(), String> {
     let alpha = v.row_of_node_id(list, "nAAA1CNTRL")?.ok_or("precondition: a delegate for alpha")?;
     v.check("alpha-offline", v.get(alpha, "online")? == json!(false), v.get(alpha, "online")?);
     let first = v.invoke(list, "itemAtIndex", json!([0]))?;
-    v.require(first == json!({ "handle": target.0 }), "the move landed")?;
+    let last = v.invoke(list, "itemAtIndex", json!([2]))?;
+    let landed = first == json!({ "handle": target.0 }) && last == json!({ "handle": alpha.0 });
+    v.require(landed, "the move landed: bravo first and alpha last")?;
     let gamma = v.row_of_node_id(list, "nCCC1CNTRL")?.ok_or("precondition: a delegate for gamma")?;
     let ips = json!([v.get(gamma, "ip4")?, v.get(target, "ip4")?]);
     v.check("own-updates", ips == json!(["100.64.0.9", "100.64.0.2"]), ips);

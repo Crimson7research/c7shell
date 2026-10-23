@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::json;
 use support::{check, error, finish, selftest, verdict, STUB_IMPLEMENTATIONS};
 use tailscale_parity::child::{self, PrivateRoot};
-use tailscale_parity::runner::{Outcome, Report};
+use tailscale_parity::runner::{self, Outcome, Report};
 use tailscale_parity::views::run::{self, ViewImplementation};
 use tailscale_parity::views::{tree, Body, El, Views};
 
@@ -48,6 +48,14 @@ fn ops(v: &mut Views) -> Result<(), String> {
     v.set("Tailscale", "state", json!({ "enum": "Stopped" }))?;
     v.set("Tailscale", "state", json!({ "enum": "Running" }))?;
     v.check("fired", v.fired("Tailscale", "stateChanged")? == 2, json!(v.fired("Tailscale", "stateChanged")?));
+    v.watch("Tailscale", "stateChanged")?;
+    v.check("rewatch-resets", v.fired("Tailscale", "stateChanged")? == 0, json!(v.fired("Tailscale", "stateChanged")?));
+    v.set("Tailscale", "state", json!({ "enum": "Stopped" }))?;
+    v.check(
+        "rewatch-counts-once",
+        v.fired("Tailscale", "stateChanged")? == 1,
+        json!(v.fired("Tailscale", "stateChanged")?),
+    );
     let unwatched = v.fired("Tailscale", "issuesChanged").unwrap_err();
     v.check("unwatched", unwatched.contains("is not watched"), json!(unwatched));
     delegates(v)?;
@@ -180,6 +188,9 @@ fn the_diagnostics_rule(failures: &mut Vec<String>) {
     let turned = run::with_diagnostics(Outcome::Pass, log);
     let ok = matches!(&turned, Outcome::Error(e) if e.contains("A.qml:3") && e.contains("B.qml:9"));
     check(failures, ok, &format!("each .qml: line is named: {turned:?}"));
+    let result = format!("{}{{\"outcome\":\"error\",\"error\":\"/v/PeerRow.qml: missing\"}}", runner::RESULT_PREFIX);
+    let kept = run::with_diagnostics(Outcome::Pass, &result);
+    check(failures, kept == Outcome::Pass, &format!("the result line is no diagnostic: {kept:?}"));
 }
 
 /// 6. run_all: a filter naming no header is an error, and the summary.

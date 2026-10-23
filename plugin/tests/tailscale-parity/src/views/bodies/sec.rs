@@ -36,7 +36,8 @@ fn plain_elements(v: &mut Views, names: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// The peer row titled `title`: at least three Texts, every one plain.
+/// Records `id`: the peer row `row` holds at least three Texts, every one
+/// plain.
 fn plain_row(v: &mut Views, id: &str, row: El) -> Result<(), String> {
     let (count, _) = v.markup_texts(row)?;
     v.require(count >= 3, "a peer row holds three or more Texts")?;

@@ -8,11 +8,6 @@ use crate::views::{El, Views};
 const NODE: &str = "pentest-exit-node";
 const DAY_MS: f64 = 86_400_000.0;
 
-/// Whether `name`'s one panel element is visible.
-fn shown(v: &Views, name: &str) -> Result<bool, String> {
-    v.flag(v.panel_one(name)?, "visible")
-}
-
 /// `name` is visible in `Running`, as setup; then `NoState` hides it; then
 /// `Running` again.
 fn hidden_in_no_state(v: &mut Views, id: &str, names: &[&str]) -> Result<(), String> {
@@ -185,13 +180,19 @@ pub fn ui_16_one_explanation(v: &mut Views) -> Result<(), String> {
         ("writable", json!(false)),
     ])?;
     v.open_panel()?;
-    let named = explanations(v, read, write)?;
-    v.check("one-explanation", named == ["ts-read-error"], json!(named));
+    for card in ["", "exit", "settings"] {
+        v.set("pop", "expanded", json!(card))?;
+        let named = explanations(v, read, write)?;
+        let id = if card.is_empty() { "one-explanation".to_string() } else { format!("one-explanation-{card}-open") };
+        v.check(&id, named == ["ts-read-error"], json!(named));
+    }
+    v.set("pop", "expanded", json!(""))?;
     let tip = v.text(v.panel_one("ts-connect-tip")?, "text")?;
     v.check("tip-not-answering", tip == "tailscaled is not answering, so there is nothing to ask", json!(tip));
     v.stage(&[("readError", json!("")), ("state", json!({ "enum": "Running" }))])?;
     let tip = v.text(v.panel_one("ts-connect-tip")?, "text")?;
     v.check("tip-has-write-error", tip.contains(write), json!(tip));
-    v.check("read-error-hidden", !shown(v, "ts-read-error")?, json!(true));
+    let line = v.get(v.panel_one("ts-read-error")?, "visible")?;
+    v.check("read-error-hidden", line == json!(false), line);
     Ok(())
 }

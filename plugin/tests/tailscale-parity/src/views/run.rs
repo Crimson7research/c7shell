@@ -123,9 +123,10 @@ fn run_child_of(
 }
 
 /// `outcome`, unless `log` has a line naming a `.qml` file: then an error
-/// listing those lines.
+/// listing those lines. The child's result line is not a diagnostic,
+/// whatever its values hold.
 pub fn with_diagnostics(outcome: Outcome, log: &str) -> Outcome {
-    let lines: Vec<&str> = log.lines().filter(|l| l.contains(".qml:")).collect();
+    let lines: Vec<&str> = log.lines().filter(|l| l.contains(".qml:") && !l.starts_with(RESULT_PREFIX)).collect();
     if lines.is_empty() {
         outcome
     } else {

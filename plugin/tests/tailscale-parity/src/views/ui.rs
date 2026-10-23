@@ -211,9 +211,11 @@ impl Views {
         els.iter().map(|o| self.get(*o, name)).collect::<Result<Vec<_>, _>>().map(Value::Array)
     }
 
-    /// The `ts-peer` row whose `displayName` is `name` (`peerRow()`).
+    /// The visible `ts-peer` row whose `displayName` is `name`
+    /// (`peerRow()`). Only a visible one: a delegate the view released stays
+    /// a child until its deferred delete runs.
     pub fn peer_row(&self, name: &str) -> Result<El, String> {
-        for o in self.panel_all("ts-peer")? {
+        for o in self.panel_shown("ts-peer")? {
             if self.get(o, "displayName")? == json!(name) {
                 return Ok(o);
             }

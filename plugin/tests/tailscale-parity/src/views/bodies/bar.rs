@@ -26,15 +26,9 @@ pub fn qml_01_no_slot(v: &mut Views) -> Result<(), String> {
 /// R-QML-02's view halves: a dimmed slot and the read error verbatim, and
 /// both gone once it clears.
 pub fn qml_02_dimmed_slot(v: &mut Views) -> Result<(), String> {
-    let error = "/localapi/v0/status answered HTTP/1.1 403 Forbidden";
-    v.stage(&[("state", json!({ "enum": "NoState" })), ("readError", json!(error))])?;
+    dimmed_for(v, "/localapi/v0/status answered HTTP/1.1 403 Forbidden", true)?;
     let slot = v.slot()?;
-    v.check("slot-shown", v.flag(slot, "visible")?, v.get(slot, "visible")?);
-    let tint = v.icon_tint()?;
-    v.check("dimmed", tint == v.theme("textDisabled")?, tint);
     let line = v.panel_one("ts-read-error")?;
-    v.check("line-shown", v.flag(line, "visible")?, v.get(line, "visible")?);
-    v.check("verbatim", v.text(line, "text")? == error, v.get(line, "text")?);
     v.set("Tailscale", "readError", json!(""))?;
     v.check("line-gone", !v.flag(line, "visible")?, v.get(line, "visible")?);
     v.check("slot-gone", !v.flag(slot, "visible")?, v.get(slot, "visible")?);
@@ -53,12 +47,7 @@ pub fn qml_03_blocked_badge_survives(v: &mut Views) -> Result<(), String> {
     v.check("slot-shown", v.flag(slot, "visible")?, v.get(slot, "visible")?);
     let tint = v.icon_tint()?;
     v.check("dimmed", tint == v.theme("textDisabled")?, tint);
-    let crimson = v.theme("accentSoft")?;
-    let mut cross = false;
-    for o in v.visible_of_colour(crimson.as_str().unwrap_or(""))? {
-        cross |= v.text(o, "text").is_ok_and(|t| t == CROSS);
-    }
-    v.check("cross", cross, v.slot_texts()?);
+    v.check("cross", cross_shown(v)?, v.slot_texts()?);
     v.check("name", v.visible_text(NODE)?, v.slot_texts()?);
     Ok(())
 }
@@ -174,7 +163,7 @@ fn reading(v: &mut Views, n: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// The view half both R-CONN-15 and R-WATCH-13 share with R-QML-02: with
+/// The view half R-QML-02, R-CONN-15 and R-WATCH-13 share: with
 /// `state` `NoState` and `reason` as `readError`, never another state
 /// reported, the slot is visible and dimmed and `ts-read-error` equals it.
 fn dimmed_for(v: &mut Views, reason: &str, line: bool) -> Result<(), String> {
