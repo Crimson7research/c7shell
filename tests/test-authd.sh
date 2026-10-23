@@ -459,6 +459,13 @@ done
 grep -q 'cannot serve askpass' "$tmp/shared.err" \
   || fail "a file under the private socket name was not reported: $(cat "$tmp/shared.err")"
 
+# A path near the limit is still served, though the private name beside it
+# would be too long: the daemon binds it in place instead.
+near=$tmp/n; while ((${#near} + 3 < 107)); do near+=n; done; mkdir "$near"; near+=/ab
+authd_once --no-polkit --socket "$near" < /dev/null > "$tmp/near.out" 2> "$tmp/near.err"
+grep -qF "\"askpass\":\"$near\"" "$tmp/near.out" \
+  || fail "a socket path near the limit was not served: $(cat "$tmp/near.err")"
+
 # A socket file nobody answers is left by a daemon that died: it is replaced.
 python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$tmp/stale.sock"
 authd_once --no-polkit --socket "$tmp/stale.sock" < /dev/null > "$tmp/stale.out" 2> "$tmp/stale.err"

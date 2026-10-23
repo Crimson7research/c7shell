@@ -630,12 +630,15 @@ class Daemon:
         # Bound and listening under a private name, then renamed into place:
         # a probe never finds the socket before it accepts (and so never takes
         # a starting daemon's socket for a stale one), and a stale socket is
-        # replaced in one step.
-        # A short name beside it, so a path near AF_UNIX's length limit fits.
-        # Something already there under that name is only cleared if it is a
-        # socket -- one left by an earlier process with this pid; anything
-        # else is somebody's, and is reported.
+        # replaced in one step. Something already under the private name is
+        # cleared only if it is a socket -- one left by an earlier process with
+        # this pid; anything else is somebody's, and is reported.
         tmp = os.path.join(os.path.dirname(self.sock_path), f".c7-authd.{os.getpid()}")
+        if len(os.fsencode(tmp)) > 107:
+            # The path is near AF_UNIX's limit and the private name would pass
+            # it: bind in place, as before, and accept the instant between
+            # unlink and listen in which a probe finds no socket.
+            tmp = self.sock_path
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             try:
@@ -647,11 +650,12 @@ class Daemon:
             srv.bind(tmp)
             os.chmod(tmp, 0o600)
             srv.listen(4)
-            os.rename(tmp, self.sock_path)
+            if tmp != self.sock_path:
+                os.rename(tmp, self.sock_path)
         except OSError:
             srv.close()
             try:
-                if stat.S_ISSOCK(os.lstat(tmp).st_mode):
+                if tmp != self.sock_path and stat.S_ISSOCK(os.lstat(tmp).st_mode):
                     os.unlink(tmp)
             except OSError:
                 pass
