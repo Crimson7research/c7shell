@@ -156,6 +156,7 @@ fn explanations(v: &Views, a: &str, b: &str) -> Result<Vec<String>, String> {
             tooltips.extend(v.find(o, None)?);
         }
     }
+    v.require(!tooltips.is_empty(), "the panel has a tooltip whose Texts are counted")?;
     let mut named = Vec::new();
     for o in v.find("pop", None)? {
         let (Ok(Value::String(text)), Ok(_)) = (v.get(o, "text"), v.get(o, "textFormat")) else { continue };
@@ -187,6 +188,8 @@ pub fn ui_16_one_explanation(v: &mut Views) -> Result<(), String> {
         v.check(&id, named == ["ts-read-error"], json!(named));
     }
     v.set("pop", "expanded", json!(""))?;
+    let line = v.text(v.panel_one("ts-read-error")?, "text")?;
+    v.check("read-error-verbatim", line == read, json!(line));
     let tip = v.text(v.panel_one("ts-connect-tip")?, "text")?;
     v.check("tip-not-answering", tip == "tailscaled is not answering, so there is nothing to ask", json!(tip));
     v.stage(&[("readError", json!("")), ("state", json!({ "enum": "Running" }))])?;

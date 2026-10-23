@@ -89,6 +89,8 @@ pub fn qml_17_rows_request_by_id(v: &mut Views) -> Result<(), String> {
     v.check("rows-live", live, v.each(&rows, "titleColor")?);
     let none = v.panel_one("ts-exit-none")?;
     v.check("none-live", !dimmed(v, none)?, v.get(none, "titleColor")?);
+    let advertise = v.get(v.panel_one("ts-exit-advertise")?, "visible")?;
+    v.check("advertise-visible", advertise == json!(true), advertise);
     v.take_calls()?;
     let mut twin = None;
     for o in &rows {

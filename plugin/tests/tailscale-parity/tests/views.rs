@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use fake_tailscaled::scenario::IMPLEMENTATIONS;
 use fake_tailscaled::views::ViewTest;
 use tailscale_parity::views::{bodies, run};
 use tailscale_parity::{child, runner};
@@ -33,7 +34,7 @@ fn main() {
     }
     let repeat = runner::parse_repeat(std::env::var("C7_REPEAT").ok().as_deref()).unwrap_or_else(|e| fail(&e, 2));
     let filter = std::env::var("C7_SCENARIOS").ok();
-    match run::run_all(&imp, bodies::ALL, &dir, repeat, filter.as_deref()) {
+    match run::run_all(&imp, IMPLEMENTATIONS, bodies::ALL, &dir, repeat, filter.as_deref()) {
         Ok(summary) => println!("{summary}"),
         Err(e) => fail(&e, 1),
     }

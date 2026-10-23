@@ -27,6 +27,12 @@ fn ops(v: &mut Views) -> Result<(), String> {
     v.check("colour", v.get(state[0], "color")? == json!("#ff0000"), v.get(state[0], "color")?);
     let slot = v.find("pill", Some("tailscale"))?;
     v.check("slot-shown", slot.len() == 1 && v.flag(slot[0], "visible")?, json!(slot.len()));
+    let label = v.find("pill", Some("ts-label"))?;
+    let all = v.find(slot[0], None)?;
+    v.check("find-all", label.len() == 1 && all.contains(&label[0]), json!(all.len()));
+    v.set("Tailscale", "exitNodeName", json!("a name long enough to widen the row"))?;
+    let (row, text) = (v.number(slot[0], "implicitWidth")?, v.number(label[0], "implicitWidth")?);
+    v.check("layout-barrier", row >= text && text > 0.0, json!({ "row": row, "label": text }));
     let row = v.find("pop", Some("ts-row"))?[0];
     v.invoke(row, "clicked", json!([]))?;
     let calls = v.calls()?;
@@ -196,10 +202,13 @@ fn the_diagnostics_rule(failures: &mut Vec<String>) {
 /// 6. run_all: a filter naming no header is an error, and the summary.
 fn the_run_all(failures: &mut Vec<String>) {
     let dir = selftest("views-tests");
-    let missing = run::run_all(&stub_views(), BODIES, &dir, 1, Some("nothing-here"));
+    let missing = run::run_all(&stub_views(), STUB_IMPLEMENTATIONS, BODIES, &dir, 1, Some("nothing-here"));
     let ok = missing.as_ref().is_err_and(|e| e.contains("no view test has the id nothing-here"));
     check(failures, ok, &format!("a filter matching nothing: {missing:?}"));
-    let empty = run::run_all(&stub_views(), BODIES, Path::new("/nonexistent"), 1, None);
+    let empty = run::run_all(&stub_views(), STUB_IMPLEMENTATIONS, BODIES, Path::new("/nonexistent"), 1, None);
+    let twice = run::run_all(&stub_views(), STUB_IMPLEMENTATIONS, BODIES, &dir, 2, Some("ops"));
+    let want = run::Summary { count: 1, implementation: "stub".into(), repeat: 2 };
+    check(failures, twice.as_ref() == Ok(&want), &format!("two runs of ops: {twice:?}"));
     check(failures, empty.as_ref().is_err_and(|e| e.contains("no view tests found")), &format!("{empty:?}"));
     let summary = run::Summary { count: 3, implementation: "cpp-286".into(), repeat: 50 };
     let text = summary.to_string();

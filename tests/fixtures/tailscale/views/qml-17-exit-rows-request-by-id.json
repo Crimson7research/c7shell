@@ -7,7 +7,7 @@
   "tag": "parity",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "With `writable` true and nothing refused, no exit row's title is in `Theme.textDisabled`, every exit row is hoverable, and neither is `ts-exit-none`'s title; `ts-exit-row` shows exactly 3 rows",
+    "With `writable` true and nothing refused, no exit row's title is in `Theme.textDisabled`, every exit row is hoverable, and neither is `ts-exit-none`'s title; `ts-exit-row` shows exactly 3 rows; `ts-exit-advertise` is visible, unchanged (`tests/tailscale-qml-test.qml:1183`, which Table B maps to R-WRITE-10)",
     "Clicking the `nFFF1CNTRL` row records exactly `setExitNode(nFFF1CNTRL)`, and no row is checked until the stand-in reports it; once it does, that row is checked",
     "`ts-exit-none` records `setExitNode()`; exactly one `ts-exit-recommended` is shown and records `setExitNode(nCCC1CNTRL)`"
   ],

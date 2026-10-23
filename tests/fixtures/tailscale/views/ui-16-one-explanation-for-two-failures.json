@@ -7,7 +7,7 @@
   "tag": "fix",
   "evidence": "harness-on-cpp",
   "clauses": [
-    "View half: with `state` `NoState`, both errors non-empty and `writable` false, the panel's visible Texts and its tooltips' Texts containing either error are exactly one, `ts-read-error`, with every sub-card shut, with the exit sub-card open and with the settings sub-card open",
+    "View half: with `state` `NoState`, both errors non-empty and `writable` false, the panel's visible Texts and its tooltips' Texts containing either error are exactly one, `ts-read-error`, with every sub-card shut, with the exit sub-card open and with the settings sub-card open; `ts-read-error` equals `readError`",
     "`ts-connect-tip` reads `tailscaled is not answering, so there is nothing to ask`",
     "Setting `readError` empty and `state` `Running` makes `ts-connect-tip` contain `writeError` and hides `ts-read-error`"
   ],

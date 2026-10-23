@@ -153,6 +153,7 @@ impl std::fmt::Display for Summary {
 /// separated) `repeat` times, stopping at the first mismatch.
 pub fn run_all(
     imp: &ViewImplementation,
+    implementations: &[Known<'_>],
     bodies: &[(&'static str, Body)],
     dir: &Path,
     repeat: u32,
@@ -176,9 +177,10 @@ pub fn run_all(
     if paths.is_empty() {
         return Err(format!("no view tests found in {}", dir.display()));
     }
+    let mut completed = 0;
     for run in 1..=repeat {
         for path in &paths {
-            let r = run_one(imp, IMPLEMENTATIONS, bodies, path, &[]);
+            let r = run_one(imp, implementations, bodies, path, &[]);
             match &r.verdict {
                 Ok(line) if run == 1 || repeat == 1 => println!("ok {} ({line})", r.id),
                 Ok(_) => {}
@@ -192,8 +194,9 @@ pub fn run_all(
         if repeat > 1 {
             println!("run {run} of {repeat}: every view test matched its declaration");
         }
+        completed += 1;
     }
-    Ok(Summary { count: paths.len(), implementation: imp.name.clone(), repeat })
+    Ok(Summary { count: paths.len(), implementation: imp.name.clone(), repeat: completed })
 }
 
 /// The child's main: build the tree, load the view driver, run the body,

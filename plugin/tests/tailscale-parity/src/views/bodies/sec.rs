@@ -70,10 +70,27 @@ pub fn sec_03_plain_text(v: &mut Views) -> Result<(), String> {
     let owned = v.peer_row("workstation")?;
     v.require(v.get(owned, "subtitle")? == json!("Third Example"), "the owner line is where it is looked for")?;
     plain_row(v, "plain-owned-row", owned)?;
+    v.right_click(bold)?;
+    let menu = v.panel_one("ts-copy-menu")?;
+    v.check("copy-menu-literal", v.get(menu, "displayName")? == json!(BOLD), v.get(menu, "displayName")?);
+    let plain = v.get("Text", "PlainText")?;
+    let mut heads = Vec::new();
+    for o in v.find(menu, None)? {
+        if v.get(o, "text") == Ok(json!(BOLD)) {
+            heads.push(v.get(o, "textFormat")?);
+        }
+    }
+    // The entries' own labels are the panel's words, not the network's.
+    v.check("plain-copy-menu-head", !heads.is_empty() && heads.iter().all(|f| *f == plain), json!(heads));
+    v.invoke(menu, "close", json!([]))?;
     exit_card(v)?;
     settings_card(v)?;
     v.stage(&[("writable", json!(false)), ("writeError", json!(REFUSAL))])?;
-    plain_elements(v, &["ts-connect-tip"])
+    plain_elements(v, &["ts-connect-tip"])?;
+    v.stage(&[("state", json!({ "enum": "NoState" })), ("readError", json!(BOLD))])?;
+    let line = v.panel_one("ts-read-error")?;
+    v.check("read-error-literal", v.get(line, "text")? == json!(BOLD), v.get(line, "text")?);
+    v.check_plain("plain-read-error", line)
 }
 
 /// The exit card's strings.

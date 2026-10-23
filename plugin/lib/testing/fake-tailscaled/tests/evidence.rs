@@ -442,6 +442,35 @@ fn every_check_of_the_qml_suite_maps_to_a_view_test() {
     assert!(unmapped.is_empty(), "the QML suite checks these, but no view test runs them: {unmapped:?}");
 }
 
+/// A view test runs #309's clauses: every requirement it names gives #309
+/// its harness-on-cpp entry or a harness-on-cpp deferred clause. A `fix`
+/// view test expects what #286 does not do, so every requirement it names
+/// is a `fix` one; a `parity` one may name a `fix` requirement whose view
+/// half #286 already meets.
+#[test]
+fn view_tests_agree_with_the_evidence() {
+    let ev = loaded();
+    let by_id: BTreeMap<&str, &evidence::Entry> = ev.requirements.iter().map(|r| (r.id.as_str(), r)).collect();
+    let harness_in_309 = |r: &evidence::Entry| {
+        (r.class == EvidenceClass::HarnessOnCpp && r.pr == Some(309))
+            || r.deferred.iter().any(|d| d.class == EvidenceClass::HarnessOnCpp && d.pr == Some(309))
+    };
+    for entry in std::fs::read_dir(repo().join("tests/fixtures/tailscale/views")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let t = ViewTest::read(&path).unwrap();
+        for id in &t.requirements {
+            let r = by_id.get(id.as_str()).unwrap_or_else(|| panic!("{}: no requirement {id}", t.id));
+            assert!(harness_in_309(r), "{}: {id} gives #309 no harness-on-cpp clause", t.id);
+            if t.tag == Tag::Fix {
+                assert_eq!(r.tag, "fix", "{}: a fix view test names the {} requirement {id}", t.id, r.tag);
+            }
+        }
+    }
+}
+
 /// A corpus case runs harness-on-cpp clauses of the requirements it names.
 /// A `fix` case expects what #286 does not do, so every requirement it
 /// names is a `fix` one; a `parity` case may name a `fix` requirement whose

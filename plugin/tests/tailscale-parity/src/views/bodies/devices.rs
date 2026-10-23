@@ -190,8 +190,13 @@ pub fn qml_12_sub_cards(v: &mut Views) -> Result<(), String> {
     v.check("no-back", back == 0, json!(back));
     let chevron = v.panel_one("ts-devices-chevron")?;
     let (shut_turn, shut) = fold_state(v, chevron)?;
-    v.invoke(v.panel_one("ts-devices-row")?, "clicked", json!([]))?;
     let root_rows = ["ts-self-name", "ts-self-ip4", "ts-devices-row", "ts-exit-row-entry"];
+    let mut before = Vec::new();
+    for name in root_rows {
+        before.push(v.flag(v.panel_one(name)?, "visible")?);
+    }
+    v.check("root-rows-shown", before.iter().all(|b| *b), json!(before));
+    v.invoke(v.panel_one("ts-devices-row")?, "clicked", json!([]))?;
     let mut kept = true;
     for name in root_rows {
         kept &= v.flag(v.panel_one(name)?, "visible")?;
