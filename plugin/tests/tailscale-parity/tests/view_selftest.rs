@@ -113,6 +113,20 @@ fn warns(v: &mut Views) -> Result<(), String> {
     v.set("pill", "armed", json!(true))
 }
 
+/// Copies the directory `from` to `to`.
+fn copy(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let dest = to.join(path.file_name().unwrap());
+        if path.is_dir() {
+            copy(&path, &dest);
+        } else {
+            std::fs::copy(&path, &dest).unwrap();
+        }
+    }
+}
+
 fn stub_views() -> ViewImplementation {
     ViewImplementation { name: "stub".into(), views: selftest("views") }
 }
@@ -140,6 +154,14 @@ fn the_tree(failures: &mut Vec<String>) {
     check(failures, ok, &format!("the PaletteStore holds the palette without its prose: {store}"));
     let missing = tree::palette_store(r#"{"defaults": {}}"#);
     check(failures, missing.as_ref().is_err_and(|e| e.contains("palette")), &format!("no palette: {missing:?}"));
+    let bare = root.path().join("standins");
+    copy(&tree::standins(), &bare);
+    let theme = bare.join("qs/Theme/Theme.qml");
+    let text = std::fs::read_to_string(&theme).unwrap();
+    std::fs::write(&theme, text.replace("@ICONS_DIR@", "file:///nowhere")).unwrap();
+    let lost = tree::build_from(&bare, &selftest("views"), &root.path().join("tree3"));
+    let ok = lost.as_ref().is_err_and(|e| e.contains("@ICONS_DIR@"));
+    check(failures, ok, &format!("a theme stand-in without the placeholder is an error: {lost:?}"));
     let empty = root.path().join("empty");
     std::fs::create_dir_all(&empty).unwrap();
     let none = tree::build(&empty, &root.path().join("tree2"));
@@ -194,9 +216,37 @@ fn the_diagnostics_rule(failures: &mut Vec<String>) {
     let turned = run::with_diagnostics(Outcome::Pass, log);
     let ok = matches!(&turned, Outcome::Error(e) if e.contains("A.qml:3") && e.contains("B.qml:9"));
     check(failures, ok, &format!("each .qml: line is named: {turned:?}"));
+    let js = run::with_diagnostics(Outcome::Pass, "file:///t/DeviceType.js:2: ReferenceError: x");
+    check(failures, matches!(js, Outcome::Error(_)), &format!("a .js: line is a diagnostic: {js:?}"));
     let result = format!("{}{{\"outcome\":\"error\",\"error\":\"/v/PeerRow.qml: missing\"}}", runner::RESULT_PREFIX);
     let kept = run::with_diagnostics(Outcome::Pass, &result);
     check(failures, kept == Outcome::Pass, &format!("the result line is no diagnostic: {kept:?}"));
+}
+
+/// 7. A result line after an exit that was not a success is an error.
+fn the_exit_status(failures: &mut Vec<String>) {
+    use std::os::unix::process::ExitStatusExt;
+    let line = format!("{}{{\"outcome\":\"pass\"}}", runner::RESULT_PREFIX);
+    let (ok, _) = run::parse_result(&line, std::process::ExitStatus::from_raw(0));
+    check(failures, ok == Outcome::Pass, &format!("a pass and exit 0: {ok:?}"));
+    let (crashed, _) = run::parse_result(&line, std::process::ExitStatus::from_raw(6));
+    let ok = matches!(&crashed, Outcome::Error(e) if e.contains("after its result line"));
+    check(failures, ok, &format!("a pass and a signal 6: {crashed:?}"));
+}
+
+/// 8. The host's logging settings cannot hide a warning.
+fn the_logging_settings(failures: &mut Vec<String>) {
+    // SAFETY: the self-test's main thread, with no other thread running.
+    unsafe {
+        std::env::set_var("QT_LOGGING_RULES", "*.warning=false;qml.warning=false");
+        std::env::set_var("QT_MESSAGE_PATTERN", "%{type}");
+    }
+    let warned = run_header("warns");
+    unsafe {
+        std::env::remove_var("QT_LOGGING_RULES");
+        std::env::remove_var("QT_MESSAGE_PATTERN");
+    }
+    verdict(failures, &warned, false, &["QML diagnostics", "StatusPill.qml:"], error("QML diagnostics"));
 }
 
 /// 6. run_all: a filter naming no header is an error, and the summary.
@@ -226,5 +276,7 @@ fn main() {
     the_verdicts(&mut failures);
     the_diagnostics_rule(&mut failures);
     the_run_all(&mut failures);
+    the_exit_status(&mut failures);
+    the_logging_settings(&mut failures);
     std::process::exit(finish("view_selftest", &failures));
 }

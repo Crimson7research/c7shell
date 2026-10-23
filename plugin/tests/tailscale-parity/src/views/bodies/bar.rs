@@ -78,7 +78,8 @@ pub fn qml_04_label_capped(v: &mut Views) -> Result<(), String> {
 /// The visible slot parts drawn in theme colour `token`.
 fn shown_in(v: &Views, token: &str) -> Result<Vec<crate::views::El>, String> {
     let colour = v.theme(token)?;
-    v.visible_of_colour(colour.as_str().unwrap_or(""))
+    let colour = colour.as_str().ok_or_else(|| format!("Theme.{token} is {colour}, not a colour"))?;
+    v.visible_of_colour(colour)
 }
 
 /// Whether a visible ✕ is drawn in `Theme.accentSoft`.

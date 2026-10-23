@@ -19,7 +19,8 @@
 # C7_VIEWS_DIR and C7_QML_DIR or that script's cache. Skips, with the
 # reason, without cargo; skips check 2 when C7_VIEWS_DIR is unset and the
 # cache holds no views, and checks 3 to 5 when C7_QML_DIR is unset and the
-# cache holds no build; fails when either is set but holds no reference.
+# cache holds no build; fails when either is set but holds no reference,
+# when a reference build has no views, and when the cache's tree is stale.
 # tests/test-fake-tailscaled.sh compiles the harness either way.
 set -euo pipefail
 shopt -s inherit_errexit
@@ -60,6 +61,13 @@ cache=${C7_REFERENCE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c7shell/tailscale-re
 
 # 2. the view tests, 50 consecutive runs ---------------------------------------
 views=${C7_VIEWS_DIR:-$cache/tree/quickshell/c7shell}
+if [[ -z ${C7_VIEWS_DIR:-} && -d $cache/tree ]]; then
+  # A cache tree from before the views were extracted, or a partial one, is
+  # stale: its stamp names every path extracted.
+  stamp=$cache/tree/.c7-reference-sha
+  [[ -f $stamp && $(<"$stamp") == "$sha plugin quickshell/c7shell" ]] \
+    || fail "the reference tree at $cache/tree predates the views; run plugin/tests/tailscale-parity/build-reference.sh --views"
+fi
 if [[ -f $views/Modules/Popovers/TailscalePopover.qml ]]; then
   # C7_SCENARIOS is unset, as for the scenarios below.
   run_logged 'the view tests, 50 runs' in_plugin env -u C7_SCENARIOS C7_IMPL=cpp-286 C7_VIEWS_DIR="$views" \
@@ -69,6 +77,9 @@ if [[ -f $views/Modules/Popovers/TailscalePopover.qml ]]; then
   echo "PASS: $(grep -E 'view tests matched' "$log")"
 else
   [[ -z ${C7_VIEWS_DIR:-} ]] || fail "C7_VIEWS_DIR=$C7_VIEWS_DIR holds no Modules/Popovers/TailscalePopover.qml"
+  # A C++ reference build without its views would skip them and still pass.
+  [[ ! -f ${C7_QML_DIR:-$cache/out/qml}/C7/qmldir ]] \
+    || fail "the reference build has no views at $views; run plugin/tests/tailscale-parity/build-reference.sh --views"
   echo "SKIP: no reference views at $views (run plugin/tests/tailscale-parity/build-reference.sh --views)"
 fi
 

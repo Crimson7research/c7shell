@@ -38,7 +38,12 @@ pub fn standins() -> PathBuf {
 /// Builds the tree under `into` from the views in `views`: the stand-ins,
 /// the view files, the theme's icon folder and its `PaletteStore`.
 pub fn build(views: &Path, into: &Path) -> Result<(), String> {
-    copy_dir(&standins(), into)?;
+    build_from(&standins(), views, into)
+}
+
+/// [`build`], with the stand-ins taken from `standins`.
+pub fn build_from(standins: &Path, views: &Path, into: &Path) -> Result<(), String> {
+    copy_dir(standins, into)?;
     for file in VIEW_FILES {
         let to = into.join("qs").join(file);
         fs::copy(views.join(file), &to).map_err(|e| format!("copy {}: {e}", views.join(file).display()))?;
@@ -49,6 +54,9 @@ pub fn build(views: &Path, into: &Path) -> Result<(), String> {
     }
     let theme = into.join("qs/Theme/Theme.qml");
     let text = fs::read_to_string(&theme).map_err(|e| format!("{}: {e}", theme.display()))?;
+    if !text.contains(ICONS_DIR) {
+        return Err(format!("{} holds no {ICONS_DIR} to name the icons", theme.display()));
+    }
     let url = format!("file://{}", icons.display());
     fs::write(&theme, text.replace(ICONS_DIR, &url)).map_err(|e| format!("{}: {e}", theme.display()))?;
     let palette = views.join("palette.json");

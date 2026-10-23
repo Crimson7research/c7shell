@@ -10,7 +10,7 @@
     "With four peers the count reads 4; `TANGO` leaves one row, the count 1, only \"my devices\" and no `ts-peer-no-match`",
     "`workstation` leaves only \"other users\"",
     "A query matching nothing shows no `ts-peer` and no `ts-section`, shows `ts-peer-no-match` and not `ts-peer-empty`",
-    "Clearing the query and seeding zero peers shows no `ts-peer-no-match`; seeding the four again shows 4 rows and the count 4",
+    "Clearing the query and seeding zero peers shows no `ts-peer-no-match` and exactly one `ts-peer-empty` (the state #286's checks assume, R-GROUP-11); seeding the four again shows 4 rows and the count 4",
     "Over 50 peers, `node-49` leaves one row, titled `node-49`, under only \"other users\""
   ],
   "deferred": [

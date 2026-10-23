@@ -304,6 +304,8 @@ pub fn qml_13_device_search(v: &mut Views) -> Result<(), String> {
     v.seed("Tailscale.peers", &json!([]))?;
     let no_match = v.panel_shown("ts-peer-no-match")?.len();
     v.check("empty-not-no-match", no_match == 0, json!(no_match));
+    let empty = v.panel_shown("ts-peer-empty")?.len();
+    v.check("empty-shows-empty", empty == 1, json!(empty));
     v.seed("Tailscale.peers", &tailnet_peers())?;
     let rows = v.panel_shown("ts-peer")?.len();
     v.check("back-to-4", rows == 4, json!(rows));

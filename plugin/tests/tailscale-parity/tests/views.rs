@@ -21,13 +21,9 @@ fn main() {
     }
     let imp = run::ViewImplementation::from_env().unwrap_or_else(|e| fail(&e, 1));
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures/tailscale/views");
-    let named: Vec<String> = std::fs::read_dir(&dir)
-        .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect::<Vec<_>>())
-        .unwrap_or_default()
-        .iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "json"))
-        .filter_map(|p| ViewTest::read(p).ok().map(|t| t.body))
-        .collect();
+    let paths = run::headers(&dir).unwrap_or_else(|e| fail(&e, 1));
+    let named: Vec<String> =
+        paths.iter().map(|p| ViewTest::read(p).map(|t| t.body).unwrap_or_else(|e| fail(&e, 1))).collect();
     let unused: Vec<&str> = run::names(bodies::ALL).into_iter().filter(|b| !named.iter().any(|n| n == b)).collect();
     if !unused.is_empty() {
         fail(&format!("no view test header names the bodies {unused:?}"), 1);

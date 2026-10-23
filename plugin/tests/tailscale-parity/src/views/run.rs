@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 use fake_tailscaled::scenario::{Implementation as Known, IMPLEMENTATIONS};
 use fake_tailscaled::views::ViewTest;
@@ -107,26 +108,43 @@ fn run_child_of(
         format!("--views={}", imp.views.display()),
     ];
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let out = match child::isolated(&args, root, extra).output() {
+    // Every warning on, in the default pattern, whatever the host's logging
+    // settings: the .qml: rule reads them.
+    let mut env = vec![("QT_LOGGING_RULES", "*.warning=true"), ("QT_MESSAGE_PATTERN", MESSAGE_PATTERN)];
+    env.extend_from_slice(extra);
+    let out = match child::isolated(&args, root, &env).output() {
         Ok(out) => out,
         Err(e) => return (Outcome::Error(format!("cannot start the child: {e}")), String::new(), None),
     };
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let log = stdout.clone() + &String::from_utf8_lossy(&out.stderr);
-    let line = stdout.lines().rev().find_map(|l| l.strip_prefix(RESULT_PREFIX));
-    let (outcome, env) = match line.map(serde_json::from_str::<Value>) {
-        Some(Ok(v)) => (outcome_from_json(&v), serde_json::from_value(v["env"].clone()).ok()),
-        Some(Err(e)) => (Outcome::Error(format!("a malformed result line: {e}")), None),
-        None => (Outcome::Error(format!("no result line (the child exited with {})", out.status)), None),
-    };
+    let (outcome, env) = parse_result(&stdout, out.status);
     (with_diagnostics(outcome, &log), log, env)
 }
 
-/// `outcome`, unless `log` has a line naming a `.qml` file: then an error
-/// listing those lines. The child's result line is not a diagnostic,
-/// whatever its values hold.
+/// The outcome and environment a child's `stdout` reports: an error for no
+/// result line, a malformed one, or an exit that was not a success.
+pub fn parse_result(stdout: &str, status: ExitStatus) -> (Outcome, Option<BTreeMap<String, String>>) {
+    let line = stdout.lines().rev().find_map(|l| l.strip_prefix(RESULT_PREFIX));
+    match line.map(serde_json::from_str::<Value>) {
+        _ if line.is_some() && !status.success() => {
+            (Outcome::Error(format!("the child exited with {status} after its result line")), None)
+        }
+        Some(Ok(v)) => (outcome_from_json(&v), serde_json::from_value(v["env"].clone()).ok()),
+        Some(Err(e)) => (Outcome::Error(format!("a malformed result line: {e}")), None),
+        None => (Outcome::Error(format!("no result line (the child exited with {status})")), None),
+    }
+}
+
+/// Qt's default message pattern, set for every view child.
+pub const MESSAGE_PATTERN: &str = "%{if-category}%{category}: %{endif}%{message}";
+
+/// `outcome`, unless `log` has a line naming a `.qml` or `.js` file: then
+/// an error listing those lines. The child's result line is not a
+/// diagnostic, whatever its values hold.
 pub fn with_diagnostics(outcome: Outcome, log: &str) -> Outcome {
-    let lines: Vec<&str> = log.lines().filter(|l| l.contains(".qml:") && !l.starts_with(RESULT_PREFIX)).collect();
+    let named = |l: &&str| (l.contains(".qml:") || l.contains(".js:")) && !l.starts_with(RESULT_PREFIX);
+    let lines: Vec<&str> = log.lines().filter(named).collect();
     if lines.is_empty() {
         outcome
     } else {
@@ -159,10 +177,7 @@ pub fn run_all(
     repeat: u32,
     filter: Option<&str>,
 ) -> Result<Summary, String> {
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect())
-        .unwrap_or_default();
-    paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
+    let mut paths = headers(dir)?;
     let stem = |p: &PathBuf| p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
     if let Some(f) = filter {
         let wanted: Vec<&str> = f.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
@@ -197,6 +212,20 @@ pub fn run_all(
         completed += 1;
     }
     Ok(Summary { count: paths.len(), implementation: imp.name.clone(), repeat: completed })
+}
+
+/// The `.json` files in `dir`; an error for a directory or an entry that
+/// cannot be read.
+pub fn headers(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("no view tests found in {}: {e}", dir.display()))?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let path = entry.map_err(|e| format!("{}: {e}", dir.display()))?.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            paths.push(path);
+        }
+    }
+    Ok(paths)
 }
 
 /// The child's main: build the tree, load the view driver, run the body,
