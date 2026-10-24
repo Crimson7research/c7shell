@@ -223,7 +223,10 @@ id_of() {
   grep '"ev":"request"' "$out" | grep -F "\"detail\":\"$1\"" | tail -1 \
     | sed 's/.*"id":"\([^"]*\)".*/\1/'
 }
-caller() { ASKPASS_PROMPT=$1 C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- & }
+caller() {
+  ASKPASS_PROMPT=$1 C7_AUTHD_SOCKET=$sock "$tmp/run-askpass" > /dev/null 2>&1 9>&- &
+  helper_pids+=("$!")
+}
 # Either may already be gone -- the fake sudo exits as soon as its child does.
 hang_up() { pkill -P "$1" 2>/dev/null || true; kill "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
 fds_before=$(ls "/proc/$daemon_pid/fd" | wc -l)

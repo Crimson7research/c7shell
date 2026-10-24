@@ -605,7 +605,8 @@ class Daemon:
         # without askpass: it may still be the session's polkit agent.
         try:
             if self._askpass_answered():
-                log(f"another c7-authd is already serving {self.sock_path}; serving no askpass while it does")
+                log(f"another c7-authd is already serving {self.sock_path}; "
+                    "serving no askpass while it does")
                 GLib.timeout_add(ASKPASS_RETRY_MS, self._retry_askpass)
                 return
             self._bind_askpass()
@@ -644,7 +645,8 @@ class Daemon:
         try:
             try:
                 if not stat.S_ISSOCK(os.lstat(tmp).st_mode):
-                    raise OSError(errno.EEXIST, "something that is not a socket is in the way", tmp)
+                    raise OSError(errno.EEXIST,
+                                  "something that is not a socket is in the way", tmp)
                 os.unlink(tmp)
             except FileNotFoundError:
                 pass
